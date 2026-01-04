@@ -1,3 +1,6 @@
+import org.gradle.kotlin.dsl.implementation
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,19 +10,31 @@ android {
     namespace = "com.example.myapplication"
     compileSdk = 36
 
-    buildFeatures{
-        viewBinding = true
-    }
-
     defaultConfig {
         applicationId = "com.example.myapplication"
-        minSdk = 24
-        targetSdk = 35
+        minSdk = 26
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Cargar API KEY desde local.properties
+        val props = Properties()
+        val localPropsFile = rootProject.file("local.properties")
+
+        if (localPropsFile.exists()) {
+            props.load(localPropsFile.inputStream())
+        }
+
+        val geminiKey = props.getProperty("GEMINI_API_KEY") ?: ""
+
+        buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
     }
+
+    buildFeatures{
+        viewBinding = true
+        buildConfig = true
+    }
+
 
     buildTypes {
         release {
@@ -40,6 +55,10 @@ android {
 }
 
 dependencies {
+    //botn deslizale
+    implementation ("com.ncorti:slidetoact:0.9.0")
+    //dependencia lottie
+    implementation("com.airbnb.android:lottie:6.3.0")
     // En la sección dependencies { ... } de app/build.gradle.kts
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")

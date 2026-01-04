@@ -1,0 +1,41 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:drawable="@drawable/ic_mic_vector">
+
+    <target android:name="vibrate">
+        <aapt:attr name="android:animation">
+            <set android:ordering="sequentially">
+
+                <objectAnimator
+                    android:propertyName="translationX"
+                    android:duration="40"
+                    android:valueFrom="-2"
+                    android:valueTo="2"
+                    android:valueType="floatType"/>
+
+                <objectAnimator
+                    android:propertyName="translationX"
+                    android:duration="40"
+                    android:valueFrom="2"
+                    android:valueTo="-2"
+                    android:valueType="floatType"/>
+
+                <objectAnimator
+                    android:propertyName="translationX"
+                    android:duration="40"
+                    android:valueFrom="-2"
+                    android:valueTo="2"
+                    android:valueType="floatType"/>
+
+                <objectAnimator
+                    android:propertyName="translationX"
+                    android:duration="40"
+                    android:valueFrom="2"
+                    android:valueTo="-2"
+                    android:valueType="floatType"/>
+
+            </set>
+        </aapt:attr>
+    </target>
+
+</animated-vector>

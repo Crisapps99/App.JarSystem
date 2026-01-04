@@ -6,27 +6,96 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
+    <com.airbnb.lottie.LottieAnimationView
+        android:id="@+id/lottieFondo"
+        android:layout_width="300dp"
+        android:layout_height="300dp"
+        app:layout_constraintStart_toStartOf="@id/lottieLog"
+        app:layout_constraintEnd_toEndOf="@id/lottieLog"
+        app:layout_constraintTop_toTopOf="@id/lottieLog"
+        app:layout_constraintBottom_toBottomOf="@id/lottieLog"
+        app:lottie_autoPlay="true"
+        app:lottie_loop="true"
+        app:lottie_rawRes="@raw/fondoicon"
+        android:alpha="0.6"
+        android:translationY="-20dp"/>
+
+    <com.airbnb.lottie.LottieAnimationView
+        android:id="@+id/lottieLog"
+        android:layout_width="300dp"
+        android:layout_height="300dp"
+        android:layout_marginTop="72dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.495"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:lottie_autoPlay="false"
+        app:lottie_loop="true"
+        app:lottie_rawRes="@raw/eyejar" />
 
     <TextView
         android:id="@+id/textView"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Hello World!"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <Button
-        android:id="@+id/Ingresobutton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="ingresar"
+        android:fontFamily="@font/google"
+        android:text="JARVOICE"
+        android:textColor="#000000"
+        android:textSize="32sp"
+        android:textStyle="bold"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.498"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.588" />
+        app:layout_constraintVertical_bias="0.6" />
+
+    <TextView
+        android:id="@+id/textViewSub"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/google"
+        android:text="Una nueva forma de intectacturar con el Dispositivo"
+        android:textColor="#000000"
+        android:textSize="15sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.555"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.671" />
+
+    <com.ncorti.slidetoact.SlideToActView
+        android:id="@+id/Ingresobutton"
+        android:layout_width="290dp"
+        android:layout_height="30dp"
+        android:fontFamily="@font/google"
+        android:text="Comenzar"
+        app:complete_icon="@drawable/anim_mic_vibrate"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.652"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.857"
+        app:slider_icon="@drawable/ic_arrow"
+        app:area_margin="11dp"
+        app:outer_color="@color/blackwhite"
+        app:border_radius="25dp"
+        app:slider_height="70dp"
+        android:layout_margin="20dp"
+        />
+
+    <!--    <Button-->
+<!--        android:id="@+id/btnEntrenar"-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:text="entrenamiento"-->
+<!--        app:layout_constraintBottom_toBottomOf="parent"-->
+<!--        app:layout_constraintEnd_toEndOf="parent"-->
+<!--        app:layout_constraintStart_toStartOf="parent"-->
+<!--        app:layout_constraintTop_toTopOf="parent"-->
+<!--        app:layout_constraintVertical_bias="0.658" />-->
+
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>

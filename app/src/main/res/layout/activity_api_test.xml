@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <Button
+        android:id="@+id/btnTestOllama"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Probar Ollama" />
+
+    <Button
+        android:id="@+id/btnTestColab"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Probar API Colab" />
+
+    <Button
+        android:id="@+id/btnTestActionServer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Probar Action Server" />
+
+    <TextView
+        android:id="@+id/txtApiResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Resultados:"
+        android:textSize="16sp"
+        android:paddingTop="20dp" />
+
+</LinearLayout>
