@@ -26,7 +26,7 @@ interface ActionServerApi {
 }
 // api/ActionServerClient.kt
 object ActionServerClient {
-    private const val BASE_URL = "http://172.29.48.1:8100/"
+    private const val BASE_URL = "http://192.168.0.5:8100/"
 
     val service: ActionServerApi by lazy {
         Retrofit.Builder()

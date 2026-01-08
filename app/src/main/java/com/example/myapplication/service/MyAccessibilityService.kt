@@ -10,13 +10,15 @@ import android.graphics.Path
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.example.myapplication.api.ActionDto
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import com.example.myapplication.api.ActionDto
 
 class MyAccessibilityService : AccessibilityService(){
 
     private val ACTION_EXECUTE = "JARVIS.EXECUTE_ACTIONS"
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -35,37 +37,73 @@ class MyAccessibilityService : AccessibilityService(){
     private val actionsReceiver = object : BroadcastReceiver(){
         override fun onReceive(context: Context?, intent: Intent?) {
             //objetenmos el json desde jaractivity
-            val json = intent?.getStringExtra("actions_json")?:return
+            val json = intent?.getStringExtra("actions_json")?: return
+            Log.d("ACCESS", "broadcast recibido $json")
+            if (json.isNullOrBlank()){
+                Log.e("ACCESS", "leggo vacio el action_json")
+                return
+            }
             //ejecutamos las acciones recividas
             ejecutarAcciones(json)
         }
     }
-
-    private fun ejecutarAcciones(json: String){
-        //convertimos el json recivido en list accion
-        val listType = object : TypeToken<List<ActionDto>>() {}.type
-        val acciones: List<ActionDto> = Gson().fromJson(json,listType)
-
-        //ejecutamos la ccion secuencialmente
-        for (accion in acciones){
-            when (accion.tipo) {
-                "open_app" -> abrirApp(accion.params)       // Abrir aplicaciones
-                "scroll" -> scroll(accion.params)           // Scroll automático
-                "tap" -> tapCoordenadas(accion.params)      // Tap por coordenadas
-                "ocr_tap" -> tapPorTexto(accion.params)     // Tap por texto
-                else -> Log.e("ACCESS", "Acción no reconocida: ${accion.tipo}")
+    private var currentActions: List<ActionDto>? = null
+    private var currentIndex = 0
+    private val stepRunnable = object : Runnable {
+        override fun run() {
+            val actions = currentActions ?: return
+            if (currentIndex >= actions.size) {
+                currentActions = null
+                return
             }
 
-            //espera para evitar saturar el sistema
-            Thread.sleep(900)
+            val accion = actions[currentIndex++]
+            when (accion.tipo) {
+                "open_app" -> abrirApp(accion.params)
+                "scroll" -> scroll(accion.params)
+                "tap" -> tapCoordenadas(accion.params)
+                "ocr_tap" -> tapPorTexto(accion.params)
+            }
+
+            handler.postDelayed(this, 900)
         }
     }
+
+    private fun ejecutarAcciones(json: String){
+        handler.removeCallbacks(stepRunnable)
+
+        val listType = object : TypeToken<List<ActionDto>>() {}.type
+        currentActions = Gson().fromJson(json, listType)
+        currentIndex = 0
+
+        handler.post(stepRunnable)
+    }
+
+//    private fun ejecutarPaso(acciones: List<ActionDto>, index: Int) {
+//        if (index >= acciones.size) return
+//
+//        val accion = acciones[index]
+//        when (accion.tipo) {
+//            "open_app" -> abrirApp(accion.params)
+//            "scroll" -> scroll(accion.params)
+//            "tap" -> tapCoordenadas(accion.params)
+//            "ocr_tap" -> tapPorTexto(accion.params)
+//            else -> Log.e("ACCESS", "Acción no reconocida: ${accion.tipo}")
+//        }
+//
+//        handler.postDelayed({ ejecutarPaso(acciones, index + 1) }, 900)
+//    }
+
     private fun abrirApp(params: Map<String, Any>?) {
         val pack = params?.get("package") as? String ?: return
         Log.d("ACCESS", "➡ Abriendo app: $pack")
 
         val i = packageManager.getLaunchIntentForPackage(pack)
-        i?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (i == null) {
+            Log.e("ACCESS", "❌ launchIntent NULL para $pack (package visibility)")
+            return
+        }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(i)
     }
     private fun scroll(params: Map<String, Any>?) {
@@ -110,5 +148,12 @@ class MyAccessibilityService : AccessibilityService(){
         } else {
             Log.e("ACCESS", "❌ Texto no encontrado '$texto'")
         }
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(actionsReceiver) }
+        handler.removeCallbacks  (stepRunnable)
+        currentActions = null
+        super.onDestroy()
     }
 }

@@ -29,7 +29,7 @@ interface ApiService {
 }
 
 object OllamaClient {
-    private const val FASTAPI_URL = "http://172.29.48.1:11434/"
+    private const val FASTAPI_URL = "http://192.168.0.5:11434/"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)

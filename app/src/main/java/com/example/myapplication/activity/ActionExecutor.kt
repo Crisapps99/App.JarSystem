@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.MediaStore
+import android.util.Log
 import androidx.activity.ComponentActivity // Mejor si trabajas con Activity o AppCompatActivity
 
 /**
@@ -17,6 +18,23 @@ object ActionExecutor {
      * @param context El contexto desde donde se lanza el Intent.
      * @return Un mensaje de resultado de la acción.
      */
+    fun openApp(context: Context, packageName: String): Boolean{
+        return try {
+            val pm= context.packageManager
+            val launchIntent = pm.getLaunchIntentForPackage(packageName)
+            //si no ha inten para abri registra log y retnorna false
+            if (launchIntent == null){
+                Log.e("ActionExecutor","launchIntent NULL para $packageName")
+                return false
+            }
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(launchIntent)
+            true
+        }catch (e: Exception){
+            Log.e("ActionExecutor","Error abriendo $packageName:${e.message}")
+            false
+        }
+    }
     fun openCamera(context: Context): String {
         return try {
             val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
