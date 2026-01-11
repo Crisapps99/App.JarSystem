@@ -12,7 +12,7 @@ import com.airbnb.lottie.LottieAnimationView
 import com.airbnb.lottie.RenderMode
 import com.example.myapplication.R
 import com.example.myapplication.activity.JarActivity
-import com.example.myapplication.activity.TrainActivity
+//import com.example.myapplication.activity.TrainActivity
 import com.example.myapplication.activity.switchToActivity
 import com.ncorti.slidetoact.SlideToActView
 import android.view.animation.OvershootInterpolator

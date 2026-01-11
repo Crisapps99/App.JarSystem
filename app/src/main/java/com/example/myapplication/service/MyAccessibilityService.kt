@@ -79,21 +79,6 @@ class MyAccessibilityService : AccessibilityService(){
         handler.post(stepRunnable)
     }
 
-//    private fun ejecutarPaso(acciones: List<ActionDto>, index: Int) {
-//        if (index >= acciones.size) return
-//
-//        val accion = acciones[index]
-//        when (accion.tipo) {
-//            "open_app" -> abrirApp(accion.params)
-//            "scroll" -> scroll(accion.params)
-//            "tap" -> tapCoordenadas(accion.params)
-//            "ocr_tap" -> tapPorTexto(accion.params)
-//            else -> Log.e("ACCESS", "Acción no reconocida: ${accion.tipo}")
-//        }
-//
-//        handler.postDelayed({ ejecutarPaso(acciones, index + 1) }, 900)
-//    }
-
     private fun abrirApp(params: Map<String, Any>?) {
         val pack = params?.get("package") as? String ?: return
         Log.d("ACCESS", "➡ Abriendo app: $pack")
@@ -143,11 +128,20 @@ class MyAccessibilityService : AccessibilityService(){
 
         val nodes = root.findAccessibilityNodeInfosByText(texto)
         if (nodes.isNotEmpty()) {
-            nodes[0].performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            Log.d("ACCESS", "✔ Tap en '$texto'")
-        } else {
-            Log.e("ACCESS", "❌ Texto no encontrado '$texto'")
+            val nodoCualquiera = nodes[0]
+            if (!intentarClick(nodoCualquiera)) {
+                val rect = android.graphics.Rect()
+                nodoCualquiera.getBoundsInScreen(rect)
+                tapCoordenadas(mapOf("x" to rect.centerX(), "y" to rect.centerY()))
+            }
         }
+    }
+    private fun intentarClick(node : AccessibilityNodeInfo?): Boolean{
+        if (node == null) return false
+        if (node.isClickable){
+            return  node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        }
+        return  intentarClick(node.parent)
     }
 
     override fun onDestroy() {

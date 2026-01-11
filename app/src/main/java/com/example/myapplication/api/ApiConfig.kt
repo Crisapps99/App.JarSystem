@@ -7,6 +7,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
 
@@ -37,31 +38,31 @@ data class CommandData(
     val entities: Map<String, String> = emptyMap(),
     val created_at: String = ""
 )
+// Actualiza tu archivo de API para que reciba estos campos
+data class JarvisResponse(
+    val success: Boolean,
+    val mode: String,          // "COMMAND" o "CHAT_FREE"
+    val action: String,        // Nombre de la intención
+    val confidence: Float,
+    val response_text: String, // La frase natural de Gemma
+    val payload: List<ActionDto>? // El paquete de ejecución técnica
+)
 data class SimpleApiResponse(
     val success: Boolean,
     val message: String?
 )
-data class ollamaResult(
-    val frase: String,
-    val intent: String,
-    val entities: Map<String, String>,
-    val categoria: String,
-    val componente: String
-)
-//retrofit para definir el endpoint de la red neuronal
+
 interface  ActionApiService{
     @Headers("Content-Type: application/json")
     @POST("predecir")
-    suspend fun predictAction(@Body request: ActionRequest): ActionResponse
-    @POST("train")
-    suspend fun trainModel(): SimpleApiResponse
-    @POST("add_command")
-    suspend fun trainexample(@Body request: CommandData): SimpleApiResponse
-    @POST("classify_ollama")
-    suspend fun classifyOllama(@Body request: ActionRequest): ollamaResult
+    suspend fun predictAction(@Body request: ActionRequest): JarvisResponse
+    @GET("obtener_saludo")//saludo
+    suspend fun regards(): GreetingResponse
+
 }
-
-
+data class GreetingResponse(
+    val saludo: String?=null
+)
 object RetrofitClient{
     val actionApiService: ActionApiService by lazy{
         Retrofit.Builder()
