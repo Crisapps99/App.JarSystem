@@ -19,6 +19,12 @@ object ActionExecutor {
      * @return Un mensaje de resultado de la acción.
      */
     fun openApp(context: Context, packageName: String): Boolean{
+        fun goHome(context: Context) {
+            val intent = Intent(Intent.ACTION_MAIN)
+            intent.addCategory(Intent.CATEGORY_HOME)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            context.startActivity(intent)
+        }
         return try {
             val pm= context.packageManager
             val launchIntent = pm.getLaunchIntentForPackage(packageName)

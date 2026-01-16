@@ -55,6 +55,8 @@ android {
 }
 
 dependencies {
+    //picovoice
+    implementation("ai.picovoice:porcupine-android:3.0.0")
     implementation("com.google.code.gson:gson:2.10.1")
     //botn deslizale
     implementation ("com.ncorti:slidetoact:0.9.0")

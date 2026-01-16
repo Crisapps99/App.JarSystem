@@ -33,21 +33,17 @@ class JarvisOrbView @JvmOverloads constructor(
     private var externalEnergy = 0f
     private var targetEnergy = 0f
 
-    fun setArtificialEnergy(level: Float) {
-        targetEnergy = level.coerceIn(0f, 1f)
-    }
-
     fun updateRms(rmsDb: Float) {
-        //rango tipico d -2 a 10db
-        val normalizer = when {
-            rmsDb <0f -> 0f
-            rmsDb > 10f -> 1f
-            else -> rmsDb / 10f
-        }
 
+        //si el sonido e smuy bajo como lcik ignoramos
+        if (rmsDb<2.0f){
+            rms = 0f
+            smoothRms +=(0f - smoothRms) * smoothing
+            return
+        }
         //boots y suavisado
-        val boosted = (normalizer * 3.5f).coerceIn(0f, 1f)
-        rms = boosted
+        val normalizer = (rmsDb / 12f).coerceIn(0f, 1f)
+        rms = normalizer *1.5f
         smoothRms += (rms - smoothRms) * smoothing
     }
 

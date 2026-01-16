@@ -7,6 +7,8 @@ import android.R.attr.text
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.MediaPlayer
+import android.media.audiofx.Visualizer
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -34,6 +36,9 @@ interface  JarvisUi{
     fun renderState(state: JarvisState)//cambiar animaciones iconos
     fun showText(text: String)///mostrar textto transcrito
     fun showToast(text:String)//Toast
+    fun getCurrentScreenText(): List<String> // para obtener el contexto de la pantalla
+    fun onRecognizerReady()
+    fun updateORB(rms: Float)
 }
 //controlador principa
 class JarvisVoiceController(
@@ -50,6 +55,11 @@ class JarvisVoiceController(
     private var isListening = false//para saber si esta en modo escucha
     private var isProcessing = false
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var timeoutHandler = Handler(Looper.getMainLooper())
+    private val timeoutRunnable = Runnable{
+        Log.d("JARVIS_DEBUG", "10 segundos de silencio, cerrando micro.")
+        stopListening()
+    }
 
     fun init(){
         configurarReconocedor()
@@ -71,7 +81,7 @@ class JarvisVoiceController(
     }
 
     //speech + tts
-    private fun startInteraction(){
+     fun startInteraction(){
         isListening = true
         setState(JarvisState.SPEAKING)
 
@@ -134,26 +144,60 @@ class JarvisVoiceController(
     override fun onResults(results: Bundle?) {
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
         val text = matches?.firstOrNull()?.trim().orEmpty()
+        val textoEscuchado = matches?.firstOrNull()?.trim() ?:""
         if (text.isEmpty() || isProcessing) return
 
         isProcessing = true
         isListening = false
         ui.showText(text)
+        //campturamos el contexto antes de enviar
 
         scope.launch {
             setState(JarvisState.THINKING)
+            val contextoActual = ui.getCurrentScreenText()
+            Log.d("JARVIS_DEBUG", "Texto: $textoEscuchado")
+            Log.d("JARVIS_DEBUG", "Contexto size: ${contextoActual.size} elementos")
+            Log.d("JARVIS_DEBUG", "Contexto contenido: ${contextoActual.take(5)}...") // Ver los primeros 5
             try {
-                val response = actionApiService.predictAction(ActionRequest(text))
+                val request = ActionRequest(texto = textoEscuchado, contexto = contextoActual)
+                val response = actionApiService.predictAction(request)
+                // 🔥 LOGS DE INSPECCIÓN PROFUNDA 🔥
+                Log.d("JARVIS_SERVER", "--- NUEVA RESPUESTA RECIBIDA ---")
+                Log.d("JARVIS_SERVER", "Success: ${response.success}")
+                Log.d("JARVIS_SERVER", "Modo: ${response.mode}") // Aquí verás si es COMMAND o CHAT_FREE
+                Log.d("JARVIS_SERVER", "Texto de Voz: ${response.response_text}")
+
+                // Inspeccionamos el Payload si existe
+                response.payload?.let { listaAcciones ->
+                    Log.d("JARVIS_SERVER", "Payload detectado con ${listaAcciones.size} acciones")
+                    listaAcciones.forEachIndexed { index, accion ->
+                        Log.d("JARVIS_SERVER", "Acción [$index]: Tipo=${accion.tipo}")
+                        Log.d("JARVIS_SERVER", "Acción [$index]: Params=${accion.params}")
+                    }
+                } ?: Log.d("JARVIS_SERVER", "Payload es NULO")
                 if (response.success) {
                     ui.showText(response.response_text)
 
+                    val intencionDetectada = response.mode ?: "intent_desconocido"
                     speakAndWait(response.response_text) {
+                        val payloadSeguro = response.payload
+                        // Aceptamos ambos modos para que no se bloquee la acción técnica
+                        val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
                         // Si es comando y trae payload, ejecutamos
-                        if (response.mode == "COMMAND" && response.payload?.isNotEmpty()==true) {
-                            ejecutarAccionesTecnicas(response.payload)
+                        if (esAccionTecnica && !payloadSeguro.isNullOrEmpty()) {
+                            Log.d("JARVIS_SERVER", "Ejecutando acción técnica: ${payloadSeguro[0].tipo}")
+                            ejecutarAccionesTecnicas(
+                                payloadSeguro,
+                                textoEscuchado, // El texto que el usuario dictó
+                                intencionDetectada
+                            )
                         }
                         isProcessing = false
-                        setState(JarvisState.IDLE)
+                        //delay apra que no se escuhe asi mismo si hay eco
+                        mainHandler.postDelayed({
+                            startListening()
+                            iniciarTemporizador()
+                        },1000)
                     }
                 }
             } catch (e: Exception) {
@@ -163,7 +207,21 @@ class JarvisVoiceController(
             }
         }
     }
-    private fun ejecutarAccionesTecnicas(actions: List<ActionDto>) {
+    private fun iniciarTemporizador(){
+        //cancelamos scualquier temporizador
+        timeoutHandler.removeCallbacks(timeoutRunnable)
+        //programamos el cierre
+        timeoutHandler.postDelayed(timeoutRunnable, 10000)
+        Log.d("JARVIS_DEBUG", "Temporizador de 10s iniciado...")
+    }
+    // También debemos limpiar el temporizador si el usuario habla antes de los 10s
+    override fun onBeginningOfSpeech() {
+        Log.d("JARVIS_DEBUG", "Usuario detectado, cancelando temporizador de cierre")
+        timeoutHandler.removeCallbacks(timeoutRunnable)
+    }
+
+    private fun ejecutarAccionesTecnicas(actions: List<ActionDto>,textoOriginal: String,
+                                         idIntencion: String) {
         val (openApps, uiActions) = actions.partition { it.tipo == "open_app" }
 
         // Abrir Apps directamente
@@ -175,10 +233,13 @@ class JarvisVoiceController(
         // Acciones de UI (clics, gestos) enviadas al AccessibilityService
         if (uiActions.isNotEmpty()) {
             val intent = Intent(ACTION_EXECUTE).apply {
-                setPackage(context.packageName)
                 putExtra("actions_json", Gson().toJson(uiActions))
+                putExtra("texto_original", textoOriginal)
+                putExtra("intencion_original", idIntencion)
+                setPackage(context.packageName)
             }
             context.sendBroadcast(intent)
+            Log.d("JARVIS_DEBUG", "Broadcast enviado con texto: $textoOriginal")
         }
     }
     // --- TTS Y CONFIG ---
@@ -211,22 +272,84 @@ class JarvisVoiceController(
             }
         }
     }
+    private fun playJarvisVoice(audioUrl: String) {
+        val mediaPlayer = MediaPlayer()
+        mediaPlayer.setDataSource(audioUrl)
+        mediaPlayer.prepareAsync()
+
+        mediaPlayer.setOnPreparedListener { mp ->
+            setState(JarvisState.SPEAKING)
+
+            // CONFIGURAR VISUALIZADOR PARA EL ORBE
+            val visualizer = Visualizer(mp.audioSessionId)
+            visualizer.captureSize = Visualizer.getCaptureSizeRange()[1]
+            visualizer.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
+                    // Calculamos el volumen (RMS) de la onda para mover el orbe
+                    val rms = calculateRmsFromWaveform(waveform)
+                    mainHandler.post { ui.updateORB(rms) }
+                }
+                override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
+            }, Visualizer.getMaxCaptureRate() / 2, true, false)
+
+            visualizer.enabled = true
+            mp.start()
+
+            mp.setOnCompletionListener {
+                visualizer.enabled = false
+                visualizer.release()
+                mp.release()
+                setState(JarvisState.IDLE)
+                startListening() // Volver a escuchar tras hablar
+            }
+        }
+    }
+
+    // Función auxiliar para convertir onda en volumen para tu Orbe
+    private fun calculateRmsFromWaveform(waveform: ByteArray?): Float {
+        if (waveform == null) return 0f
+        var sum = 0.0
+        for (i in waveform.indices) {
+            val sample = (waveform[i].toInt() and 0xFF) - 128
+            sum += (sample * sample).toDouble()
+        }
+        return Math.sqrt(sum / waveform.size).toFloat() / 5f // Ajusta el divisor para la sensibilidad
+    }
     fun destroy() {
         if (::tts.isInitialized) tts.shutdown()
         if (::speechRecognizer.isInitialized) speechRecognizer.destroy()
     }
     // Métodos obligatorios de la interfaz (vacíos para limpieza)
-    override fun onReadyForSpeech(p0: Bundle?) {}
-    override fun onBeginningOfSpeech() {}
-    override fun onRmsChanged(p0: Float) {}
+    override fun onReadyForSpeech(p0: Bundle?) {
+        mainHandler.post {
+            ui.onRecognizerReady() // Avisa a la Activity para apagar Porcupine
+        }
+    }
+    override fun onRmsChanged(p0: Float) {
+        mainHandler.post {
+            ui.updateORB(p0)//p0 es el volumen que envia a google speech
+        }
+    }
     override fun onBufferReceived(p0: ByteArray?) {}
     override fun onEndOfSpeech() {}
-    override fun onError(p0: Int) { setState(JarvisState.IDLE); isProcessing = false; isListening = false }
+    override fun onError(p0: Int) {
+        // El error 7 es "No match" (nadie habló) o el 6 es "Timeout"
+        Log.e("JARVIS_DEBUG", "Error de Speech: $p0")
+
+        // Si queremos que intente escuchar otra vez o se apague
+        isProcessing = false
+        isListening = false
+        setState(JarvisState.IDLE)
+
+        // Si quieres que el micro se apague definitivamente tras un error de silencio:
+        timeoutHandler.removeCallbacks { timeoutRunnable }
+    }
     override fun onPartialResults(p0: Bundle?) {
         val m = p0?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
         if (!m.isNullOrEmpty()) ui.showText(m[0])
     }
     override fun onEvent(p0: Int, p1: Bundle?) {}
+
 
 }
 

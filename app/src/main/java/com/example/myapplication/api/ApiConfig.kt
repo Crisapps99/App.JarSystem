@@ -10,7 +10,8 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
-
+import retrofit2.Response
+import okhttp3.ResponseBody
 
 private const val BASE_URL="https://beata-unweakening-echo.ngrok-free.dev/"
 val logging = HttpLoggingInterceptor().apply {
@@ -24,7 +25,9 @@ private val okHTTP= OkHttpClient.Builder()
 
 //cuerpo JSON QUE ENViamos ala api
 data class ActionRequest(
-    val texto: String)
+    val texto: String,
+    val contexto: List<String> = emptyList()
+)
 
 data class ActionResponse(
     @SerializedName("action") val action: String,
@@ -51,7 +54,19 @@ data class SimpleApiResponse(
     val success: Boolean,
     val message: String?
 )
+interface JarvisFeedbackApi {
+    @POST("/retroalimentacion")
+    suspend fun enviarFeedback(@Body reporte: ReporteFeedback): Response<ResponseBody>
+}
 
+// Modelo de datos para el reporte
+data class ReporteFeedback(
+    val texto_original: String,
+    val intencion_detectada: String,
+    val json_generado: List<ActionDto>,
+    val resultado: String, // "EXITO" o "ERROR"
+    val error_detalle: String? = null
+)
 interface  ActionApiService{
     @Headers("Content-Type: application/json")
     @POST("predecir")
@@ -63,13 +78,19 @@ interface  ActionApiService{
 data class GreetingResponse(
     val saludo: String?=null
 )
-object RetrofitClient{
-    val actionApiService: ActionApiService by lazy{
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(okHTTP)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(ActionApiService::class.java)
+object RetrofitClient {
+    private val retrofit = Retrofit.Builder()
+        .baseUrl(BASE_URL)
+        .client(okHTTP)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
+    val actionApiService: ActionApiService by lazy {
+        retrofit.create(ActionApiService::class.java)
+    }
+
+    // Agregamos esta propiedad para solucionar el error "Unresolved reference"
+    val feedbackApi: JarvisFeedbackApi by lazy {
+        retrofit.create(JarvisFeedbackApi::class.java)
     }
 }

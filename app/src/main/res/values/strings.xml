@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">My Application</string>
+    <string name="accessibility_description">Este servicio permite a Jarvis interactuar con las aplicaciones para ayudarte por voz.</string>
 </resources>
