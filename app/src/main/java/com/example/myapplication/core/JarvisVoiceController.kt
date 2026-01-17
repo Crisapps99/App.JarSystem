@@ -26,7 +26,14 @@ import java.util.Locale
 import android.os.Handler
 import android.os.Looper
 import com.example.myapplication.activity.ActionExecutor
+import kotlinx.coroutines.Dispatchers
 import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.io.File
 
 //estados de jarvis
 enum class JarvisState{IDLE, LISTENING, THINKING, SPEAKING}
@@ -59,6 +66,131 @@ class JarvisVoiceController(
     private val timeoutRunnable = Runnable{
         Log.d("JARVIS_DEBUG", "10 segundos de silencio, cerrando micro.")
         stopListening()
+    }
+    private val ELEVEN_LABS_API_KEY = "sk_275d41153da7f3f34a94dfe4ff9636271a1dc92db0f3e23e"
+    private val VOICE_ID = "pUMGuUt2CdIr0gdKAupW"
+
+    private fun speakWithElevenLabs(text: String) {
+        Log.d("ELEVEN_DEBUG", "Iniciando proceso para: $text")
+        setState(JarvisState.THINKING)
+
+        scope.launch(Dispatchers.IO) {
+            val url = "https://api.elevenlabs.io/v1/text-to-speech/$VOICE_ID"
+
+            val json = JSONObject().apply {
+                put("text", text)
+                put("model_id", "eleven_multilingual_v2")
+                put("voice_settings", JSONObject().apply {
+                    put("stability", 0.5)
+                    put("similarity_boost", 0.75)
+                })
+            }
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("xi-api-key", ELEVEN_LABS_API_KEY)
+                .post(json.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            try {
+                Log.d("ELEVEN_DEBUG", "Enviando petición a ElevenLabs...")
+                val client = OkHttpClient()
+                client.newCall(request).execute().use { response ->
+
+                    Log.d("ELEVEN_DEBUG", "Respuesta recibida. Código: ${response.code}")
+
+                    if (!response.isSuccessful) {
+                        val errorBody = response.body?.string()
+                        Log.e("ELEVEN_DEBUG", "Error de API: $errorBody")
+                        throw Exception("Fallo ElevenLabs: ${response.code}")
+                    }
+
+                    // Verificamos si recibimos datos de audio
+                    val audioBytes = response.body?.bytes()
+                    if (audioBytes == null || audioBytes.isEmpty()) {
+                        Log.e("ELEVEN_DEBUG", "El cuerpo de la respuesta está vacío")
+                        return@launch
+                    }
+                    Log.d("ELEVEN_DEBUG", "Audio descargado: ${audioBytes.size} bytes")
+
+                    val tempFile = File.createTempFile("jarvis_voice", ".mp3", context.cacheDir)
+                    tempFile.writeBytes(audioBytes)
+                    Log.d("ELEVEN_DEBUG", "Archivo guardado en: ${tempFile.absolutePath}")
+
+                    mainHandler.post {
+                        Log.d("ELEVEN_DEBUG", "Enviando archivo al MediaPlayer")
+                        playJarvisVoiceFromFile(tempFile)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ELEVEN_DEBUG", "EXCEPCIÓN: ${e.message}")
+                mainHandler.post {
+                    ui.showToast("Error ElevenLabs, usando respaldo")
+                    speakAndWait(text) { startListening() }
+                }
+            }
+        }
+    }
+private fun speakWithAndroidTTS(text: String) {
+    Log.d("JARVIS_TTS", "Usando motor local de Android")
+    setState(JarvisState.SPEAKING)
+
+    val utteranceId = "UTT_${System.currentTimeMillis()}"
+
+    // Listener para saber cuando termina de hablar y volver a escuchar
+    tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+        override fun onStart(id: String?) {
+            // El visualizer en onRmsChanged se encarga de mover el orbe con el TTS de Android
+        }
+        override fun onDone(id: String?) {
+            mainHandler.post {
+                setState(JarvisState.IDLE)
+                startListening()
+                iniciarTemporizador()
+            }
+        }
+        override fun onError(id: String?) {
+            mainHandler.post { startListening() }
+        }
+    })
+
+    tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+}
+    private fun playJarvisVoiceFromFile(file: File) {
+        val mediaPlayer = MediaPlayer()
+        mediaPlayer.setDataSource(file.absolutePath)
+        mediaPlayer.prepareAsync()
+
+        mediaPlayer.setOnPreparedListener { mp ->
+            setState(JarvisState.SPEAKING)
+
+            // Configurar el Visualizador para mover el orbe
+            val visualizer = Visualizer(mp.audioSessionId)
+            visualizer.captureSize = Visualizer.getCaptureSizeRange()[1]
+            visualizer.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
+                    val rms = calculateRmsFromWaveform(waveform)
+                    mainHandler.post { ui.updateORB(rms) }
+                }
+                override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
+            }, Visualizer.getMaxCaptureRate() / 2, true, false)
+
+            visualizer.enabled = true
+            mp.start()
+
+            mp.setOnCompletionListener {
+                visualizer.enabled = false
+                visualizer.release()
+                mp.release()
+                if (file.exists()) file.delete()
+                // Cambiamos estado y volvemos a escuchar
+                setState(JarvisState.LISTENING)
+                mainHandler.postDelayed({
+                    startListening()
+                    iniciarTemporizador()
+                }, 500)
+            }
+        }
     }
 
     fun init(){
@@ -95,10 +227,7 @@ class JarvisVoiceController(
             ui.showText(saludo)
 
             //jarvis hhabla y espera a que termine de decir la frase
-            speakAndWait (saludo ){
-                setState(JarvisState.LISTENING)
-                startListening()
-            }
+            speakWithAndroidTTS (saludo)
 
         }
     }
@@ -119,12 +248,16 @@ class JarvisVoiceController(
         }
     }
     //arranca el reconocimiento de voz
-    private fun startListening(){
+    private fun startListening() {
         mainHandler.post {
             try {
+                // Cancelamos cualquier sesión previa antes de iniciar una nueva
+                speechRecognizer.cancel()
                 speechRecognizer.startListening(recognizerIntent)
-                ui.showText("ahora escucho ")
+                isListening = true
+                Log.d("JARVIS_DEBUG", "Micro abierto y escuchando...")
             } catch (e: Exception) {
+                Log.e("JARVIS_DEBUG", "Error al abrir micro: ${e.message}")
                 setState(JarvisState.IDLE)
             }
         }
@@ -139,14 +272,23 @@ class JarvisVoiceController(
     private fun setState(s: JarvisState){
         ui.renderState(s)
     }
-
+    private fun resetToListening() {
+        isProcessing = false // ¡IMPORTANTE! Liberamos el proceso
+        setState(JarvisState.IDLE)
+        startListening()
+        iniciarTemporizador()
+    }
     //resultado final cuando el suario termina de hablar
     override fun onResults(results: Bundle?) {
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
         val text = matches?.firstOrNull()?.trim().orEmpty()
         val textoEscuchado = matches?.firstOrNull()?.trim() ?:""
-        if (text.isEmpty() || isProcessing) return
-
+        if (textoEscuchado.isEmpty()) {
+            isProcessing = false
+            startListening() // Si no entendió nada, vuelve a escuchar
+            return
+        }
+        if (isProcessing) return
         isProcessing = true
         isListening = false
         ui.showText(text)
@@ -177,28 +319,21 @@ class JarvisVoiceController(
                 } ?: Log.d("JARVIS_SERVER", "Payload es NULO")
                 if (response.success) {
                     ui.showText(response.response_text)
-
                     val intencionDetectada = response.mode ?: "intent_desconocido"
-                    speakAndWait(response.response_text) {
-                        val payloadSeguro = response.payload
-                        // Aceptamos ambos modos para que no se bloquee la acción técnica
-                        val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
-                        // Si es comando y trae payload, ejecutamos
-                        if (esAccionTecnica && !payloadSeguro.isNullOrEmpty()) {
-                            Log.d("JARVIS_SERVER", "Ejecutando acción técnica: ${payloadSeguro[0].tipo}")
-                            ejecutarAccionesTecnicas(
-                                payloadSeguro,
-                                textoEscuchado, // El texto que el usuario dictó
-                                intencionDetectada
-                            )
-                        }
-                        isProcessing = false
-                        //delay apra que no se escuhe asi mismo si hay eco
-                        mainHandler.postDelayed({
-                            startListening()
-                            iniciarTemporizador()
-                        },1000)
+                    val payloadSeguro = response.payload
+
+                    // 1. Ejecutamos las acciones técnicas (payload) PRIMERO
+                    val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
+                    if (esAccionTecnica && !payloadSeguro.isNullOrEmpty()) {
+                        Log.d("JARVIS_SERVER", "Ejecutando acción técnica: ${payloadSeguro[0].tipo}")
+                        ejecutarAccionesTecnicas(payloadSeguro, textoEscuchado, intencionDetectada)
                     }
+
+                    // 2. Llamamos a ElevenLabs SIN llaves al final (solo el texto)
+                    speakWithAndroidTTS(response.response_text)
+
+                    // 3. Liberamos el estado de procesamiento
+                    isProcessing = false
                 }
             } catch (e: Exception) {
                 ui.showText("Error de conexión con Jarvis")
@@ -269,38 +404,6 @@ class JarvisVoiceController(
             if (status == TextToSpeech.SUCCESS){
                 //idioma de voz
                 tts.setLanguage(Locale("es","Es"))
-            }
-        }
-    }
-    private fun playJarvisVoice(audioUrl: String) {
-        val mediaPlayer = MediaPlayer()
-        mediaPlayer.setDataSource(audioUrl)
-        mediaPlayer.prepareAsync()
-
-        mediaPlayer.setOnPreparedListener { mp ->
-            setState(JarvisState.SPEAKING)
-
-            // CONFIGURAR VISUALIZADOR PARA EL ORBE
-            val visualizer = Visualizer(mp.audioSessionId)
-            visualizer.captureSize = Visualizer.getCaptureSizeRange()[1]
-            visualizer.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
-                override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
-                    // Calculamos el volumen (RMS) de la onda para mover el orbe
-                    val rms = calculateRmsFromWaveform(waveform)
-                    mainHandler.post { ui.updateORB(rms) }
-                }
-                override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
-            }, Visualizer.getMaxCaptureRate() / 2, true, false)
-
-            visualizer.enabled = true
-            mp.start()
-
-            mp.setOnCompletionListener {
-                visualizer.enabled = false
-                visualizer.release()
-                mp.release()
-                setState(JarvisState.IDLE)
-                startListening() // Volver a escuchar tras hablar
             }
         }
     }
