@@ -68,24 +68,26 @@ class JarvisVoiceController(
         stopListening()
     }
     private val ELEVEN_LABS_API_KEY = "sk_275d41153da7f3f34a94dfe4ff9636271a1dc92db0f3e23e"
-    private val VOICE_ID = "pUMGuUt2CdIr0gdKAupW"
+    private val VOICE_ID = "dQ0C8BEdKF2odmELvNee"
 
     private fun speakWithElevenLabs(text: String) {
         Log.d("ELEVEN_DEBUG", "Iniciando proceso para: $text")
+        //cambiamos el estado de la ui
         setState(JarvisState.THINKING)
-
+        //ejecuta un hilo secundario(IO) PARA NO BLOQUEAR LA PANTALLA
         scope.launch(Dispatchers.IO) {
             val url = "https://api.elevenlabs.io/v1/text-to-speech/$VOICE_ID"
 
+            //construccion del cuarpo de la paticion JSON
             val json = JSONObject().apply {
                 put("text", text)
                 put("model_id", "eleven_multilingual_v2")
                 put("voice_settings", JSONObject().apply {
                     put("stability", 0.5)
-                    put("similarity_boost", 0.75)
+                    put("similarity_boost", 0.75) //parecido al avzo original
                 })
             }
-
+            //conf par arequest HTTP
             val request = Request.Builder()
                 .url(url)
                 .addHeader("xi-api-key", ELEVEN_LABS_API_KEY)
@@ -93,7 +95,7 @@ class JarvisVoiceController(
                 .build()
 
             try {
-                Log.d("ELEVEN_DEBUG", "Enviando petición a ElevenLabs...")
+//                Log.d("ELEVEN_DEBUG", "Enviando petición a ElevenLabs...")
                 val client = OkHttpClient()
                 client.newCall(request).execute().use { response ->
 
@@ -125,37 +127,37 @@ class JarvisVoiceController(
             } catch (e: Exception) {
                 Log.e("ELEVEN_DEBUG", "EXCEPCIÓN: ${e.message}")
                 mainHandler.post {
-                    ui.showToast("Error ElevenLabs, usando respaldo")
+                    ui.showToast("Error ElevenLabs")
                     speakAndWait(text) { startListening() }
                 }
             }
         }
     }
-private fun speakWithAndroidTTS(text: String) {
-    Log.d("JARVIS_TTS", "Usando motor local de Android")
-    setState(JarvisState.SPEAKING)
+    private fun speakWithAndroidTTS(text: String) {
+        Log.d("JARVIS_TTS", "Usando motor local de Android")
+        setState(JarvisState.SPEAKING)
 
-    val utteranceId = "UTT_${System.currentTimeMillis()}"
+        val utteranceId = "UTT_${System.currentTimeMillis()}"
 
-    // Listener para saber cuando termina de hablar y volver a escuchar
-    tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-        override fun onStart(id: String?) {
-            // El visualizer en onRmsChanged se encarga de mover el orbe con el TTS de Android
-        }
-        override fun onDone(id: String?) {
-            mainHandler.post {
-                setState(JarvisState.IDLE)
-                startListening()
-                iniciarTemporizador()
+        // Listener para saber cuando termina de hablar y volver a escuchar
+        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(id: String?) {
+                // El visualizer en onRmsChanged se encarga de mover el orbe con el TTS de Android
             }
-        }
-        override fun onError(id: String?) {
-            mainHandler.post { startListening() }
-        }
-    })
+            override fun onDone(id: String?) {
+                mainHandler.post {
+                    setState(JarvisState.IDLE)
+                    startListening()
+                    iniciarTemporizador()
+                }
+            }
+            override fun onError(id: String?) {
+                mainHandler.post { startListening() }
+            }
+        })
 
-    tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-}
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+    }
     private fun playJarvisVoiceFromFile(file: File) {
         val mediaPlayer = MediaPlayer()
         mediaPlayer.setDataSource(file.absolutePath)
@@ -213,17 +215,17 @@ private fun speakWithAndroidTTS(text: String) {
     }
 
     //speech + tts
-     fun startInteraction(){
+    fun startInteraction(){
         isListening = true
         setState(JarvisState.SPEAKING)
 
         //lamada al servido r
         obtenerSaludoGemma { saludoAleatorio ->
             //so falal servidor envia saludo estatico
-            val saludo = saludoAleatorio?: "enlina que desas hacer"
+            val saludo = saludoAleatorio?: "Un momento, Nuestro servidor está en proceso "
             //muetsra el saludo
-            Log.d("JARVIS_DEBUG","REcibido de gem: $saludo")
-            ui.showToast("Gemma dice: $saludo")
+            Log.d("JARVIS_DEBUG","Recibido de G2: $saludo")
+            ui.showToast("G2 dice: $saludo")
             ui.showText(saludo)
 
             //jarvis hhabla y espera a que termine de decir la frase
@@ -238,7 +240,7 @@ private fun speakWithAndroidTTS(text: String) {
                 val response = actionApiService.regards()
                 Log.i("JARVIS_API", "$response")
                 mainHandler.postAtFrontOfQueue{
-                     callback(response.saludo)
+                    callback(response.saludo)
                 }
             }catch (e: Exception){
                 Log.e("JARVIS", "Error al obtener saludo: ${e.message}")
@@ -272,12 +274,12 @@ private fun speakWithAndroidTTS(text: String) {
     private fun setState(s: JarvisState){
         ui.renderState(s)
     }
-    private fun resetToListening() {
-        isProcessing = false // ¡IMPORTANTE! Liberamos el proceso
-        setState(JarvisState.IDLE)
-        startListening()
-        iniciarTemporizador()
-    }
+//    private fun resetToListening() {
+//        isProcessing = false // ¡IMPORTANTE! Liberamos el proceso
+//        setState(JarvisState.IDLE)
+//        startListening()
+//        iniciarTemporizador()
+//    }
     //resultado final cuando el suario termina de hablar
     override fun onResults(results: Bundle?) {
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -303,8 +305,7 @@ private fun speakWithAndroidTTS(text: String) {
             try {
                 val request = ActionRequest(texto = textoEscuchado, contexto = contextoActual)
                 val response = actionApiService.predictAction(request)
-                // 🔥 LOGS DE INSPECCIÓN PROFUNDA 🔥
-                Log.d("JARVIS_SERVER", "--- NUEVA RESPUESTA RECIBIDA ---")
+
                 Log.d("JARVIS_SERVER", "Success: ${response.success}")
                 Log.d("JARVIS_SERVER", "Modo: ${response.mode}") // Aquí verás si es COMMAND o CHAT_FREE
                 Log.d("JARVIS_SERVER", "Texto de Voz: ${response.response_text}")
@@ -455,4 +456,3 @@ private fun speakWithAndroidTTS(text: String) {
 
 
 }
-
