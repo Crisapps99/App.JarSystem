@@ -1,4 +1,5 @@
 package com.example.myapplication.service
+import android.R
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.BroadcastReceiver
@@ -7,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Path
+import android.graphics.Rect
 import android.os.Bundle
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -15,11 +17,15 @@ import com.example.myapplication.activity.ActionExecutor
 import com.example.myapplication.api.ActionDto
 import com.example.myapplication.api.ReporteFeedback
 import com.example.myapplication.api.RetrofitClient
+import com.example.myapplication.model.ScreenElement
+import com.example.myapplication.model.ScreenSnapshot
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.UUID
+import kotlin.math.min
 
 class MyAccessibilityService : AccessibilityService(){
 
@@ -28,6 +34,10 @@ class MyAccessibilityService : AccessibilityService(){
     private var textoUltimaOrden: String=""
     private var intencionUltimaOrden: String="desconocida"
 
+    //creamos chache para evitar reescanear constantemente
+    private var lastSnapshot: ScreenSnapshot? = null
+    private var lastSnapshotTime : Long = 0
+    private val CACHE_DURATION = 2000L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -37,15 +47,24 @@ class MyAccessibilityService : AccessibilityService(){
         val filter = IntentFilter(ACTION_EXECUTE)
         registerReceiver(actionsReceiver, filter, RECEIVER_NOT_EXPORTED)
     }
+// escucha y decide cuando es el momento adecuado para capturar informacion
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Cada vez que la pantalla cambie (clics, scrolls, nuevas ventanas)
-        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            event?.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            extraerInfo() // Actualiza la memoria automáticamente
+    //sofiltramos cambios estructurale so de ventana
+        when (event?.eventType){
+            //se dispara al arbri app s o cuadno cambia el contenido
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->{
+                //control de rendimientot btenemos la otra actual
+                val now = System.currentTimeMillis()
+                //verificamos si ya paso el tiepo de esto  paa evitar colapso con cambios constantes
+                if (now - lastSnapshotTime > CACHE_DURATION){
+                    //refresta el estado actual de la pantalla
+                    actualizarSnapDePantalla()
+                }
+            }
         }
     }
-
     override fun onInterrupt() {}
 
     //broadcast para recivir acciones
@@ -63,9 +82,218 @@ class MyAccessibilityService : AccessibilityService(){
 
         }
     }
+
+    private fun actualizarSnapDePantalla(){
+        //si no hay evento activo no podemos hacer nada
+        val root = rootInActiveWindow ?: return
+        val elementos = mutableListOf<ScreenElement>()
+        //infromacion de la app que el usuario esta viendo
+        val packageManager = root.packageName?.toString()?: "unknown"
+        val activityName = root.className?.toString()
+        var clickableCount = 0
+        var editableCount = 0
+        var scrollableCount = 0
+        /**
+         * FUNCIÓN RECURSIVA: Se llama a sí misma para entrar en cada "capa" de la UI
+         * @param nodo: El elemento actual que estamos analizando
+         * @param profundidad: Límite para evitar bucles infinitos o excesivos (max 20)
+         */
+        fun escanearNodo(nodo: AccessibilityNodeInfo?, profundidad: Int = 0){
+            if (nodo == null || profundidad > 20) return
+            //filtro para que el servicio no se vea a si mismo ignoramos elementos
+            val viewId = nodo.viewIdResourceName ?: ""
+            if (viewId.contains("transcriptionTextView")||
+                viewId.contains("jarvisOrb")||
+                viewId.contains("micButton")){
+                return
+            }
+            //obtenemos texto y tipo de vistas como boton imagen text etc
+            val text = nodo.text?.toString()
+            val contentDesc = nodo.contentDescription?.toString()
+            val hint = nodo.hintText?.toString()
+            val className = nodo.className?.toString()
+
+            //otbenemos la geometriia dodne esta el elemento fisicamente
+            val bounds = Rect()
+            nodo.getBoundsInScreen(bounds)
+
+            //capacidades
+            val isClickable = nodo.isClickable
+            val isLongClickable = nodo.isLongClickable
+            val isCheckable = nodo.isCheckable
+            val isChecked = nodo.isChecked
+            val isFocusable = nodo.isFocusable
+            val isEditable = nodo.isEditable
+            val isPassword = nodo.isPassword
+            val isEnabled = nodo.isEnabled
+            val isScrollable = nodo.isScrollable
+
+            // 6. CONTEXTO SEMÁNTICO: Miramos quién es el "padre" y los "hermanos"
+            // Esto sirve para saber que un botón "Enviar" pertenece a un formulario específico
+            val parentText = nodo.parent?.text?.toString()
+            val siblingTexts = mutableListOf<String>()
+            nodo.parent?.let { parent ->
+                for (i in 0 until parent.childCount){
+                    parent.getChild(i)?.text?.toString()?.let {siblingTexts.add(it)}
+                }
+            }
+            // LISTA DE ACCIONES: Creamos un resumen de lo que se puede hacer
+            val actions = mutableListOf<String>()
+            if (isClickable) actions.add("click")
+            if (isLongClickable) actions.add("long_click")
+            if (isScrollable) actions.add("scroll")
+            if (isEditable) actions.add("set_text")
+            if (isCheckable) actions.add("toggle")
+
+            //calculo de relevancia
+            val importance = ScreenElement.calculateImportance(isClickable,text ,contentDesc, className)
+            val visibility = if (nodo.isVisibleToUser)"visible" else "invisible"
+
+            //decicion de uardado y guardamos si tien etexto o si es alg con lo que se peuda interactuar
+            val tieneContenido = !text.isNullOrBlank() || !contentDesc.isNullOrBlank() || !hint.isNullOrBlank()
+            val esInteractivo = isClickable || isEditable || isCheckable || isScrollable
+
+            if (tieneContenido || esInteractivo) {
+                val elemento = ScreenElement(
+                    id = UUID.randomUUID().toString(),
+                    viewId = viewId.takeIf { it.isNotBlank() },
+                    className = className,
+                    text = text,
+                    contentDescription = contentDesc,
+                    hintText = hint,
+                    bounds = bounds,
+                    centerX = bounds.centerX(),
+                    centerY = bounds.centerY(),
+                    isClickable = isClickable,
+                    isCloneable = isClickable,
+                    isLongClickable = isLongClickable,
+                    isCheckable = isCheckable,
+                    isChecked = isChecked,
+                    isFocusable = isFocusable,
+                    isEditable = isEditable,
+                    isPassword = isPassword,
+                    isEnabled = isEnabled,
+                    isScrollable = isScrollable,
+                    parentText = parentText,
+                    siblingTexts = siblingTexts,
+                    availableActions = actions,
+                    importance = importance,
+                    visibility = visibility
+                )
+                elementos.add(elemento)
+                //sumamos a ls contadores globales del sanpshot
+                if (isCheckable) clickableCount++
+                if (isEditable) editableCount++
+                if (isScrollable)scrollableCount++
+            }
+            //recursividad y buscamos a lso hijos de este nodo
+            for (i in 0 until nodo.childCount){
+                escanearNodo(nodo.getChild(i), profundidad + 1)
+            }
+        }
+        escanearNodo(root)//ejecutamos el escaneo desde la raiz
+// Guardamos todo el "mapa" de la pantalla en un objeto Snapshot
+        lastSnapshot = ScreenSnapshot(
+            timestamp = System.currentTimeMillis(),
+            packageName = packageName,
+            activityName = activityName,
+            elements = elementos,
+            totalElements = elementos.size,
+            clickableElements = clickableCount,
+            editableElements = editableCount,
+            scrollableContainers = scrollableCount
+        )
+        lastSnapshotTime = System.currentTimeMillis()
+        // Actualizar memoria global
+        com.example.myapplication.core.ScreenMemory.lastSeenTexts =
+            lastSnapshot!!.toContextList()
+
+        Log.d("ACCESS_SCAN", """
+            📸 Snapshot actualizado:
+            - App: $packageName
+            - Elementos totales: ${elementos.size}
+            - Clicables: $clickableCount
+            - Editables: $editableCount
+            - Scrollables: $scrollableCount
+        """.trimIndent())
+    }
+    /**
+     * Búsqueda inteligente de elementos
+     * Reemplaza tu lógica de fuzzy matching básica
+     */
+    private fun buscarElementoPorTexto(textoBuscado: String): ScreenElement?{
+        //verificamos si tenemos la info de la pantalla o s i no la creamo s
+        val snapshot = lastSnapshot ?: run {
+            actualizarSnapDePantalla()
+            lastSnapshot
+        }?: return null //si despeus de iintentar sigue siendo null salimo s
+        val normalizado = textoBuscado.lowercase().trim()
+        //busqueda en cascada
+        //1 cocidencia exata en el texto que ve el usuario
+        snapshot.elements.find {
+            it.text?.lowercase() == normalizado
+        }?.let { return  it }
+        //2 cocidencia exata en la desciccion
+        snapshot.elements.find {
+            it.contentDescription?.lowercase() == normalizado
+        }?.let{return  it}
+        //3concidencia parfcial
+        // Aquí usa la función getSearchableText() que procesa IDs y texto del padre.
+        snapshot.elements.find { elem ->
+            elem.getSearchableText().contains(normalizado)
+        }?.let{return  it}
+
+        //4 busqueda difusa fuzzy matching si nada coicidio buscamos lo que mas se paresca utilziando matematicas
+        val candidatos = snapshot.elements
+            .filter { it.isClickable || it.isEditable } // Solo nos interesan cosas interactivas
+            .map { elem ->
+                // Comparamos qué tan parecidos son el texto buscado y el del elemento
+                val similarity = calcularSimilitud(normalizado, elem.getSearchableText())
+                elem to similarity
+            }
+            .filter { it.second > 0.6 } // Solo aceptamos si se parecen más de un 60%
+            .sortedByDescending { it.second } // Ponemos el más parecido primero
+
+        return candidatos.firstOrNull()?.first
+    }
+
+    //calcular el porcentaje de similitud entre 0.0 y 1.0
+    private fun calcularSimilitud(s1: String, s2:String):Double{
+        val longer = if (s1.length > s2.length) s1 else s2
+        val shorter = if (s1.length >s2.length) s2 else s1
+
+        if (longer.isEmpty()) return  1.0
+        //formula (largoTtoal - Errores) / largoTotal
+        val longerLength = longer.length
+        val editDistance = calcularLevenshtein(longer, shorter)
+        return (longerLength - editDistance)/ longerLength.toDouble()
+    }
+    /**
+     * Algoritmo de Levenshtein:
+     * Cuenta cuántos cambios (insertar, borrar o cambiar letras)
+     * se necesitan para convertir una palabra en otra.
+     */
+    private fun calcularLevenshtein(s1: String, s2: String): Int {
+        //se crea yuuna matriz para comprar cada letra de s1 con cada letra de s2
+        val dp = Array(s1.length + 1 ){ IntArray(s2.length + 1) }
+        for (i in 0..s2.length) dp[i][0] = i
+        for (j in 0..s2.length) dp[0][j] = j
+
+        for (i in 1..s1.length){
+            for (j in 1..s2.length){
+                val cost = if (s1[i-1] == s2[j -1])0 else 1
+                //buscamos el camino minimo
+                dp[i][j] = minOf(
+                    dp[i - 1 ][j] + 1,//borrar
+                    dp[i][j - 1]+1,//insertar
+                    dp[i - 1][j - 1] + cost//cambiar letra
+                )
+            }
+        }
+        return  dp [s1.length][s2.length]
+    }
     private var currentActions: List<ActionDto>? = null
     private var currentIndex = 0
-
     private val stepRunnable = object : Runnable {
         override fun run() {
             val actions = currentActions ?: return
@@ -77,9 +305,6 @@ class MyAccessibilityService : AccessibilityService(){
             val accion = actions[currentIndex++]
             var waitTime = 1000L // Tiempo por defecto para clics y scroll
             Log.d("ACCESS", "Ejecutando acción [${currentIndex-1}]: ${accion.tipo}")
-            val textoParaReporte = textoUltimaOrden
-            val intencionParaReporte = intencionUltimaOrden
-
             var exitoAccion = true
             var detalleError: String? = null
             when (accion.tipo) {
@@ -91,6 +316,7 @@ class MyAccessibilityService : AccessibilityService(){
                         detalleError = "La app con paquete $pkg no está instalada."
                     } else {
                         ActionExecutor.openApp(this@MyAccessibilityService, pkg)
+                        waitTime = 2000L
                     }
                 }
                 "global_action" -> {
@@ -106,11 +332,16 @@ class MyAccessibilityService : AccessibilityService(){
                 "tap" -> tapCoordenadas(accion.params)
                 "ocr_tap" -> {
                     val textoABuscar = accion.params?.get("texto") as? String ?: ""
-                    // Intentamos el click y guardamos el resultado
-                    val encontrado = realizarTapPorTextoConRetorno(textoABuscar)
-                    if (!encontrado) {
+                    val elemento = buscarElementoPorTexto(textoABuscar)
+                    if (elemento != null) {
+                        Log.d("ACCESS","elemtno encontrado: ${elemento.getSearchableText()}")
+                        tapCoordenadas(mapOf(
+                            "x" to elemento.centerX,
+                            "y" to elemento.centerY
+                        ))
+                    }else{
                         exitoAccion = false
-                        detalleError = "El texto '$textoABuscar' no es visible en la pantalla actual."
+                        detalleError = "Elemento '$textoABuscar' no encontrado en pantalla"
                     }
                 }
                 "type_text" -> escribirTexto(accion.params)
@@ -123,26 +354,45 @@ class MyAccessibilityService : AccessibilityService(){
             handler.postDelayed(this, waitTime)
         }
     }
-    private fun realizarTapPorTextoConRetorno(texto: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val nodes = root.findAccessibilityNodeInfosByText(texto)
+//    private fun realizarTapPorTextoConRetorno(texto: String): Boolean {
+//        val root = rootInActiveWindow ?: return false
+//        val nodes = root.findAccessibilityNodeInfosByText(texto)
+//
+//        if (nodes.isNotEmpty()) {
+//            val nodo = nodes[0]
+//            if (intentarClick(nodo)) return true
+//
+//            // Si no es clicable, intentamos por coordenadas
+//            val rect = android.graphics.Rect()
+//            nodo.getBoundsInScreen(rect)
+//            tapCoordenadas(mapOf("x" to rect.centerX(), "y" to rect.centerY()))
+//            return true
+//        }
+//        return false
+//    }
+private fun ejecutarAcciones(json: String){
+    handler.removeCallbacks(stepRunnable)
 
-        if (nodes.isNotEmpty()) {
-            val nodo = nodes[0]
-            if (intentarClick(nodo)) return true
-
-            // Si no es clicable, intentamos por coordenadas
-            val rect = android.graphics.Rect()
-            nodo.getBoundsInScreen(rect)
-            tapCoordenadas(mapOf("x" to rect.centerX(), "y" to rect.centerY()))
-            return true
-        }
-        return false
+    val listType = object : TypeToken<List<ActionDto>>() {}.type
+    currentActions = Gson().fromJson(json, listType)
+    //si el json esta bacio excane ala pantalla
+    if (currentActions.isNullOrEmpty()){
+        Log.d("ACCESS","iniciadno escaneo de pantalla")
+        actualizarSnapDePantalla()
+       lastSnapshot?.let { snapshot ->
+           Log.i("ACCESS", "Elementos detectados: ${snapshot.totalElements}")
+           snapshot.elements.take(10).forEach { elem ->
+               Log.i("ACCESS", "  - ${elem.getSearchableText()} [${elem.className}]")
+           }
+       }
+    }else{
+        currentIndex = 0
+        handler.post(stepRunnable)
     }
+}
     private fun ejecutarAccionGlobal(params: Map<String, Any>?) {
         val actionType = params?.get("action") as? String ?: return
         Log.d("ACCESS", "🌍 Acción Global: $actionType")
-
         val globalAction = when (actionType) {
             "home" -> AccessibilityService.GLOBAL_ACTION_HOME
             "back" -> AccessibilityService.GLOBAL_ACTION_BACK
@@ -150,32 +400,11 @@ class MyAccessibilityService : AccessibilityService(){
             "recents" -> AccessibilityService.GLOBAL_ACTION_RECENTS
             else -> -1
         }
-
         if (globalAction != -1) {
             performGlobalAction(globalAction)
         }
     }
-    private fun ejecutarAcciones(json: String){
-        handler.removeCallbacks(stepRunnable)
 
-        val listType = object : TypeToken<List<ActionDto>>() {}.type
-        currentActions = Gson().fromJson(json, listType)
-        //si el json esta bacio excane ala pantalla
-        if (currentActions.isNullOrEmpty()){
-            Log.d("ACCESS","iniciadno escaneo de pantalla")
-            val pantallainfo = extraerInfo()
-            if (pantallainfo.isNullOrEmpty()){
-                Log.w("ACCESS","no se detectaron elementos visuales")
-            }else{
-                pantallainfo.forEach { el ->
-                    Log.i("ACCESS","visto[${el["texto"]}] en pos X:${el["x"]}")
-                }
-            }
-        }else{
-            currentIndex = 0
-            handler.post(stepRunnable)
-        }
-        }
 
     fun scroll(params: Map<String, Any>?) {
         val metrics = resources.displayMetrics
@@ -187,14 +416,10 @@ class MyAccessibilityService : AccessibilityService(){
         path.moveTo(x, yStart)
         path.lineTo(x, yEnd)
 
-        val gestureBuilder = GestureDescription.Builder()
-
-        // El secreto: Ponemos 400ms de 'startTime' (retraso antes de mover)
-        // y 500ms de duración. Esto suele saltarse los filtros de HiTouch.
         val stroke = GestureDescription.StrokeDescription(path, 400, 500)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
-        gestureBuilder.addStroke(stroke)
-        dispatchGesture(gestureBuilder.build(), object : AccessibilityService.GestureResultCallback() {
+        dispatchGesture(gesture, object:GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 Log.d("ACCESS", "✅ Gesto de scroll completado físicamente")
             }
@@ -208,111 +433,133 @@ class MyAccessibilityService : AccessibilityService(){
         val y = (params?.get("y") as? Number)?.toFloat() ?: return
 
         val path = Path().apply { moveTo(x, y) }
-
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
             .build()
 
         dispatchGesture(gesture, null, null)
     }
-    private fun tapPorTexto(params: Map<String, Any>?) {
+//    private fun tapPorTexto(params: Map<String, Any>?) {
+//        val texto = params?.get("texto") as? String ?: return
+//        val root = rootInActiveWindow ?: return
+//
+//        val nodes = root.findAccessibilityNodeInfosByText(texto)
+//        if (nodes.isNotEmpty()) {
+//            val nodoCualquiera = nodes[0]
+//            if (!intentarClick(nodoCualquiera)) {
+//                val rect = android.graphics.Rect()
+//                nodoCualquiera.getBoundsInScreen(rect)
+//                tapCoordenadas(mapOf("x" to rect.centerX(), "y" to rect.centerY()))
+//            }
+//        }
+//    }
+    private fun escribirTexto (params: Map<String, Any>?){
+        //extraemos el texto que queremos escribir en el aprametro
         val texto = params?.get("texto") as? String ?: return
+        //obtenemos la raiz de la ventana activa par apoder buscar el elemento
+
         val root = rootInActiveWindow ?: return
-
-        val nodes = root.findAccessibilityNodeInfosByText(texto)
-        if (nodes.isNotEmpty()) {
-            val nodoCualquiera = nodes[0]
-            if (!intentarClick(nodoCualquiera)) {
-                val rect = android.graphics.Rect()
-                nodoCualquiera.getBoundsInScreen(rect)
-                tapCoordenadas(mapOf("x" to rect.centerX(), "y" to rect.centerY()))
-            }
-        }
-    }
-    private fun intentarClick(node: AccessibilityNodeInfo?): Boolean {
-        var tempNode = node
-        while (tempNode != null) {
-            if (tempNode.isClickable) {
-                return tempNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            }
-            tempNode = tempNode.parent
-        }
-        return false
-    }
-
-    //obtener lso datos de pantalla
-    private fun obtenerTextoDePantalla(): String {
-        val root = rootInActiveWindow ?: return "Pantalla vacía"
-        val sb = StringBuilder()
-
-        fun recorrer(node: AccessibilityNodeInfo?) {
-            if (node == null) return
-            if (node.text != null) {
-                sb.append("${node.text} | ")
-            }
-            for (i in 0 until node.childCount) {
-                recorrer(node.getChild(i))
-            }
-        }
-
-        recorrer(root)
-        return sb.toString()
-    }
-//funcion para mirar la pantalla anilizar lso nodos ojo del asistnte
-    private fun extraerInfo(): List<Map<String, Any>>{
-        val elementos=mutableListOf<Map<String, Any>>()
-        val textosTemporales = mutableListOf<String>() // lista para el contexto
-        //obtien eel nodo raiz de la ventana actual
-        val root = rootInActiveWindow ?: return elementos
-        //funcion interna recursiva recorre uno po runo
-        fun recorrerNodo(nodo: AccessibilityNodeInfo){
-            if (nodo ==null) return
-            //extraccion del texto intenta sacar texto visible y busca la descripcion
-            val texto = nodo.text?.toString() ?: nodo.contentDescription?.toString()
-            val viewId = nodo.viewIdResourceName ?:""
-            //filtro para qu eno agrege textos que escuch a
-            if (viewId.contains("transcriptionTextView")){
-                return
-            }
-            //solo  ingresa eementos que tengan algo escrito
-            if (!texto.isNullOrBlank()){
-                textosTemporales.add(texto) //guardamos el texro para que jarvis lo lea
-                //crea un objeto rect para guardar las coordenadas
-                val rect = android.graphics.Rect()
-                nodo. getBoundsInScreen(rect)
-                elementos.add(mapOf(
-                    "texto" to texto,// El nombre o contenido
-                    "x" to rect.centerX(),      // Centro horizontal para saber dónde tocar
-                    "y" to rect.centerY(),      // Centro vertical para saber dónde tocar
-                    "clicable" to nodo.isClickable // Indica si es un botón o algo que reacciona al toque
-                ))
-            }
-            //recursividad si tiene hiojs viulve allamar ala funcion para cada uno de lleos
-            for (i in 0 until nodo.childCount){
-                val hijo = nodo.getChild(i)
-                if (hijo != null){
-                    recorrerNodo(hijo)
-                }
-            }
-        }
-        recorrerNodo(root)
-    //actualizamos mmoria global
-        com.example.myapplication.core.ScreenMemory.lastSeenTexts = textosTemporales
-        return elementos
-    }
-    //funcion apra enviar texto
-    private fun escribirTexto(params: Map<String, Any>?){
-        val texto =  params?.get("texto") as? String ?: return
-        val root = rootInActiveWindow ?: return
-
-        //busca el campo que tien el foco que parpadea la rayita  para escribir
+    //intentamos buscar que elemnto tien eel curso parpadeante
+    // FOCUS_INPUT busca específicamente campos de texto o áreas donde se puede escribir
         val focusNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        if (focusNode != null){
-            val arguments = Bundle()
-            arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto)
-            focusNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT)
-        }
+
+    //y si encontrmaos un lugar donde escribit
+    if (focusNode != null){
+        // Los comandos de accesibilidad complejos usan un 'Bundle' para pasar datos
+        val arguments = Bundle()
+        arguments.putCharSequence(
+            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+            texto
+        )
+        //esto reeemplaza todo el texto qwue existe en el campo
+        //ejecuitamos la accion Le ordenamos al nodo que cambie su contenido por el nuevo texto
+        focusNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,arguments)
     }
+    }
+//    private fun intentarClick(node: AccessibilityNodeInfo?): Boolean {
+//        var tempNode = node
+//        while (tempNode != null) {
+//            if (tempNode.isClickable) {
+//                return tempNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+//            }
+//            tempNode = tempNode.parent
+//        }
+//        return false
+//    }
+
+//    //obtener lso datos de pantalla
+//    private fun obtenerTextoDePantalla(): String {
+//        val root = rootInActiveWindow ?: return "Pantalla vacía"
+//        val sb = StringBuilder()
+//
+//        fun recorrer(node: AccessibilityNodeInfo?) {
+//            if (node == null) return
+//            if (node.text != null) {
+//                sb.append("${node.text} | ")
+//            }
+//            for (i in 0 until node.childCount) {
+//                recorrer(node.getChild(i))
+//            }
+//        }
+//
+//        recorrer(root)
+//        return sb.toString()
+//    }
+//funcion para mirar la pantalla anilizar lso nodos ojo del asistnte
+//    private fun extraerInfo(): List<Map<String, Any>>{
+//        val elementos=mutableListOf<Map<String, Any>>()
+//        val textosTemporales = mutableListOf<String>() // lista para el contexto
+//        //obtien eel nodo raiz de la ventana actual
+//        val root = rootInActiveWindow ?: return elementos
+//        //funcion interna recursiva recorre uno po runo
+//        fun recorrerNodo(nodo: AccessibilityNodeInfo){
+//            if (nodo ==null) return
+//            //extraccion del texto intenta sacar texto visible y busca la descripcion
+//            val texto = nodo.text?.toString() ?: nodo.contentDescription?.toString()
+//            val viewId = nodo.viewIdResourceName ?:""
+//            //filtro para qu eno agrege textos que escuch a
+//            if (viewId.contains("transcriptionTextView")){
+//                return
+//            }
+//            //solo  ingresa eementos que tengan algo escrito
+//            if (!texto.isNullOrBlank()){
+//                textosTemporales.add(texto) //guardamos el texro para que jarvis lo lea
+//                //crea un objeto rect para guardar las coordenadas
+//                val rect = android.graphics.Rect()
+//                nodo. getBoundsInScreen(rect)
+//                elementos.add(mapOf(
+//                    "texto" to texto,// El nombre o contenido
+//                    "x" to rect.centerX(),      // Centro horizontal para saber dónde tocar
+//                    "y" to rect.centerY(),      // Centro vertical para saber dónde tocar
+//                    "clicable" to nodo.isClickable // Indica si es un botón o algo que reacciona al toque
+//                ))
+//            }
+//            //recursividad si tiene hiojs viulve allamar ala funcion para cada uno de lleos
+//            for (i in 0 until nodo.childCount){
+//                val hijo = nodo.getChild(i)
+//                if (hijo != null){
+//                    recorrerNodo(hijo)
+//                }
+//            }
+//        }
+//        recorrerNodo(root)
+//    //actualizamos mmoria global
+//        com.example.myapplication.core.ScreenMemory.lastSeenTexts = textosTemporales
+//        return elementos
+//    }
+//    //funcion apra enviar texto
+//    private fun escribirTexto(params: Map<String, Any>?){
+//        val texto =  params?.get("texto") as? String ?: return
+//        val root = rootInActiveWindow ?: return
+//
+//        //busca el campo que tien el foco que parpadea la rayita  para escribir
+//        val focusNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+//        if (focusNode != null){
+//            val arguments = Bundle()
+//            arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto)
+//            focusNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT)
+//        }
+//    }
     private fun reportarAlServidor(
         texto: String,
         intencion: String,

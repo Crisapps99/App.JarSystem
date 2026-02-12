@@ -5,4 +5,14 @@
     <color name="bluewhite">#e3f1fe</color>
     <color name="blackwhite">#37c7f6</color>
     <color name="blackwhi">#000000</color>
+    <!-- Colores para tema CLARO -->
+    <color name="background_primary">#F8F9FA</color>
+    <color name="background_secondary">#FFFFFF</color>
+    <color name="text_primary">#1F1F1F</color>
+    <color name="text_secondary">#5F6368</color>
+    <color name="orb_color_1">#4285F4</color>
+    <color name="orb_color_2">#34A853</color>
+    <color name="orb_color_3">#FBBC04</color>
+    <color name="button_background">#E8F0FE</color>
+    <color name="button_slider">#4285F4</color>
 </resources>

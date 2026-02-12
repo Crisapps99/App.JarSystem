@@ -281,68 +281,137 @@ class JarvisVoiceController(
 //        iniciarTemporizador()
 //    }
     //resultado final cuando el suario termina de hablar
-    override fun onResults(results: Bundle?) {
-        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-        val text = matches?.firstOrNull()?.trim().orEmpty()
-        val textoEscuchado = matches?.firstOrNull()?.trim() ?:""
-        if (textoEscuchado.isEmpty()) {
-            isProcessing = false
-            startListening() // Si no entendió nada, vuelve a escuchar
-            return
-        }
-        if (isProcessing) return
-        isProcessing = true
-        isListening = false
-        ui.showText(text)
-        //campturamos el contexto antes de enviar
+override fun onResults(results: Bundle?) {
+    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+    val textoEscuchado = matches?.firstOrNull()?.trim() ?: ""
 
-        scope.launch {
-            setState(JarvisState.THINKING)
-            val contextoActual = ui.getCurrentScreenText()
-            Log.d("JARVIS_DEBUG", "Texto: $textoEscuchado")
-            Log.d("JARVIS_DEBUG", "Contexto size: ${contextoActual.size} elementos")
-            Log.d("JARVIS_DEBUG", "Contexto contenido: ${contextoActual.take(5)}...") // Ver los primeros 5
-            try {
-                val request = ActionRequest(texto = textoEscuchado, contexto = contextoActual)
-                val response = actionApiService.predictAction(request)
+    if (textoEscuchado.isEmpty()) {
+        isProcessing = false
+        startListening()
+        return
+    }
 
-                Log.d("JARVIS_SERVER", "Success: ${response.success}")
-                Log.d("JARVIS_SERVER", "Modo: ${response.mode}") // Aquí verás si es COMMAND o CHAT_FREE
-                Log.d("JARVIS_SERVER", "Texto de Voz: ${response.response_text}")
+    if (isProcessing) return
+    isProcessing = true
+    isListening = false
 
-                // Inspeccionamos el Payload si existe
-                response.payload?.let { listaAcciones ->
-                    Log.d("JARVIS_SERVER", "Payload detectado con ${listaAcciones.size} acciones")
-                    listaAcciones.forEachIndexed { index, accion ->
-                        Log.d("JARVIS_SERVER", "Acción [$index]: Tipo=${accion.tipo}")
-                        Log.d("JARVIS_SERVER", "Acción [$index]: Params=${accion.params}")
-                    }
-                } ?: Log.d("JARVIS_SERVER", "Payload es NULO")
-                if (response.success) {
-                    ui.showText(response.response_text)
-                    val intencionDetectada = response.mode ?: "intent_desconocido"
-                    val payloadSeguro = response.payload
+    ui.showText(textoEscuchado)
 
-                    // 1. Ejecutamos las acciones técnicas (payload) PRIMERO
-                    val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
-                    if (esAccionTecnica && !payloadSeguro.isNullOrEmpty()) {
-                        Log.d("JARVIS_SERVER", "Ejecutando acción técnica: ${payloadSeguro[0].tipo}")
-                        ejecutarAccionesTecnicas(payloadSeguro, textoEscuchado, intencionDetectada)
-                    }
+    scope.launch {
+        setState(JarvisState.THINKING)
 
-                    // 2. Llamamos a ElevenLabs SIN llaves al final (solo el texto)
-                    speakWithAndroidTTS(response.response_text)
+        // ═══════════════════════════════════════════════════════════════
+        // 🔍 EXTRACCIÓN DE CONTEXTO ENRIQUECIDO
+        // ═══════════════════════════════════════════════════════════════
 
-                    // 3. Liberamos el estado de procesamiento
-                    isProcessing = false
+        // Obtener snapshot actual de la pantalla
+        val snapshot = com.example.myapplication.core.ScreenMemory.lastSnapshot
+
+        // Contexto simple (compatibilidad)
+        val contextoSimple = ui.getCurrentScreenText()
+
+        // Contexto detallado (nuevo) - solo si hay snapshot disponible
+        val contextoDetallado = snapshot?.elements
+            ?.filter {
+                it.isClickable && it.importance > 50  // Solo botones importantes
+            }
+            ?.take(10)  // MÁXIMO 10 elementos
+            ?.map { elem ->
+                    ElementoDetalladoDto(
+                        text = elem.getSearchableText(),
+                        x = elem.centerX,
+                        y = elem.centerY,
+                        clickable = elem.isClickable,
+                        editable = elem.isEditable,
+                        type = elem.className ?: "unknown",
+                        importance = elem.importance,
+                        actions = elem.availableActions
+                    )
                 }
-            } catch (e: Exception) {
-                ui.showText("Error de conexión con Jarvis")
+
+        Log.d("JARVIS_DEBUG", "🎙️ Usuario dijo: $textoEscuchado")
+        Log.d("JARVIS_DEBUG", "📱 Contexto simple: ${contextoSimple.size} elementos")
+        Log.d("JARVIS_DEBUG", "📊 Contexto detallado: ${contextoDetallado?.size ?: 0} elementos")
+
+        // Log de muestra de elementos detectados
+        contextoDetallado?.take(5)?.forEach { elem ->
+            Log.d("JARVIS_DEBUG", "  └─ ${elem.text} [${elem.type}] ${if(elem.clickable) "✅" else "❌"}")
+        }
+
+        try {
+            // ═══════════════════════════════════════════════════════════
+            // 🚀 LLAMADA AL SERVIDOR (Con fallback automático)
+            // ═══════════════════════════════════════════════════════════
+
+            val response = if (contextoDetallado != null && contextoDetallado.isNotEmpty()) {
+                // VERSIÓN ENRIQUECIDA: Enviar contexto completo
+                Log.d("JARVIS_API", "📤 Enviando request ENRIQUECIDO")
+                val request = ActionRequestEnriquecido(
+                    texto = textoEscuchado,
+                    contexto = contextoSimple,
+                    contextoDetallado = contextoDetallado
+                )
+                actionApiService.predictActionEnriquecido(request)
+            } else {
+                // FALLBACK: Versión básica si no hay contexto detallado
+                Log.d("JARVIS_API", "📤 Enviando request BÁSICO (fallback)")
+                val request = ActionRequest(
+                    texto = textoEscuchado,
+                    contexto = contextoSimple
+                )
+                actionApiService.predictAction(request)
+            }
+
+
+            // PROCESAMIENTO DE RESPUESTA
+          
+
+            Log.d("JARVIS_SERVER", "✅ Success: ${response.success}")
+            Log.d("JARVIS_SERVER", "🎭 Modo: ${response.mode}")
+            Log.d("JARVIS_SERVER", "💬 Texto de Voz: ${response.response_text}")
+
+            response.payload?.let { listaAcciones ->
+                Log.d("JARVIS_SERVER", "📦 Payload: ${listaAcciones.size} acciones")
+                listaAcciones.forEachIndexed { index, accion ->
+                    Log.d("JARVIS_SERVER", "  [$index] ${accion.tipo} → ${accion.params}")
+                }
+            } ?: Log.d("JARVIS_SERVER", "📦 Payload: VACÍO (modo chat)")
+
+            if (response.success) {
+                ui.showText(response.response_text)
+
+                val intencionDetectada = response.action ?: response.mode ?: "intent_desconocido"
+                val payloadSeguro = response.payload
+
+                // 1. EJECUTAR ACCIONES TÉCNICAS (si las hay)
+                val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
+                if (esAccionTecnica && !payloadSeguro.isNullOrEmpty()) {
+                    Log.d("JARVIS_SERVER", "⚡ Ejecutando ${payloadSeguro.size} acciones técnicas")
+                    ejecutarAccionesTecnicas(payloadSeguro, textoEscuchado, intencionDetectada)
+                }
+
+                // 2. HABLAR LA RESPUESTA
+                speakWithAndroidTTS(response.response_text)
+
+                // 3. LIBERAR ESTADO
+                isProcessing = false
+
+            } else {
+                // Error del servidor
+                ui.showText("Error: ${response.response_text}")
                 setState(JarvisState.IDLE)
                 isProcessing = false
             }
+
+        } catch (e: Exception) {
+            Log.e("JARVIS_API", "❌ Error de conexión: ${e.message}", e)
+            ui.showText("Error de conexión con Jarvis")
+            setState(JarvisState.IDLE)
+            isProcessing = false
         }
     }
+}
+
     private fun iniciarTemporizador(){
         //cancelamos scualquier temporizador
         timeoutHandler.removeCallbacks(timeoutRunnable)
@@ -453,6 +522,36 @@ class JarvisVoiceController(
         if (!m.isNullOrEmpty()) ui.showText(m[0])
     }
     override fun onEvent(p0: Int, p1: Bundle?) {}
+    fun debugPantallaActual() {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val snapshot = com.example.myapplication.core.ScreenMemory.lastSnapshot
+                if (snapshot == null) {
+                    Log.w("JARVIS_DEBUG", "No hay snapshot disponible")
+                    return@launch
+                }
 
+                val data = mapOf(
+                    "contexto_detallado" to snapshot.elements.map { elem ->
+                        mapOf(
+                            "text" to elem.getSearchableText(),
+                            "x" to elem.centerX,
+                            "y" to elem.centerY,
+                            "clickable" to elem.isClickable,
+                            "type" to (elem.className ?: "unknown"),
+                            "importance" to elem.importance
+                        )
+                    }
+                )
+
+                val response = RetrofitClient.debugApi.debugPantalla(data)
+                if (response.isSuccessful) {
+                    Log.d("JARVIS_DEBUG", "✅ Debug enviado al servidor")
+                }
+            } catch (e: Exception) {
+                Log.e("JARVIS_DEBUG", "Error: ${e.message}")
+            }
+        }
+    }
 
 }
