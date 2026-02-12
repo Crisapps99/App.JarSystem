@@ -15,4 +15,11 @@
     <color name="orb_color_3">#FBBC04</color>
     <color name="button_background">#E8F0FE</color>
     <color name="button_slider">#4285F4</color>
+    //gradiente claro
+    <color name="jar_gradient_start">#E8D5C4</color>
+    <color name="jar_gradient_center">#C8B5A6</color>
+    <color name="jar_gradient_end">#8B7355</color>
+    <color name="google_overlay_dark">#B3000000</color>
+    <color name="google_overlay_light">#4D000000</color>
+    <color name="google_accent_blue">#4285F4</color>
 </resources>

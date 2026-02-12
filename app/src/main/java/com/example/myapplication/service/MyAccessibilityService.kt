@@ -23,6 +23,9 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.min
@@ -38,6 +41,10 @@ class MyAccessibilityService : AccessibilityService(){
     private var lastSnapshot: ScreenSnapshot? = null
     private var lastSnapshotTime : Long = 0
     private val CACHE_DURATION = 2000L
+    private var snapshotJob: Job? = null
+    private var lastFingerprint: String = ""
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -50,16 +57,23 @@ class MyAccessibilityService : AccessibilityService(){
 // escucha y decide cuando es el momento adecuado para capturar informacion
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-    //sofiltramos cambios estructurale so de ventana
-        when (event?.eventType){
-            //se dispara al arbri app s o cuadno cambia el contenido
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->{
-                //control de rendimientot btenemos la otra actual
-                val now = System.currentTimeMillis()
-                //verificamos si ya paso el tiepo de esto  paa evitar colapso con cambios constantes
-                if (now - lastSnapshotTime > CACHE_DURATION){
-                    //refresta el estado actual de la pantalla
+        val eventType = event?.eventType ?: return
+
+        // 1. Filtramos solo eventos que realmente signifiquen un cambio de acción del usuario
+        val eventosClave = listOf(
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, // Cambio de App/Actividad
+            AccessibilityEvent.TYPE_VIEW_SCROLLED,        // El usuario se movió
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED // Cambios internos
+        )
+        if (eventType in eventosClave) {
+            // 2. Aplicamos DEBOUNCE:
+            // Si llega un nuevo evento en menos de 1 segundo, cancelamos el escaneo anterior
+            // y volvemos a esperar. Esto evita escanear 50 veces por segundo.
+            snapshotJob?.cancel()
+            snapshotJob = serviceScope.launch {
+                delay(8000L) // Espera 1 segundo de inactividad
+// 3. Verificación de seguridad: No escanear si la ventana es nula
+                if (rootInActiveWindow != null) {
                     actualizarSnapDePantalla()
                 }
             }
@@ -93,6 +107,11 @@ class MyAccessibilityService : AccessibilityService(){
         var clickableCount = 0
         var editableCount = 0
         var scrollableCount = 0
+        // Generamos una "firma" rápida de la pantalla actual (puedes usar el texto de los primeros 5 elementos)
+        // Creamos una huella rápida basada en la cantidad de hijos y el paquete
+        val currentFingerprint = "${root.packageName}-${root.childCount}"
+        if (currentFingerprint == lastFingerprint) return
+        lastFingerprint = currentFingerprint
         /**
          * FUNCIÓN RECURSIVA: Se llama a sí misma para entrar en cada "capa" de la UI
          * @param nodo: El elemento actual que estamos analizando
@@ -185,37 +204,44 @@ class MyAccessibilityService : AccessibilityService(){
                 if (isCheckable) clickableCount++
                 if (isEditable) editableCount++
                 if (isScrollable)scrollableCount++
+
             }
             //recursividad y buscamos a lso hijos de este nodo
             for (i in 0 until nodo.childCount){
                 escanearNodo(nodo.getChild(i), profundidad + 1)
             }
+            if (elementos.size != lastSnapshot?.totalElements) {
+                Log.d("ACCESS_SCAN", "📸 Snapshot actualizado por acción real...")
+            }
         }
         escanearNodo(root)//ejecutamos el escaneo desde la raiz
-// Guardamos todo el "mapa" de la pantalla en un objeto Snapshot
+        val elementosUtiles = elementos.filter{it.isClickable || it.isEditable|| it.importance > 60}
         lastSnapshot = ScreenSnapshot(
             timestamp = System.currentTimeMillis(),
             packageName = packageName,
             activityName = activityName,
-            elements = elementos,
-            totalElements = elementos.size,
+            elements = elementosUtiles,
+            totalElements = elementosUtiles.size,
             clickableElements = clickableCount,
             editableElements = editableCount,
             scrollableContainers = scrollableCount
         )
-        lastSnapshotTime = System.currentTimeMillis()
-        // Actualizar memoria global
-        com.example.myapplication.core.ScreenMemory.lastSeenTexts =
-            lastSnapshot!!.toContextList()
+        // Actualizar memoria global para que JarvisVoiceController la lea
+        com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
+        com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot!!.toContextList()
+        // ═══════════════════════════════════════════════════════════
+        // 🔍 LOG DE AUDITORÍA PARA TU MODELO
+        // ═══════════════════════════════════════════════════════════
+        Log.d("JARVIS_SNAPSHOT", "╔════════ REPORTE PARA SERVIDOR ════════╗")
+        Log.d("JARVIS_SNAPSHOT", "║ APP: $packageName")
+        Log.d("JARVIS_SNAPSHOT", "║ INTERACTIVOS: $clickableCount Clics | $editableCount Textos")
 
-        Log.d("ACCESS_SCAN", """
-            📸 Snapshot actualizado:
-            - App: $packageName
-            - Elementos totales: ${elementos.size}
-            - Clicables: $clickableCount
-            - Editables: $editableCount
-            - Scrollables: $scrollableCount
-        """.trimIndent())
+        // Ver exactamente qué texto se envía al modelo para que aprenda
+        elementosUtiles.sortedByDescending { it.importance }.take(50).forEachIndexed { i, e ->
+            val info = e.text ?: e.contentDescription ?: e.viewId ?: "Sin Identidad"
+            Log.d("JARVIS_SNAPSHOT", "║ [$i] $info | Coords: (${e.centerX},${e.centerY}) | Imp: ${e.importance}")
+        }
+        Log.d("JARVIS_SNAPSHOT", "╚═══════════════════════════════════════════╝")
     }
     /**
      * Búsqueda inteligente de elementos

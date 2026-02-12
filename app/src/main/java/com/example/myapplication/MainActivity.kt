@@ -144,8 +144,8 @@ class MainActivity : AppCompatActivity() {
                     pulseAnimator?.cancel()
                     switchToActivity(
                         context = this@MainActivity,
-                        destinationActivity = JarActivity::class.java,
-                        finishCurrent = false
+                        destinationActivity = LoginActivity::class.java,
+                        finishCurrent = true
                     )
                 }, 3000)
             }

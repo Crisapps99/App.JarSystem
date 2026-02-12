@@ -284,7 +284,6 @@ class JarvisVoiceController(
 override fun onResults(results: Bundle?) {
     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
     val textoEscuchado = matches?.firstOrNull()?.trim() ?: ""
-
     if (textoEscuchado.isEmpty()) {
         isProcessing = false
         startListening()
@@ -311,23 +310,18 @@ override fun onResults(results: Bundle?) {
         val contextoSimple = ui.getCurrentScreenText()
 
         // Contexto detallado (nuevo) - solo si hay snapshot disponible
-        val contextoDetallado = snapshot?.elements
-            ?.filter {
-                it.isClickable && it.importance > 50  // Solo botones importantes
-            }
-            ?.take(10)  // MÁXIMO 10 elementos
-            ?.map { elem ->
-                    ElementoDetalladoDto(
-                        text = elem.getSearchableText(),
-                        x = elem.centerX,
-                        y = elem.centerY,
-                        clickable = elem.isClickable,
-                        editable = elem.isEditable,
-                        type = elem.className ?: "unknown",
-                        importance = elem.importance,
-                        actions = elem.availableActions
-                    )
-                }
+        val contextoDetallado = snapshot?.elements?.map { elem ->
+            ElementoDetalladoDto(
+                text = elem.text ?: elem.contentDescription ?: "",
+                x = elem.centerX,
+                y = elem.centerY,
+                clickable = elem.isClickable,
+                editable = elem.isEditable,
+                type = elem.className ?: "view",
+                importance = elem.importance,
+                actions = elem.availableActions
+            )
+        }
 
         Log.d("JARVIS_DEBUG", "🎙️ Usuario dijo: $textoEscuchado")
         Log.d("JARVIS_DEBUG", "📱 Contexto simple: ${contextoSimple.size} elementos")
