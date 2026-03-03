@@ -71,7 +71,7 @@ class MyAccessibilityService : AccessibilityService(){
             // y volvemos a esperar. Esto evita escanear 50 veces por segundo.
             snapshotJob?.cancel()
             snapshotJob = serviceScope.launch {
-                delay(8000L) // Espera 1 segundo de inactividad
+                delay(1000L) // Espera 1 segundo de inactividad
 // 3. Verificación de seguridad: No escanear si la ventana es nula
                 if (rootInActiveWindow != null) {
                     actualizarSnapDePantalla()
@@ -121,9 +121,11 @@ class MyAccessibilityService : AccessibilityService(){
             if (nodo == null || profundidad > 20) return
             //filtro para que el servicio no se vea a si mismo ignoramos elementos
             val viewId = nodo.viewIdResourceName ?: ""
-            if (viewId.contains("transcriptionTextView")||
-                viewId.contains("jarvisOrb")||
-                viewId.contains("micButton")){
+            if (viewId.contains("transcriptionTextView") ||
+                viewId.contains("jarvisOrb") ||
+                viewId.contains("overlayOrb") ||  // ignorar orbe flotante
+                viewId.contains("overlayTranscription") ||
+                viewId.contains("micButton")) {
                 return
             }
             //obtenemos texto y tipo de vistas como boton imagen text etc
@@ -210,12 +212,11 @@ class MyAccessibilityService : AccessibilityService(){
             for (i in 0 until nodo.childCount){
                 escanearNodo(nodo.getChild(i), profundidad + 1)
             }
-            if (elementos.size != lastSnapshot?.totalElements) {
-                Log.d("ACCESS_SCAN", "📸 Snapshot actualizado por acción real...")
-            }
         }
         escanearNodo(root)//ejecutamos el escaneo desde la raiz
-        val elementosUtiles = elementos.filter{it.isClickable || it.isEditable|| it.importance > 60}
+        val elementosUtiles = elementos.filter{
+            it.isClickable || it.isEditable|| it.importance > 60
+        }
         lastSnapshot = ScreenSnapshot(
             timestamp = System.currentTimeMillis(),
             packageName = packageName,
@@ -229,19 +230,12 @@ class MyAccessibilityService : AccessibilityService(){
         // Actualizar memoria global para que JarvisVoiceController la lea
         com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
         com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot!!.toContextList()
-        // ═══════════════════════════════════════════════════════════
-        // 🔍 LOG DE AUDITORÍA PARA TU MODELO
-        // ═══════════════════════════════════════════════════════════
-        Log.d("JARVIS_SNAPSHOT", "╔════════ REPORTE PARA SERVIDOR ════════╗")
+        Log.d("JARVIS_SNAPSHOT", "╔════════ SNAPSHOT ACTUALIZADO ════════╗")
         Log.d("JARVIS_SNAPSHOT", "║ APP: $packageName")
+        Log.d("JARVIS_SNAPSHOT", "║ ELEMENTOS: ${elementosUtiles.size}")
         Log.d("JARVIS_SNAPSHOT", "║ INTERACTIVOS: $clickableCount Clics | $editableCount Textos")
+        Log.d("JARVIS_SNAPSHOT", "╚════════════════════════════════════════╝")
 
-        // Ver exactamente qué texto se envía al modelo para que aprenda
-        elementosUtiles.sortedByDescending { it.importance }.take(50).forEachIndexed { i, e ->
-            val info = e.text ?: e.contentDescription ?: e.viewId ?: "Sin Identidad"
-            Log.d("JARVIS_SNAPSHOT", "║ [$i] $info | Coords: (${e.centerX},${e.centerY}) | Imp: ${e.importance}")
-        }
-        Log.d("JARVIS_SNAPSHOT", "╚═══════════════════════════════════════════╝")
     }
     /**
      * Búsqueda inteligente de elementos
