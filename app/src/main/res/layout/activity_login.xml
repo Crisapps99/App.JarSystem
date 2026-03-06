@@ -6,115 +6,429 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@drawable/gradient_background"
     tools:context=".activity.LoginActivity">
 
-    <View
-        android:id="@+id/darkBackgroundHeader"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:background="#7bd7f8"
-        app:layout_constraintHeight_percent="0.4"
+    <TextView
+        android:id="@+id/titleApp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="NEXUS"
+        android:textSize="38sp"
+        android:textStyle="bold"
+        android:fontFamily="@font/googlesans"
+        android:textColor="@color/white"
+        android:letterSpacing="0.05"
+        android:layout_marginTop="52dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"/>
 
-    <ImageView
-        android:id="@+id/LogooScreen2"
-        android:layout_width="361dp"
-        android:layout_height="303dp"
-        android:contentDescription="@string/app_name"
-        android:src="@drawable/jarvoideletras"
-        app:layout_constraintBottom_toTopOf="@+id/formContainer"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.493"
+    <TextView
+        android:id="@+id/subtitleApp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Activa los permisos para comenzar"
+        android:textSize="14sp"
+        android:fontFamily="@font/googlesans"
+        android:textColor="#B3FFFFFF"
+        android:layout_marginTop="6dp"
+        app:layout_constraintTop_toBottomOf="@id/titleApp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.691" />
+        app:layout_constraintEnd_toEndOf="parent"/>
 
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/formContainer"
-        android:layout_width="match_parent"
+    <ScrollView
+        android:id="@+id/scrollPermisos"
+        android:layout_width="0dp"
         android:layout_height="0dp"
-        android:background="@drawable/rounded_top_corners"
-        android:padding="24dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintTop_toTopOf="@+id/darkBackgroundHeader"
-        app:layout_constraintVertical_bias="0.38"
-        app:layout_constraintHeight_percent="0.75"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="16dp"
+        android:scrollbars="none"
+        app:layout_constraintTop_toBottomOf="@id/subtitleApp"
+        app:layout_constraintBottom_toTopOf="@id/btnContinue"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <TextView
-            android:id="@+id/title"
-            android:layout_width="0dp"
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Ingresa tu Nombre"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:textColor="#000000"
-            android:fontFamily="@font/google"
-            android:layout_marginTop="16dp"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+            app:cardCornerRadius="20dp"
+            app:cardBackgroundColor="#1AFFFFFF"
+            app:cardElevation="0dp">
 
-        <TextView
-            android:id="@+id/subtitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:text="Es necesario ingresar el Nombre"
-            android:textSize="14sp"
-            android:textColor="#444444"
-            android:layout_marginTop="12dp"
-            android:fontFamily="@font/google"
-            app:layout_constraintTop_toBottomOf="@+id/title"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/nombreInput"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
-            android:hint="Ingrese Nombre"
-            android:fontFamily="@font/google"
-            app:boxStrokeColor="#DDDDDD"
-            app:boxBackgroundColor="#f7f7f7"
-            app:boxCornerRadiusTopStart="12dp"
-            app:boxCornerRadiusTopEnd="12dp"
-            app:boxCornerRadiusBottomStart="12dp"
-            app:boxCornerRadiusBottomEnd="12dp"
-            app:layout_constraintTop_toBottomOf="@+id/subtitle"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/NombreEditText"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="12dp"
-                android:textColor="#000000"/>
-        </com.google.android.material.textfield.TextInputLayout>
+                android:orientation="vertical"
+                android:padding="18dp">
 
-        <Button
-            android:id="@+id/btnContinue"
-            android:layout_width="0dp"
-            android:layout_height="55dp"
-            android:layout_marginTop="24dp"
-            android:text="Continuar"
-            android:textSize="15sp"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="#7bd7f8"
-            android:stateListAnimator="@null"
-            android:fontFamily="@font/google"
-            app:cornerRadius="40dp"
-            app:boxStrokeColor="#DDDDDD"
-            app:boxBackgroundColor="#f7f7f7"
-            app:layout_constraintTop_toBottomOf="@id/nombreInput"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Permisos necesarios"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/googlesans"
+                    android:layout_marginBottom="14dp"/>
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
+                <!-- Micrófono -->
+                <LinearLayout
+                    android:id="@+id/rowMicrofono"
+                    android:layout_width="match_parent"
+                    android:layout_height="58dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/permission_row_bg"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="10dp">
+
+                    <ImageView
+                        android:layout_width="26dp"
+                        android:layout_height="26dp"
+                        android:src="@drawable/ic_mic_vector"
+                        android:tint="#4DEEE9"
+                        android:contentDescription="Micrófono"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="12dp">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Micrófono"
+                            android:textColor="@color/white"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:fontFamily="@font/googlesans"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Para escucharte y responder"
+                            android:textColor="#99FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="@font/googlesans"/>
+                    </LinearLayout>
+                    <Button
+                        android:id="@+id/btnMicrofono"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="Activar"
+                        android:textSize="10sp"
+                        android:textColor="@color/white"
+                        android:fontFamily="@font/googlesans"
+                        android:backgroundTint="#E53935"
+                        android:stateListAnimator="@null"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        app:cornerRadius="20dp"/>
+                </LinearLayout>
+
+                <!-- Superposición -->
+                <LinearLayout
+                    android:id="@+id/rowOverlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="58dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/permission_row_bg"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="10dp">
+
+                    <ImageView
+                        android:layout_width="26dp"
+                        android:layout_height="26dp"
+                        android:src="@android:drawable/ic_menu_view"
+                        android:tint="#4DEEE9"
+                        android:contentDescription="Superposición"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="12dp">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Superposición"
+                            android:textColor="@color/white"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:fontFamily="@font/googlesans"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Para mostrar el orbe flotante"
+                            android:textColor="#99FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="@font/googlesans"/>
+                    </LinearLayout>
+                    <Button
+                        android:id="@+id/btnOverlay"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="Activar"
+                        android:textSize="10sp"
+                        android:textColor="@color/white"
+                        android:fontFamily="@font/googlesans"
+                        android:backgroundTint="#E53935"
+                        android:stateListAnimator="@null"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        app:cornerRadius="20dp"/>
+                </LinearLayout>
+
+                <!-- Accesibilidad -->
+                <LinearLayout
+                    android:id="@+id/rowAccesibilidad"
+                    android:layout_width="match_parent"
+                    android:layout_height="58dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/permission_row_bg"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="10dp">
+
+                    <ImageView
+                        android:layout_width="26dp"
+                        android:layout_height="26dp"
+                        android:src="@android:drawable/ic_menu_help"
+                        android:tint="#4DEEE9"
+                        android:contentDescription="Accesibilidad"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="12dp">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Accesibilidad"
+                            android:textColor="@color/white"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:fontFamily="@font/googlesans"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Para leer y entender tu pantalla"
+                            android:textColor="#99FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="@font/googlesans"/>
+                    </LinearLayout>
+                    <Button
+                        android:id="@+id/btnAccesibilidad"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="Activar"
+                        android:textSize="10sp"
+                        android:textColor="@color/white"
+                        android:fontFamily="@font/googlesans"
+                        android:backgroundTint="#E53935"
+                        android:stateListAnimator="@null"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        app:cornerRadius="20dp"/>
+                </LinearLayout>
+
+                <!-- Notificaciones -->
+                <LinearLayout
+                    android:id="@+id/rowNotificaciones"
+                    android:layout_width="match_parent"
+                    android:layout_height="58dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/permission_row_bg"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="10dp">
+
+                    <ImageView
+                        android:layout_width="26dp"
+                        android:layout_height="26dp"
+                        android:src="@android:drawable/ic_popup_reminder"
+                        android:tint="#4DEEE9"
+                        android:contentDescription="Notificaciones"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="12dp">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Notificaciones"
+                            android:textColor="@color/white"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:fontFamily="@font/googlesans"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Para leer mensajes y alertas"
+                            android:textColor="#99FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="@font/googlesans"/>
+                    </LinearLayout>
+                    <Button
+                        android:id="@+id/btnNotificaciones"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="Activar"
+                        android:textSize="10sp"
+                        android:textColor="@color/white"
+                        android:fontFamily="@font/googlesans"
+                        android:backgroundTint="#E53935"
+                        android:stateListAnimator="@null"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        app:cornerRadius="20dp"/>
+                </LinearLayout>
+
+                <!-- Contactos -->
+                <LinearLayout
+                    android:id="@+id/rowContactos"
+                    android:layout_width="match_parent"
+                    android:layout_height="58dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/permission_row_bg"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="10dp">
+
+                    <ImageView
+                        android:layout_width="26dp"
+                        android:layout_height="26dp"
+                        android:src="@android:drawable/ic_menu_myplaces"
+                        android:tint="#4DEEE9"
+                        android:contentDescription="Contactos"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="12dp">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Contactos"
+                            android:textColor="@color/white"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:fontFamily="@font/googlesans"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Para llamar y enviar mensajes"
+                            android:textColor="#99FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="@font/googlesans"/>
+                    </LinearLayout>
+                    <Button
+                        android:id="@+id/btnContactos"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="Activar"
+                        android:textSize="10sp"
+                        android:textColor="@color/white"
+                        android:fontFamily="@font/googlesans"
+                        android:backgroundTint="#E53935"
+                        android:stateListAnimator="@null"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        app:cornerRadius="20dp"/>
+                </LinearLayout>
+
+                <!-- Llamadas -->
+                <LinearLayout
+                    android:id="@+id/rowLlamadas"
+                    android:layout_width="match_parent"
+                    android:layout_height="58dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/permission_row_bg"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="10dp">
+
+                    <ImageView
+                        android:layout_width="26dp"
+                        android:layout_height="26dp"
+                        android:src="@android:drawable/ic_menu_call"
+                        android:tint="#4DEEE9"
+                        android:contentDescription="Llamadas"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="12dp">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Llamadas"
+                            android:textColor="@color/white"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:fontFamily="@font/googlesans"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Para realizar llamadas por voz"
+                            android:textColor="#99FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="@font/googlesans"/>
+                    </LinearLayout>
+                    <Button
+                        android:id="@+id/btnLlamadas"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="Activar"
+                        android:textSize="10sp"
+                        android:textColor="@color/white"
+                        android:fontFamily="@font/googlesans"
+                        android:backgroundTint="#E53935"
+                        android:stateListAnimator="@null"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        app:cornerRadius="20dp"/>
+                </LinearLayout>
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+    </ScrollView>
+
+    <com.ncorti.slidetoact.SlideToActView
+        android:id="@+id/btnContinue"
+        android:layout_width="0dp"
+        android:layout_height="68dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="36dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:area_margin="6dp"
+        app:outer_color="#4D4DEEE9"
+        app:inner_color="#4DEEE9"
+        app:border_radius="35dp"
+        app:text="Comenzar con Jarvoice"
+        app:text_size="15sp"
+        app:slider_icon="@drawable/ic_mic_vector"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

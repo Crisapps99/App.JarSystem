@@ -12,6 +12,13 @@ import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.Response
 import okhttp3.ResponseBody
+//grook
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import retrofit2.http.Multipart
+import retrofit2.http.Part
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 private const val BASE_URL = "https://beata-unweakening-echo.ngrok-free.dev/"
 
@@ -87,8 +94,15 @@ data class JarvisResponse(
  * Representa una acción individual a ejecutar
  */
 data class ActionDto(
-    @SerializedName("tipo") val tipo: String,
-    @SerializedName("params") val params: Map<String, Any>? = null
+    @SerializedName("tipo")      val tipo: String,
+    @SerializedName("params")    val params: Map<String, Any>? = null,
+    // Campos raíz para android_intent
+    @SerializedName("action")    val action: String? = null,
+    @SerializedName("package")   val pkg: String? = null,
+    @SerializedName("data")      val data: String? = null,
+    @SerializedName("mime_type") val mimeType: String? = null,
+    @SerializedName("extras")    val extras: Map<String, Any>? = null,
+    @SerializedName("component") val component: String? = null,
 )
 /**
  * Saludo de Jarvis
@@ -162,7 +176,17 @@ data class ReporteFeedback(
 // ═══════════════════════════════════════════════════════════════════
 // 🌐 INTERFACES DE API (Retrofit)
 // ═══════════════════════════════════════════════════════════════════
+//interface GroqApiService {
+//    @Multipart
+//    @POST("v1/audio/transcriptions")
+//    suspend fun transcribeAudio(
+//        @Part audio: MultipartBody.Part,
+//        @Part("model") model: RequestBody = "whisper-large-v3".toRequestBody("text/plain".toMediaType()),
+//        @Part("language") language: RequestBody = "es".toRequestBody("text/plain".toMediaType())
+//    ): GroqResponse
+//}
 
+//data class GroqResponse(val text: String)
 /**
  * API principal de acciones
  */
@@ -220,6 +244,29 @@ object RetrofitClient {
     val debugApi: JarvisDebugApi by lazy {
         retrofit.create(JarvisDebugApi::class.java)
     }
+//    // --- 🚀 NUEVO: Configuración para GROQ ---
+//    private const val GROQ_URL = "https://api.groq.com/openai/"
+//    private const val GROQ_API_KEY = "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" // Reemplaza con tu llave real
+//
+//    private val okHTTPGroq = OkHttpClient.Builder()
+//        .addInterceptor { chain ->
+//            val request = chain.request().newBuilder()
+//                .addHeader("Authorization", "Bearer $GROQ_API_KEY")
+//                .build()
+//            chain.proceed(request)
+//        }
+//        .addInterceptor(logging)
+//        .build()
+//
+//    private val retrofitGroq = Retrofit.Builder()
+//        .baseUrl(GROQ_URL)
+//        .client(okHTTPGroq)
+//        .addConverterFactory(GsonConverterFactory.create())
+//        .build()
+//
+//    val groqApiService: GroqApiService by lazy {
+//        retrofitGroq.create(GroqApiService::class.java)
+//    }
 }
 /**
  * Convierte un ScreenElement a ElementoDetalladoDto para enviar al servidor

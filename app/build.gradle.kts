@@ -10,6 +10,11 @@ android {
     namespace = "com.example.myapplication"
     compileSdk = 36
 
+    sourceSets {
+        getByName("main") {
+            assets.srcDirs("src/main/assets")
+        }
+    }
     defaultConfig {
         applicationId = "com.example.myapplication"
         minSdk = 26
@@ -55,8 +60,13 @@ android {
 }
 
 dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
+
+    // También es recomendable tener esta para ViewModels si los usas:
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
     //picovoice
-    implementation("ai.picovoice:porcupine-android:3.0.0")
+    implementation ("ai.picovoice:porcupine-android:4.0.0")
     implementation("com.google.code.gson:gson:2.10.1")
     //botn deslizale
     implementation ("com.ncorti:slidetoact:0.9.0")

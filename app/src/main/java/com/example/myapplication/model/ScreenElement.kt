@@ -111,7 +111,7 @@ fun toContextList(): List<String> {
                 "text" to (elem.getSearchableText()),
                 "x" to elem.centerX,
                 "y" to elem.centerY,
-                "clickable" to elem.isCheckable,
+                "clickable" to elem.isClickable,
                 "editable" to elem.isEditable,
                 "actions" to elem.availableActions,
                 "importance" to elem.importance,

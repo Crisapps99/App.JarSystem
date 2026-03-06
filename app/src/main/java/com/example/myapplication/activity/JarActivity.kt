@@ -1,467 +1,493 @@
 package com.example.myapplication.activity
 
 import ai.picovoice.android.voiceprocessor.VoiceProcessor
-import ai.picovoice.porcupine.Porcupine
-import ai.picovoice.porcupine.Porcupine.BuiltInKeyword
 import ai.picovoice.porcupine.PorcupineException
 import ai.picovoice.porcupine.PorcupineManager
-import androidx.lifecycle.lifecycleScope
-import android.content.pm.PackageManager
-import android.os.Bundle
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.media.audiofx.Visualizer
-import android.net.Uri
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
-import android.provider.Telephony
 import android.text.TextUtils
 import android.util.Log
+import android.view.View
+import android.view.WindowManager
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import android.view.View
-import android.view.animation.DecelerateInterpolator
-import androidx.appcompat.app.AlertDialog
-import com.example.myapplication.databinding.ActivityJarBinding
+import androidx.lifecycle.lifecycleScope
 import com.example.myapplication.core.JarvisState
 import com.example.myapplication.core.JarvisUi
 import com.example.myapplication.core.JarvisVoiceController
+import com.example.myapplication.databinding.ActivityJarBinding
 import com.example.myapplication.service.JarvisOverlayService
-import com.example.myapplication.service.MyAccessibilityService
+import com.ncorti.slidetoact.SlideToActView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.sin
-import kotlin.random.Random
 
 class JarActivity : AppCompatActivity(), JarvisUi {
 
     private lateinit var binding: ActivityJarBinding
-    private lateinit var controller: com.example.myapplication.core.JarvisVoiceController
+    private lateinit var controller: JarvisVoiceController
     private val RECORD_AUDIO_PERMISSION_CODE = 200
-    private val OVERLAY_PERMISSION_CODE = 300
-    private var porcupineManager: PorcupineManager? = null //gestiona la detLOeccion local
-    private val ACCESS_KEY = "YMYKZrTBnmQeviXKwGY8rrXUiUlcHBC1ApCQwg6G99JrluupBCFbUg=="
+
+    private var porcupineManager: PorcupineManager? = null
+    private val ACCESS_KEY  = "YMYKZrTBnmQeviXKwGY8rrXUiUlcHBC1ApCQwg6G99JrluupBCFbUg=="
+    private val keywordFile = "hey-nexus_es_android_v4_0_0.ppn"
+
     private var currentJarvisState: JarvisState = JarvisState.IDLE
-    private var isListener: Boolean = false
     private var audioVisualizer: android.media.audiofx.Visualizer? = null
     private var hasDetectedWakeWord = false
+    private var isListeningForWakeWord = false
 
+    private lateinit var audioManager: com.example.myapplication.core.AudioManager
+
+    // ── Fases de la presentación ─────────────────────────────
+    private enum class Phase { INTRO, WAITING_WAKEWORD, DETECTED }
+    private var currentPhase = Phase.INTRO
+
+    private val overlayReadyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == "com.nexus.assistant.OVERLAY_READY") {
+                sendBroadcast(Intent("com.nexus.assistant.WAKE_WORD_DETECTED"))
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityJarBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        animateOrbEntrance()
-        requestAudioPermission()
-        //iniciamos el controlador de voz
-        controller = JarvisVoiceController(
-            context = this,
-            ui = this,
-            scope = lifecycleScope
+
+        audioManager = com.example.myapplication.core.AudioManager(this)
+
+        registerReceiver(
+            overlayReadyReceiver,
+            IntentFilter("com.nexus.assistant.OVERLAY_READY"),
+            RECEIVER_NOT_EXPORTED
         )
+
+        controller = JarvisVoiceController(context = this, ui = this, scope = lifecycleScope)
         controller.init()
 
-//        binding.micButton.setOnClickListener {
-//            controller.toggleMic()
-//        }
-//        //rpeubas
-//        binding.btnTestEyes.setOnClickListener {
-//            // Para probar, enviaremos una acción vacía que solo imprima en consola lo que ve
-//            val intent = Intent("JARVIS.EXECUTE_ACTIONS").apply {
-//                setPackage(packageName)
-//                putExtra("actions_json", "[]") // Lista vacía
-//            }
-//            sendBroadcast(intent)
-//            showToast("Revisa el Logcat para ver qué detectó Jarvis")
-//        }
-//        binding.btnTestEyes.setOnClickListener {
-//            switchToActivity(
-//                context = this@JarActivity,
-//                destinationActivity = ApiTestActivity::class.java,
-//                finishCurrent = false
-//            )
-//        }
-        setupPorcupine()//preparamos el oido
-        showInitialInstructions()
+        animateOrbEntrance()
     }
 
-
-    private fun showInitialInstructions(){
-        binding.titleWel.alpha = 0f
-        binding.instructionsText.alpha = 0f
-
-        binding.titleWel.animate()
-            .alpha(1f)
-            .setDuration(800)
-            .setStartDelay(500)
-            .start()
-        binding.instructionsText.animate()
-            .alpha(1f)
-            .setDuration(800)
-            .setStartDelay(900)
-            .start()
+    // ── TTS — redirige al controller (ElevenLabs o Android según TTS_MODE) ──
+    private fun speak(text: String, utteranceId: String, onDone: (() -> Unit)? = null) {
+        setOrbPulsing(true)
+        controller.hablarDesdeActivity(text) {
+            setOrbPulsing(false)
+            onDone?.invoke()
+        }
     }
 
+    // ── Entrada del orbe ────────────────────────────────────
     private fun animateOrbEntrance() {
-        binding.jarvisOrb.translationY = 400f
-        binding.jarvisOrb.alpha = 0.8f
-        binding.jarvisOrb.scaleX = 0.8f
-        binding.jarvisOrb.scaleY = 0.8f
+        binding.jarvisOrb.visibility = View.INVISIBLE
+        binding.jarvisOrb.scaleX = 0f
+        binding.jarvisOrb.scaleY = 0f
+        binding.jarvisOrb.alpha  = 0f
 
-        binding.jarvisOrb.animate()
-            .translationY(0f)
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(1200)
-            .setInterpolator(DecelerateInterpolator())
-            .withStartAction {
-                binding.jarvisOrb.visibility = View.VISIBLE
-            }
-            .start()
+        binding.jarvisOrb.postDelayed({
+            binding.jarvisOrb.visibility = View.VISIBLE
+            binding.jarvisOrb.animate()
+                .scaleX(1f).scaleY(1f).alpha(1f)
+                .setDuration(1000)
+                .setInterpolator(OvershootInterpolator(1.2f))
+                .withEndAction { showIntroUI() }
+                .start()
+        }, 300)
     }
-    //servicios de superposicion
+
+    // ── UI de introducción ───────────────────────────────────
+    private fun showIntroUI() {
+        binding.titleWel.animate().alpha(1f).setDuration(600).setStartDelay(0).start()
+        binding.statusText.animate().alpha(1f).setDuration(600).setStartDelay(200).start()
+
+        binding.transcriptionTextView.text =
+            "Hola, soy Nexus. Tu asistente personal para el móvil.\n" +
+                    "Estoy aquí para ayudarte con llamadas, mensajes, apps y mucho más."
+        binding.instructionsText.visibility = View.GONE
+
+        binding.cardTranscription.animate().alpha(1f).setDuration(700).setStartDelay(400).start()
+        binding.btnComenzar.animate().alpha(1f).setDuration(700).setStartDelay(600).start()
+
+        startIdlePulse()
+
+        binding.btnComenzar.onSlideCompleteListener = object : SlideToActView.OnSlideCompleteListener {
+            override fun onSlideComplete(view: SlideToActView) {
+                startPresentacion()
+            }
+        }
+    }
+
+    // ── Presentación con TTS ─────────────────────────────────
+    private fun startPresentacion() {
+        currentPhase = Phase.INTRO
+        stopIdlePulse()
+
+        binding.btnComenzar.animate().alpha(0f).setDuration(300).start()
+
+        setStatusLabel("HABLANDO", "#4DEEE9")
+        animateTextChange(
+            "Hola. Soy Nexus, tu asistente personal inteligente. " +
+                    "Fui diseñado para ayudarte en todo momento, directamente desde tu teléfono."
+        )
+
+        speak(
+            "Hola. Soy Nexus, tu asistente personal inteligente. " +
+                    "Fui diseñado para ayudarte en todo momento, directamente desde tu teléfono.",
+            "intro_1"
+        ) {
+            animateTextChange(
+                "Puedo ayudarte a hacer llamadas, leer mensajes, abrir aplicaciones y mucho más, " +
+                        "todo con tu voz."
+            )
+            speak(
+                "Puedo ayudarte a hacer llamadas, leer mensajes, abrir aplicaciones y mucho más, " +
+                        "todo con tu voz.",
+                "intro_2"
+            ) {
+                lifecycleScope.launch {
+                    delay(400)
+                    startWakeWordPhase()
+                }
+            }
+        }
+    }
+
+    // ── Fase de espera de wake word ──────────────────────────
+    private fun startWakeWordPhase() {
+        currentPhase = Phase.WAITING_WAKEWORD
+
+        setStatusLabel("ESCUCHANDO", "#4DEEE9")
+        animateTextChange("Para comenzar, di la palabra de activación:")
+
+        binding.instructionsText.text = "\"Hey Nexus\""
+        binding.instructionsText.textSize = 22f
+        binding.instructionsText.setTextColor(android.graphics.Color.parseColor("#4DEEE9"))
+        binding.instructionsText.visibility = View.VISIBLE
+
+        speak("Para activarme, di: Hey Nexus", "wakeword_prompt") {
+            activatePorcupineListening()
+        }
+
+        startListeningPulse()
+    }
+
+    private fun activatePorcupineListening() {
+        setupPorcupine()
+    }
+
+    // ── Wake word detectado ──────────────────────────────────
+    private fun onWakeWordDetected() {
+        if (hasDetectedWakeWord) return
+        hasDetectedWakeWord = true
+        currentPhase = Phase.DETECTED
+
+        stopListeningPulse()
+        audioManager.playActionSuccess()
+
+        setStatusLabel("ACTIVADO", "#1DE0A0")
+        animateTextChange("¡Hey Nexus! Activando...")
+        binding.instructionsText.visibility = View.GONE
+
+        speak("Perfecto. Iniciando ahora.", "detected") {
+            lifecycleScope.launch {
+                delay(300)
+                launchOrbToOverlay()
+            }
+        }
+    }
+
+    // ── Efecto orbe que "sale" hacia overlay ─────────────────
+    private fun launchOrbToOverlay() {
+        window.setFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+        val scaleUp = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleX", 1f, 1.4f),
+                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleY", 1f, 1.4f),
+                ObjectAnimator.ofFloat(binding.jarvisOrb, "alpha",  1f, 0.9f)
+            )
+            duration = 300
+            interpolator = AccelerateDecelerateInterpolator()
+        }
+
+        val launchUp = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(binding.jarvisOrb, "translationY", 0f, -1000f),
+                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleX", 1.4f, 0.3f),
+                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleY", 1.4f, 0.3f),
+                ObjectAnimator.ofFloat(binding.jarvisOrb, "alpha",  0.9f, 0f)
+            )
+            duration = 500
+            interpolator = AccelerateInterpolator(2f)
+        }
+
+        val fadeUI = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(binding.cardTranscription, "alpha", 1f, 0f),
+                ObjectAnimator.ofFloat(binding.titleWel,  "alpha", 1f, 0f),
+                ObjectAnimator.ofFloat(binding.statusText,"alpha", 1f, 0f)
+            )
+            duration = 400
+        }
+
+        AnimatorSet().apply {
+            play(scaleUp).before(launchUp)
+            play(fadeUI).with(launchUp)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    startOverlayServiceAndFinish()
+                }
+            })
+            start()
+        }
+    }
+
+    private fun startOverlayServiceAndFinish() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+            val intent = Intent(this, JarvisOverlayService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
+            else startService(intent)
+        }
+        sendBroadcast(Intent("com.nexus.assistant.WAKE_WORD_DETECTED"))
+        lifecycleScope.launch {
+            delay(200)
+            finish()
+        }
+    }
+
+    // ── Porcupine ────────────────────────────────────────────
     private fun setupPorcupine() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), RECORD_AUDIO_PERMISSION_CODE)
+            return
+        }
         try {
-            porcupineManager = PorcupineManager.Builder()//motor d ebusqueda
+            val fileList = assets.list("") ?: arrayOf()
+            if (!fileList.contains(keywordFile)) {
+                Log.e("NEXUS", "Keyword file no encontrado en assets")
+                return
+            }
+            porcupineManager = PorcupineManager.Builder()
                 .setAccessKey(ACCESS_KEY)
-                .setKeyword(BuiltInKeyword.JARVIS)
+                .setKeywordPath(keywordFile)
+                .setModelPath("porcupine_params_es.pv")
                 .setSensitivity(0.7f)
                 .build(this) { keywordIndex ->
                     if (keywordIndex == 0) {
+                        Log.i("NEXUS", "🔥 Hey Nexus detectado")
                         runOnUiThread { onWakeWordDetected() }
                     }
                 }
-            ///movimiento pasivo motor de movimienot
-            val voiceProcessor = VoiceProcessor.getInstance() //el que toca al microfono
-            voiceProcessor.addFrameListener { frame ->
-                val rms = calculateRMS(frame) //calculamos intencidad
-                runOnUiThread {//actualiza la ui
-                    if (currentJarvisState == JarvisState.IDLE) {//mueve el orbe por ruido ambiental
-                        binding.jarvisOrb.updateRms(rms)
+
+            VoiceProcessor.getInstance().addFrameListener { frame ->
+                val rms = calculateRMS(frame)
+                runOnUiThread {
+                    if (currentPhase == Phase.WAITING_WAKEWORD) {
+                        binding.jarvisOrb.updateRms(rms * 0.6f)
                     }
                 }
             }
-            //
-            porcupineManager?.start()//inica escucha
+
+            porcupineManager?.start()
+            isListeningForWakeWord = true
+            Log.d("NEXUS", "Porcupine iniciado")
+
         } catch (e: PorcupineException) {
-            // Manejo de errores por si la llave es incorrecta o no hay permisos
-            Log.e("JARVIS", "Error  Porcupine: ${e.message}")
+            Log.e("NEXUS", "Error Porcupine: ${e.message}")
+            showRetryMessage()
+        } catch (e: Exception) {
+            Log.e("NEXUS", "Error general: ${e.message}")
+            showRetryMessage()
         }
-    }
-    //calculo amtematico
-    //convierte uan lista de numeros ondas de audio en un solo valor de potencia para que el orbe sepa cuadno inflarse
-    private fun calculateRMS(audioData: ShortArray): Float {
-        var sum = 0.0
-        for (sample in audioData) {
-            sum += (sample * sample).toDouble() //elevacion al cuadrado para evitar negativos
-        }
-        val average = sum / audioData.size
-        val rms = Math.sqrt(average) // raiz cuadrada del promedio
-        //divicon por 40 para que el valr sea pequeño
-        return (rms.toFloat() / 400f).coerceIn(0f, 10f)
-
     }
 
-    private fun onWakeWordDetected(){
-        if (!hasDetectedWakeWord){
-            hasDetectedWakeWord = true
-            //muestra el feddback
-            binding.transcriptionTextView.text="te escucho"
-            binding.transcriptionTextView.visibility = View.VISIBLE
-            //oculta la isntruccion
-            binding.titleWel.animate().alpha(0f).setDuration(300).start()
-            binding.instructionsText.animate().alpha(0f).setDuration(300).start()
-            binding.statusText.animate().alpha(0f).setDuration(300).start()
-            updateStatusText("Detectado")
-            //inicia iteraccion y cerrac activity
-            lifecycleScope.launch {
-                delay(800)
-                startOverlayService()
-                delay(300)
-                finish()
-            }
-        }
-    }
-    private fun startOverlayService() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (Settings.canDrawOverlays(this)) {
-                val intent = Intent(this, JarvisOverlayService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
-                Log.d("JARVIS", "Servicio overlay iniciado")
-            } else {
-                Toast.makeText(
-                    this,
-                    "Necesitas activar el permiso de overlay",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-    }
-    //actualizacion a google speech
-    override fun updateORB(rms: Float) {
+    private fun showRetryMessage() {
         runOnUiThread {
-            binding.jarvisOrb.updateRms(rms)
+            setStatusLabel("ERROR", "#E53935")
+            animateTextChange("No pude escucharte. Inténtalo de nuevo.")
+            lifecycleScope.launch {
+                delay(2000)
+                hasDetectedWakeWord = false
+                isListeningForWakeWord = false
+                startWakeWordPhase()
+            }
+        }
+    }
+
+    // ── Animaciones del orbe ─────────────────────────────────
+    private var idlePulseAnimator: ValueAnimator? = null
+    private var listeningPulseAnimator: ValueAnimator? = null
+
+    private fun startIdlePulse() {
+        idlePulseAnimator = ValueAnimator.ofFloat(0f, 3f, 0f).apply {
+            duration = 3000
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { binding.jarvisOrb.updateRms(it.animatedValue as Float) }
+            start()
+        }
+    }
+
+    private fun stopIdlePulse() {
+        idlePulseAnimator?.cancel()
+        idlePulseAnimator = null
+    }
+
+    private fun startListeningPulse() {
+        listeningPulseAnimator = ValueAnimator.ofFloat(0f, 5f, 0f).apply {
+            duration = 1800
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { binding.jarvisOrb.updateRms(it.animatedValue as Float) }
+            start()
+        }
+    }
+
+    private fun stopListeningPulse() {
+        listeningPulseAnimator?.cancel()
+        listeningPulseAnimator = null
+    }
+
+    private fun setOrbPulsing(active: Boolean) {
+        if (active) { stopIdlePulse(); startListeningPulse() }
+        else { stopListeningPulse(); startIdlePulse() }
+    }
+
+    // ── Helpers UI ───────────────────────────────────────────
+    private fun animateTextChange(newText: String) {
+        binding.transcriptionTextView.animate()
+            .alpha(0f).setDuration(150)
+            .withEndAction {
+                binding.transcriptionTextView.text = newText
+                binding.transcriptionTextView.animate().alpha(1f).setDuration(200).start()
+            }.start()
+    }
+
+    private fun setStatusLabel(label: String, hexColor: String) {
+        binding.statusLabel.text = label
+        val color = android.graphics.Color.parseColor(hexColor)
+        binding.statusLabel.setTextColor(color)
+        binding.statusDot.backgroundTintList = android.content.res.ColorStateList.valueOf(color)
+        binding.statusDot.animate().scaleX(1.4f).scaleY(1.4f).setDuration(200)
+            .withEndAction { binding.statusDot.animate().scaleX(1f).scaleY(1f).setDuration(200).start() }
+            .start()
+    }
+
+    // ── JarvisUI callbacks ───────────────────────────────────
+    override fun updateORB(rms: Float) {
+        runOnUiThread { binding.jarvisOrb.updateRms(rms) }
+    }
+    // Implementación obligatoria para solucionar el error de compilación
+    override fun setOrbVisibility(visible: Boolean) {
+        runOnUiThread {
+            if (visible) {
+                binding.jarvisOrb.visibility = View.VISIBLE
+                binding.jarvisOrb.animate().alpha(1f).setDuration(300).start()
+            } else {
+                binding.jarvisOrb.animate().alpha(0f).setDuration(300)
+                    .withEndAction { binding.jarvisOrb.visibility = View.GONE }
+                    .start()
+            }
         }
     }
     override fun onRecognizerReady() {
-        runOnUiThread {
-            porcupineManager?.stop()
-            Log.d("JARVIS", "Reconocedor de Google listo. Porcupine detenido.")
-        }
+        runOnUiThread { porcupineManager?.stop() }
     }
-    //jarvisUI
+
     override fun renderState(state: JarvisState) {
         runOnUiThread {
-            this.currentJarvisState = state
+            currentJarvisState = state
             when (state) {
                 JarvisState.LISTENING -> {
-//                    binding.micButton.visibility = View.GONE
-                    binding.transcriptionTextView.text = "Escuchando..."
-                    binding.transcriptionTextView.visibility = View.VISIBLE
-                    updateStatusText("Modo escucha")
+                    setStatusLabel("ESCUCHANDO", "#4DEEE9")
+                    animateTextChange("Escuchando...")
                     porcupineManager?.stop()
                 }
-
                 JarvisState.THINKING -> {
-//                    binding.micButton.visibility = View.GONE
-                    binding.jarvisOrb.visibility = View.VISIBLE
-                    binding.transcriptionTextView.text = "Procesando..."
-                    binding.transcriptionTextView.visibility = View.VISIBLE
-                    updateStatusText("Pensando")
-
+                    setStatusLabel("PENSANDO", "#7BD7F8")
+                    animateTextChange("Procesando...")
                 }
-
                 JarvisState.SPEAKING -> {
-//                    binding.micButton.visibility = View.GONE
-                    binding.jarvisOrb.visibility = View.VISIBLE
-                    binding.jarvisOrb.visibility = View.VISIBLE
-                    binding.transcriptionTextView.visibility = View.VISIBLE
-                    updateStatusText("Hablando")
+                    setStatusLabel("HABLANDO", "#4DEEE9")
                 }
-
                 JarvisState.IDLE -> {
                     binding.jarvisOrb.reset()
-                    binding.jarvisOrb.visibility = View.VISIBLE
-                    // Si ya detectó la palabra, no volver a mostrar instrucciones
-                    if (hasDetectedWakeWord) {
-                        binding.transcriptionTextView.visibility = View.GONE
-                        binding.titleWel.visibility = View.GONE
-                        binding.instructionsText.visibility = View.GONE
-                    } else {
-                        // Primera vez, mostrar instrucciones
-                        binding.titleWel.visibility = View.VISIBLE
-                        binding.instructionsText.visibility = View.VISIBLE
+                    if (!hasDetectedWakeWord) {
+                        try { porcupineManager?.start() } catch (e: Exception) { }
                     }
                 }
             }
         }
     }
-    //rpeubas
-// Dentro de JarActivity
-    override fun getCurrentScreenText(): List<String> {
-        return com.example.myapplication.core.ScreenMemory.lastSeenTexts // Esta lista se llena con los logs que viste
-    }
+
+    override fun getCurrentScreenText(): List<String> =
+        com.example.myapplication.core.ScreenMemory.lastSeenTexts
 
     override fun showText(text: String) {
-        runOnUiThread { binding.transcriptionTextView.text = text }
+        runOnUiThread { animateTextChange(text) }
     }
 
     override fun showToast(text: String) {
         runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
     }
-    // Función para saber si el permiso ya está concedido
-    private fun isAccessibilityServiceEnabled(
-        context: Context,
-        service: Class<out AccessibilityService>
-    ): Boolean {
-        val expectedComponentName = ComponentName(context, service)
-        val enabledServices = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
 
-        val colonSplitter = TextUtils.SimpleStringSplitter(':')
-        colonSplitter.setString(enabledServices)
-        while (colonSplitter.hasNext()) {
-            val componentName = colonSplitter.next()
-            if (componentName.equals(expectedComponentName.flattenToString(), ignoreCase = true)) {
-                return true
-            }
-        }
-        return false
-    }
-    // Función para pedir el permiso enviando al usuario a Ajustes
-    private fun checkAndRequestAccessibility() {
-        if (!isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) {
-            // Si no está activo, mostramos un aviso o enviamos directo
-            Toast.makeText(
-                this,
-                "Por favor, activa el servicio de Jarvis para continuar",
-                Toast.LENGTH_LONG
-            ).show()
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            startActivity(intent)
-        } else {
-            showToast("Servicio de Accesibilidad ya está activo")
-        }
+    // ── Cálculos de audio ────────────────────────────────────
+    private fun calculateRMS(audioData: ShortArray): Float {
+        var sum = 0.0
+        for (sample in audioData) sum += (sample * sample).toDouble()
+        return (Math.sqrt(sum / audioData.size).toFloat() / 400f).coerceIn(0f, 10f)
     }
 
-    //visualizer
-    private fun setupGlobalVisualizer() {
-        try {
-            audioVisualizer =
-                android.media.audiofx.Visualizer(0).apply {//captura la mescla de salida de audio
-                    captureSize = android.media.audiofx.Visualizer.getCaptureSizeRange()[1]//configuracion de tamaño de frames
-                    setDataCaptureListener(object :
-                        android.media.audiofx.Visualizer.OnDataCaptureListener {
-                        override fun onWaveFormDataCapture(
-                            v: android.media.audiofx.Visualizer?,
-                            wave: ByteArray?,
-                            samplingRate: Int
-                        ) {
-                            if (currentJarvisState == JarvisState.SPEAKING && wave != null) {
-                                val energy = calculateEnergy(wave)
-                                runOnUiThread {
-                                    binding.jarvisOrb.updateRms(energy)
-                                }
-                            }
-                        }
-
-                        override fun onFftDataCapture(
-                            v: android.media.audiofx.Visualizer?,
-                            fft: ByteArray?,
-                            samplingRate: Int
-                        ) {
-                        }
-                    }, android.media.audiofx.Visualizer.getMaxCaptureRate() / 2, true, false)
-                    enabled = true
-                }
-        } catch (e: Exception) {
-            Log.e("VISUALIZER", "no inicio el visualizer: ${e.message}")
-        }
-    }
-
-    //convierte bytes crudos en un valor de energia
     private fun calculateEnergy(wave: ByteArray): Float {
         var sum = 0.0
-        for (i in 0 until wave.size) {
-            val sample = (wave[i].toInt() and 0xFF) - 128
-            sum += (sample * sample).toDouble()
+        for (b in wave) {
+            val s = (b.toInt() and 0xFF) - 128
+            sum += (s * s).toDouble()
         }
-        val rms = Math.sqrt(sum / wave.size).toFloat()
-        // Ajustamos la escala: el visualizer suele dar valores pequeños,
-        // multiplicamos para que el orbe se infle bien.
-        return (rms / 5f).coerceIn(0f, 15f)
+        return (Math.sqrt(sum / wave.size).toFloat() / 5f).coerceIn(0f, 15f)
     }
 
-
-
-
-//    private fun goToHomeScreen() {
-//        val intent = Intent(Intent.ACTION_MAIN).apply {
-//            addCategory(Intent.CATEGORY_HOME)
-//            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-//        }
-//        startActivity(intent)
-//        Log.d("JARVIS", "Navegando a pantalla principal")
-//    }
-//    private fun startJarvisInteraction() {
-//        //Le dice al controlador que salude y abra el micro de Google
-//        controller.startInteraction()
-//    }
-//    private fun showRetryMessage(){
-//        binding.transcriptionTextView.text = "vuelve a internarlo Di :Hola Jarvis"
-//        binding.transcriptionTextView.visibility = View.VISIBLE
-//        binding.transcriptionTextView.setTextColor(resources.getColor(android.R.color.holo_orange_light, null))
-//
-//        //ouclt depeus de 3
-//        lifecycleScope.launch {
-//            delay(3000)
-//            binding.transcriptionTextView.visibility = View.GONE
-//            binding.transcriptionTextView.setTextColor(resources.getColor(android.R.color.white, null))
-//        }
-//    }
-
-
-
-
-    private fun resetVisualState() {
-        isListener = false
-//        binding.micButton.visibility = View.VISIBLE
-        binding.jarvisOrb.visibility = View.GONE
-        // SpeechRecognizer ya termina, Porcupine vuelve a tomar el control del micro.
+    // ── Visualizer ───────────────────────────────────────────
+    private fun setupGlobalVisualizer() {
         try {
-            porcupineManager?.start()
+            audioVisualizer = android.media.audiofx.Visualizer(0).apply {
+                captureSize = android.media.audiofx.Visualizer.getCaptureSizeRange()[1]
+                setDataCaptureListener(object : android.media.audiofx.Visualizer.OnDataCaptureListener {
+                    override fun onWaveFormDataCapture(v: android.media.audiofx.Visualizer?, wave: ByteArray?, rate: Int) {
+                        if (currentJarvisState == JarvisState.SPEAKING && wave != null) {
+                            runOnUiThread { binding.jarvisOrb.updateRms(calculateEnergy(wave)) }
+                        }
+                    }
+                    override fun onFftDataCapture(v: android.media.audiofx.Visualizer?, fft: ByteArray?, rate: Int) {}
+                }, android.media.audiofx.Visualizer.getMaxCaptureRate() / 2, true, false)
+                enabled = true
+            }
         } catch (e: Exception) {
-            Log.e("JARVIS", "No se pudo reactivar Porcupine")
-        }
-    }
-    private fun updateStatusText(text: String) {
-        binding.statusText.text = text
-        binding.statusText.visibility = View.VISIBLE
-    }
-
-
-    private fun reiniciarEscuchaPasiva() {
-        try {
-            porcupineManager?.start()
-            Log.d("JARVIS", "Vigilancia reactivada: Esperando palabra clave...")
-        } catch (e: Exception) {
-            Log.e("JARVIS", "Error al reiniciar Porcupine: ${e.message}")
+            Log.e("VISUALIZER", "Error: ${e.message}")
         }
     }
 
-
-
-
-    //    //simulacion con seño para simular la amplitud d ela voz
-//    private fun startTtsRhythm() {
-//        stopTtsRhythm()
-//        ttsRhythmStart = System.currentTimeMillis()
-//        ttsRhythmRunnable = object : Runnable {
-//            //            private var silenceChance = 0.15f // 15% de pausas
-//            override fun run() {
-//                if (currentJarvisState == JarvisState.SPEAKING) {
-//                    val elapsed = System.currentTimeMillis() - ttsRhythmStart
-//
-//                    // Simulación de ondas para el orbe
-//                    val wave = (sin(elapsed / 80.0)*0.5 + sin(elapsed / 1500.0)*0.5)
-//                    val energy = (0.7F + wave.toFloat() * 0.4f + Random.nextFloat() * 0.1f)
-//
-//                    binding.jarvisOrb.setArtificialEnergy(energy)
-//                    binding.jarvisOrb.postDelayed(this, 30) // 25 FPS
-//                }
-//            }
-//        }
-//        binding.jarvisOrb.post(ttsRhythmRunnable!!)
-//    }
-
-
-
-
-
-    //CONCEDER PERMISOS
-    private fun requestAudioPermission() {
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.RECORD_AUDIO
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                RECORD_AUDIO_PERMISSION_CODE
-            )
-        }
-    }
+    // ── Lifecycle ────────────────────────────────────────────
     override fun onResume() {
         super.onResume()
         setupGlobalVisualizer()
@@ -469,19 +495,33 @@ class JarActivity : AppCompatActivity(), JarvisUi {
 
     override fun onPause() {
         super.onPause()
-        audioVisualizer?.release()//liberamos
+        audioVisualizer?.release()
         audioVisualizer = null
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(overlayReadyReceiver) }
         if (!hasDetectedWakeWord) {
             porcupineManager?.stop()
             porcupineManager?.delete()
             VoiceProcessor.getInstance().clearFrameListeners()
-            audioVisualizer?.release()
-            controller.destroy()
         }
+        audioVisualizer?.release()
+        controller.destroy()
+        stopIdlePulse()
+        stopListeningPulse()
         super.onDestroy()
     }
 
+    // ── Accesibilidad util ───────────────────────────────────
+    private fun isAccessibilityServiceEnabled(context: Context, service: Class<out AccessibilityService>): Boolean {
+        val expected = ComponentName(context, service)
+        val enabled  = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        val splitter = TextUtils.SimpleStringSplitter(':')
+        splitter.setString(enabled)
+        while (splitter.hasNext()) {
+            if (splitter.next().equals(expected.flattenToString(), ignoreCase = true)) return true
+        }
+        return false
+    }
 }

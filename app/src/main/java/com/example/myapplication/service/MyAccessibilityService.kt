@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Path
 import android.graphics.Rect
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -44,8 +45,8 @@ class MyAccessibilityService : AccessibilityService(){
     private var snapshotJob: Job? = null
     private var lastFingerprint: String = ""
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-
-
+    private var ultimoTextoEscrito: String = "" +
+            ""
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.d("ACCES", "Accessibility conectado")
@@ -58,7 +59,6 @@ class MyAccessibilityService : AccessibilityService(){
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val eventType = event?.eventType ?: return
-
         // 1. Filtramos solo eventos que realmente signifiquen un cambio de acción del usuario
         val eventosClave = listOf(
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, // Cambio de App/Actividad
@@ -82,83 +82,74 @@ class MyAccessibilityService : AccessibilityService(){
     override fun onInterrupt() {}
 
     //broadcast para recivir acciones
-    private val actionsReceiver = object : BroadcastReceiver(){
+    private val actionsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            //objetenmos el json desde jaractivity
-            val json = intent?.getStringExtra("actions_json")?: return
-            //capturamos el texxto y la inencio original
+            val json = intent?.getStringExtra("actions_json") ?: return
             textoUltimaOrden = intent.getStringExtra("texto_original") ?: "orden sin texto"
-            intencionUltimaOrden = intent.getStringExtra("intencion_original") ?: "intencion_desconocida"
-            Log.d("ACCESS", "broadcast recibido $json")
-            if (!json.isNullOrBlank()){
+            intencionUltimaOrden = intent.getStringExtra("intencion_original") ?: "desconocida"
+
+            Log.d("ACCESS", "📨 Broadcast recibido: $json")
+
+            // ── CRÍTICO: ejecutar SIEMPRE en el Main Looper ──────────────
+            // Sin esto, los gestos de accesibilidad fallan silenciosamente
+            handler.post {
                 ejecutarAcciones(json)
             }
-
         }
     }
 
-    private fun actualizarSnapDePantalla(){
-        //si no hay evento activo no podemos hacer nada
+    private fun actualizarSnapDePantalla(force: Boolean = false) {
         val root = rootInActiveWindow ?: return
+        val currentFingerprint = "${root.packageName}-${root.childCount}-${System.currentTimeMillis() / 500}"
+
+        if (!force && currentFingerprint == lastFingerprint) {
+            Log.d("ACCESS", "Snapshot igual, skip")
+            return
+        }
+        lastFingerprint = currentFingerprint
+
         val elementos = mutableListOf<ScreenElement>()
-        //infromacion de la app que el usuario esta viendo
-        val packageManager = root.packageName?.toString()?: "unknown"
+        val packageName = root.packageName?.toString() ?: "unknown"
         val activityName = root.className?.toString()
         var clickableCount = 0
         var editableCount = 0
         var scrollableCount = 0
-        // Generamos una "firma" rápida de la pantalla actual (puedes usar el texto de los primeros 5 elementos)
-        // Creamos una huella rápida basada en la cantidad de hijos y el paquete
-        val currentFingerprint = "${root.packageName}-${root.childCount}"
-        if (currentFingerprint == lastFingerprint) return
-        lastFingerprint = currentFingerprint
-        /**
-         * FUNCIÓN RECURSIVA: Se llama a sí misma para entrar en cada "capa" de la UI
-         * @param nodo: El elemento actual que estamos analizando
-         * @param profundidad: Límite para evitar bucles infinitos o excesivos (max 20)
-         */
-        fun escanearNodo(nodo: AccessibilityNodeInfo?, profundidad: Int = 0){
+
+        fun escanearNodo(nodo: AccessibilityNodeInfo?, profundidad: Int = 0) {
             if (nodo == null || profundidad > 20) return
-            //filtro para que el servicio no se vea a si mismo ignoramos elementos
+
             val viewId = nodo.viewIdResourceName ?: ""
             if (viewId.contains("transcriptionTextView") ||
                 viewId.contains("jarvisOrb") ||
-                viewId.contains("overlayOrb") ||  // ignorar orbe flotante
+                viewId.contains("overlayOrb") ||
                 viewId.contains("overlayTranscription") ||
-                viewId.contains("micButton")) {
-                return
-            }
-            //obtenemos texto y tipo de vistas como boton imagen text etc
+                viewId.contains("micButton")) return
+
             val text = nodo.text?.toString()
             val contentDesc = nodo.contentDescription?.toString()
             val hint = nodo.hintText?.toString()
             val className = nodo.className?.toString()
-
-            //otbenemos la geometriia dodne esta el elemento fisicamente
             val bounds = Rect()
             nodo.getBoundsInScreen(bounds)
 
-            //capacidades
-            val isClickable = nodo.isClickable
+            val isClickable    = nodo.isClickable
             val isLongClickable = nodo.isLongClickable
-            val isCheckable = nodo.isCheckable
-            val isChecked = nodo.isChecked
-            val isFocusable = nodo.isFocusable
-            val isEditable = nodo.isEditable
-            val isPassword = nodo.isPassword
-            val isEnabled = nodo.isEnabled
-            val isScrollable = nodo.isScrollable
+            val isCheckable    = nodo.isCheckable
+            val isChecked      = nodo.isChecked
+            val isFocusable    = nodo.isFocusable
+            val isEditable     = nodo.isEditable
+            val isPassword     = nodo.isPassword
+            val isEnabled      = nodo.isEnabled
+            val isScrollable   = nodo.isScrollable
 
-            // 6. CONTEXTO SEMÁNTICO: Miramos quién es el "padre" y los "hermanos"
-            // Esto sirve para saber que un botón "Enviar" pertenece a un formulario específico
             val parentText = nodo.parent?.text?.toString()
             val siblingTexts = mutableListOf<String>()
             nodo.parent?.let { parent ->
-                for (i in 0 until parent.childCount){
-                    parent.getChild(i)?.text?.toString()?.let {siblingTexts.add(it)}
+                for (i in 0 until parent.childCount) {
+                    parent.getChild(i)?.text?.toString()?.let { siblingTexts.add(it) }
                 }
             }
-            // LISTA DE ACCIONES: Creamos un resumen de lo que se puede hacer
+
             val actions = mutableListOf<String>()
             if (isClickable) actions.add("click")
             if (isLongClickable) actions.add("long_click")
@@ -166,16 +157,14 @@ class MyAccessibilityService : AccessibilityService(){
             if (isEditable) actions.add("set_text")
             if (isCheckable) actions.add("toggle")
 
-            //calculo de relevancia
-            val importance = ScreenElement.calculateImportance(isClickable,text ,contentDesc, className)
-            val visibility = if (nodo.isVisibleToUser)"visible" else "invisible"
+            val importance = ScreenElement.calculateImportance(isClickable, text, contentDesc, className)
+            val visibility = if (nodo.isVisibleToUser) "visible" else "invisible"
 
-            //decicion de uardado y guardamos si tien etexto o si es alg con lo que se peuda interactuar
             val tieneContenido = !text.isNullOrBlank() || !contentDesc.isNullOrBlank() || !hint.isNullOrBlank()
             val esInteractivo = isClickable || isEditable || isCheckable || isScrollable
 
             if (tieneContenido || esInteractivo) {
-                val elemento = ScreenElement(
+                elementos.add(ScreenElement(
                     id = UUID.randomUUID().toString(),
                     viewId = viewId.takeIf { it.isNotBlank() },
                     className = className,
@@ -200,23 +189,21 @@ class MyAccessibilityService : AccessibilityService(){
                     availableActions = actions,
                     importance = importance,
                     visibility = visibility
-                )
-                elementos.add(elemento)
-                //sumamos a ls contadores globales del sanpshot
-                if (isCheckable) clickableCount++
+                ))
+                if (isClickable) clickableCount++
                 if (isEditable) editableCount++
-                if (isScrollable)scrollableCount++
-
+                if (isScrollable) scrollableCount++
             }
-            //recursividad y buscamos a lso hijos de este nodo
-            for (i in 0 until nodo.childCount){
+
+            for (i in 0 until nodo.childCount) {
                 escanearNodo(nodo.getChild(i), profundidad + 1)
             }
         }
-        escanearNodo(root)//ejecutamos el escaneo desde la raiz
-        val elementosUtiles = elementos.filter{
-            it.isClickable || it.isEditable|| it.importance > 60
-        }
+
+        escanearNodo(root)
+
+        val elementosUtiles = elementos.filter { it.isClickable || it.isEditable || it.importance > 60 }
+
         lastSnapshot = ScreenSnapshot(
             timestamp = System.currentTimeMillis(),
             packageName = packageName,
@@ -227,9 +214,10 @@ class MyAccessibilityService : AccessibilityService(){
             editableElements = editableCount,
             scrollableContainers = scrollableCount
         )
-        // Actualizar memoria global para que JarvisVoiceController la lea
+
         com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
         com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot!!.toContextList()
+
         Log.d("JARVIS_SNAPSHOT", "╔════════ SNAPSHOT ACTUALIZADO ════════╗")
         Log.d("JARVIS_SNAPSHOT", "║ APP: $packageName")
         Log.d("JARVIS_SNAPSHOT", "║ ELEMENTOS: ${elementosUtiles.size}")
@@ -241,52 +229,33 @@ class MyAccessibilityService : AccessibilityService(){
      * Búsqueda inteligente de elementos
      * Reemplaza tu lógica de fuzzy matching básica
      */
-    private fun buscarElementoPorTexto(textoBuscado: String): ScreenElement?{
-        //verificamos si tenemos la info de la pantalla o s i no la creamo s
-        val snapshot = lastSnapshot ?: run {
-            actualizarSnapDePantalla()
-            lastSnapshot
-        }?: return null //si despeus de iintentar sigue siendo null salimo s
+    private fun buscarElementoPorTexto(textoBuscado: String): ScreenElement? {
+        val snapshot = lastSnapshot ?: run { actualizarSnapDePantalla(); lastSnapshot } ?: return null
         val normalizado = textoBuscado.lowercase().trim()
-        //busqueda en cascada
-        //1 cocidencia exata en el texto que ve el usuario
-        snapshot.elements.find {
-            it.text?.lowercase() == normalizado
-        }?.let { return  it }
-        //2 cocidencia exata en la desciccion
-        snapshot.elements.find {
-            it.contentDescription?.lowercase() == normalizado
-        }?.let{return  it}
-        //3concidencia parfcial
-        // Aquí usa la función getSearchableText() que procesa IDs y texto del padre.
-        snapshot.elements.find { elem ->
-            elem.getSearchableText().contains(normalizado)
-        }?.let{return  it}
 
-        //4 busqueda difusa fuzzy matching si nada coicidio buscamos lo que mas se paresca utilziando matematicas
-        val candidatos = snapshot.elements
-            .filter { it.isClickable || it.isEditable } // Solo nos interesan cosas interactivas
-            .map { elem ->
-                // Comparamos qué tan parecidos son el texto buscado y el del elemento
-                val similarity = calcularSimilitud(normalizado, elem.getSearchableText())
-                elem to similarity
-            }
-            .filter { it.second > 0.6 } // Solo aceptamos si se parecen más de un 60%
-            .sortedByDescending { it.second } // Ponemos el más parecido primero
-
-        return candidatos.firstOrNull()?.first
+        // 1. Coincidencia exacta en texto
+        snapshot.elements.find { it.text?.lowercase() == normalizado }?.let { return it }
+        // 2. Coincidencia exacta en contentDescription
+        snapshot.elements.find { it.contentDescription?.lowercase() == normalizado }?.let { return it }
+        // 3. Contiene el texto buscado
+        snapshot.elements.find { (it.text?.lowercase() ?: "").contains(normalizado) }?.let { return it }
+        // 4. Búsqueda en texto combinado
+        snapshot.elements.find { it.getSearchableText().contains(normalizado) }?.let { return it }
+        // 5. Fuzzy matching ≥ 60%
+        return snapshot.elements
+            .filter { it.isClickable || it.isEditable }
+            .map { it to calcularSimilitud(normalizado, it.getSearchableText()) }
+            .filter { it.second > 0.6 }
+            .maxByOrNull { it.second }
+            ?.first
     }
 
     //calcular el porcentaje de similitud entre 0.0 y 1.0
-    private fun calcularSimilitud(s1: String, s2:String):Double{
-        val longer = if (s1.length > s2.length) s1 else s2
-        val shorter = if (s1.length >s2.length) s2 else s1
-
-        if (longer.isEmpty()) return  1.0
-        //formula (largoTtoal - Errores) / largoTotal
-        val longerLength = longer.length
-        val editDistance = calcularLevenshtein(longer, shorter)
-        return (longerLength - editDistance)/ longerLength.toDouble()
+    private fun calcularSimilitud(s1: String, s2: String): Double {
+        val longer  = if (s1.length > s2.length) s1 else s2
+        val shorter = if (s1.length > s2.length) s2 else s1
+        if (longer.isEmpty()) return 1.0
+        return (longer.length - calcularLevenshtein(longer, shorter)) / longer.length.toDouble()
     }
     /**
      * Algoritmo de Levenshtein:
@@ -294,23 +263,16 @@ class MyAccessibilityService : AccessibilityService(){
      * se necesitan para convertir una palabra en otra.
      */
     private fun calcularLevenshtein(s1: String, s2: String): Int {
-        //se crea yuuna matriz para comprar cada letra de s1 con cada letra de s2
-        val dp = Array(s1.length + 1 ){ IntArray(s2.length + 1) }
-        for (i in 0..s2.length) dp[i][0] = i
+        val dp = Array(s1.length + 1) { IntArray(s2.length + 1) }
+        for (i in 0..s1.length) dp[i][0] = i
         for (j in 0..s2.length) dp[0][j] = j
-
-        for (i in 1..s1.length){
-            for (j in 1..s2.length){
-                val cost = if (s1[i-1] == s2[j -1])0 else 1
-                //buscamos el camino minimo
-                dp[i][j] = minOf(
-                    dp[i - 1 ][j] + 1,//borrar
-                    dp[i][j - 1]+1,//insertar
-                    dp[i - 1][j - 1] + cost//cambiar letra
-                )
+        for (i in 1..s1.length) {
+            for (j in 1..s2.length) {
+                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
+                dp[i][j] = minOf(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
             }
         }
-        return  dp [s1.length][s2.length]
+        return dp[s1.length][s2.length]
     }
     private var currentActions: List<ActionDto>? = null
     private var currentIndex = 0
@@ -324,57 +286,248 @@ class MyAccessibilityService : AccessibilityService(){
             }
             val accion = actions[currentIndex++]
             var waitTime = 1000L // Tiempo por defecto para clics y scroll
-            Log.d("ACCESS", "Ejecutando acción [${currentIndex-1}]: ${accion.tipo}")
             var exitoAccion = true
             var detalleError: String? = null
+            Log.d("ACCESS_EXEC", "┌─ Acción [${currentIndex-1}/${actions.size}] ─────────────")
+            Log.d("ACCESS_EXEC", "│  tipo   : ${accion.tipo}")
+            Log.d("ACCESS_EXEC", "│  params : ${accion.params}")
+            Log.d("ACCESS_EXEC", "└────────────────────────────────────────────────────")
             when (accion.tipo) {
+                "android_intent" -> {
+                    val intentAction = accion.action ?: accion.params?.get("action") as? String ?: "android.intent.action.VIEW"
+                    val androidIntent = Intent(intentAction).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+                        val dataUri = accion.data ?: accion.params?.get("data") as? String
+                        if (!dataUri.isNullOrBlank()) data = Uri.parse(dataUri)
+
+                        val pkg = accion.pkg ?: accion.params?.get("package") as? String
+                        if (!pkg.isNullOrBlank()) setPackage(pkg)
+
+                        val comp = accion.component ?: accion.params?.get("component") as? String
+                        if (!comp.isNullOrBlank()) {
+                            val parts = comp.split("/")
+                            if (parts.size == 2) setClassName(parts[0], parts[1])
+                        }
+
+                        val mime = accion.mimeType ?: accion.params?.get("mime_type") as? String
+                        if (!mime.isNullOrBlank()) type = mime
+
+                        val extras = accion.extras ?: @Suppress("UNCHECKED_CAST") (accion.params?.get("extras") as? Map<String, Any>)
+                        extras?.forEach { (key, value) ->
+                            when (value) {
+                                is String  -> putExtra(key, value)
+                                is Int     -> putExtra(key, value)
+                                is Boolean -> putExtra(key, value)
+                                is Double  -> putExtra(key, value.toString())
+                                else       -> putExtra(key, value.toString())
+                            }
+                        }
+                    }
+                    try {
+                        this@MyAccessibilityService.startActivity(androidIntent)
+                        Log.d("ACCESS_EXEC", "  ✅ Intent lanzado: $intentAction")
+                        exitoAccion = true
+                        waitTime = 300L  // mínimo para que Android procese el intent
+                    } catch (e: Exception) {
+                        Log.e("ACCESS_EXEC", "  ❌ Intent falló: ${e.message}")
+                        val pkg = accion.pkg ?: accion.params?.get("package") as? String
+                        if (!pkg.isNullOrBlank()) {
+                            ActionExecutor.openApp(this@MyAccessibilityService, pkg)
+                            Log.w("ACCESS_EXEC", "  🔄 Fallback a open_app: $pkg")
+                            waitTime = 500L
+                        } else {
+                            exitoAccion = false
+                            detalleError = "Intent falló y sin package: ${e.message}"
+                        }
+                    }
+                }
+                "adjust_volume", "adjust_brightness" -> {
+                    val direction = accion.params?.get("direction") as? String ?: "up"
+                    val steps = when (val raw = accion.params?.get("steps")) {
+                        is Number -> raw.toInt().coerceIn(1, 15)
+                        is String -> raw.toIntOrNull()?.coerceIn(1, 15) ?: 1
+                        else -> 1
+                    }
+                    val audioManager = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+                    val flag = android.media.AudioManager.FLAG_SHOW_UI
+                    val adjustFlag = if (direction == "up") android.media.AudioManager.ADJUST_RAISE
+                    else android.media.AudioManager.ADJUST_LOWER
+                    repeat(steps) { audioManager.adjustVolume(adjustFlag, if (it == 0) flag else 0) }
+                    Log.d("ACCESS_EXEC", "  ✅ Volumen ${direction} x$steps")
+                    exitoAccion = true
+                    waitTime = 200L
+                }
+                // Dentro del when(accion.tipo) en stepRunnable, AGREGA estos casos:
+                "send_whatsapp" -> {
+                    val contact = accion.params?.get("contact") as? String ?: ""
+                    val message = accion.params?.get("message") as? String ?: ""
+                    Log.d("ACCESS", "📱 send_whatsapp → contacto='$contact' mensaje='$message'")
+                    ActionExecutor.sendWhatsAppMessage(this@MyAccessibilityService, contact, message)
+                    waitTime = 4000L  // dar tiempo a que WhatsApp abra el chat
+                }
+
+                "send_sms" -> {
+                    val contact = accion.params?.get("contact") as? String ?: ""
+                    val message = accion.params?.get("message") as? String ?: ""
+                    Log.d("ACCESS", "💬 send_sms → contacto='$contact' mensaje='$message'")
+                    ActionExecutor.sendSms(this@MyAccessibilityService, contact, message)
+                    waitTime = 2000L
+                }
+
+                "call_contact" -> {
+                    val contact = accion.params?.get("contact") as? String ?: ""
+                    Log.d("ACCESS", "📞 call_contact → contacto='$contact'")
+                    ActionExecutor.callContact(this@MyAccessibilityService, contact)
+                    waitTime = 3000L
+                }
                 "open_app" -> {
                     val pkg = accion.params?.get("package") as? String ?: ""
-                    val intentApp = packageManager.getLaunchIntentForPackage(pkg)
-                    if (intentApp == null) {
-                        exitoAccion = false
-                        detalleError = "La app con paquete $pkg no está instalada."
-                    } else {
-                        ActionExecutor.openApp(this@MyAccessibilityService, pkg)
-                        waitTime = 2000L
-                    }
+                    ActionExecutor.openApp(this@MyAccessibilityService, pkg)
+
+                    // ─── CRÍTICO: resetear fingerprint y forzar re-scan
+                    // La app nueva cargará y disparará onAccessibilityEvent,
+                    // pero forzamos también un escaneo manual tras 2.5s
+                    waitTime = 2500L
+                    handler.postDelayed({
+                        lastFingerprint = ""          // fuerza re-scan ignorando caché
+                        actualizarSnapDePantalla()
+                        Log.d("ACCESS", "Re-scan forzado post open_app de $pkg")
+                    }, 2000L)
                 }
                 "global_action" -> {
+                    Log.d("ACCESS_EXEC", "  → global_action: ${accion.params?.get("action")}")
                     ejecutarAccionGlobal(accion.params)
-                    waitTime = 1000L
+                    waitTime = 800L
                 }
                 "scroll" -> {
-                    Log.d("ACCESS", "Ejecutando Scroll ahora que la app debería estar lista")
-                    scroll(accion.params)
-                    exitoAccion= true
-                    waitTime = 1500L
+                    val direction = accion.params?.get("direction") as? String ?: "down"
+                    scroll(direction)
+                    waitTime = 1200L
                 }
-                "tap" -> tapCoordenadas(accion.params)
+                "tap" -> {
+                    Log.d("ACCESS_EXEC", "  → tap coords: x=${accion.params?.get("x")} y=${accion.params?.get("y")}")
+                    tapCoordenadas(accion.params)
+                    waitTime = 1000L
+                }
                 "ocr_tap" -> {
                     val textoABuscar = accion.params?.get("texto") as? String ?: ""
+                    // Si el snapshot es viejo (>3s), forzar re-scan antes de buscar
+                    // ─── CONFIRMACIÓN ANTES DE ENVIAR ───────────────────
+                    val esBotoEnviar = textoABuscar.lowercase() in setOf(
+                        "enviar", "send", "enviar mensaje", "enviar ahora",
+                        "enviar mensaje de voz", "enviar ahora", "submit",
+                    )
+                    if (esBotoEnviar && ultimoTextoEscrito.isNotBlank()) {
+                        pausarParaConfirmacion(textoABuscar)
+                        return   // ← NO avanza; el callback lo reanuda o cancela
+                    }
+                    val snapshotAge = System.currentTimeMillis() - (lastSnapshot?.timestamp ?: 0)
+                    if (snapshotAge > 3000L || lastSnapshot == null) {
+                        lastFingerprint = ""
+                        actualizarSnapDePantalla()
+                        Log.d("ACCESS", "Re-scan forzado antes de ocr_tap '$textoABuscar'")
+                    }
                     val elemento = buscarElementoPorTexto(textoABuscar)
                     if (elemento != null) {
-                        Log.d("ACCESS","elemtno encontrado: ${elemento.getSearchableText()}")
-                        tapCoordenadas(mapOf(
-                            "x" to elemento.centerX,
-                            "y" to elemento.centerY
-                        ))
-                    }else{
+                        Log.d("ACCESS", "ocr_tap: encontrado '${elemento.getSearchableText()}'")
+                        tapCoordenadas(mapOf("x" to elemento.centerX, "y" to elemento.centerY))
+                    } else {
+                        Log.w("ACCESS", "ocr_tap: '$textoABuscar' NO encontrado")
                         exitoAccion = false
-                        detalleError = "Elemento '$textoABuscar' no encontrado en pantalla"
+                        detalleError = "Elemento '$textoABuscar' no visible en pantalla"
                     }
+                    waitTime = 1000L
                 }
-                "type_text" -> escribirTexto(accion.params)
-            }
-            val resultadoFinal = if (exitoAccion) "EXITO" else "ERROR"
-            reportarAlServidor(textoUltimaOrden, intencionUltimaOrden, actions, exitoAccion, detalleError)
+                "type_text" -> {
+                    val texto = accion.params?.get("texto") as? String ?: ""
+                    ultimoTextoEscrito = texto          // guardamos para confirmación
+                    escribirTexto(accion.params)
+                    waitTime = 800L
+                }
 
-            Log.d("JARVIS_LEARNING", "Reporte enviado: $resultadoFinal | Error: $detalleError")
-             // Programamos la siguiente acción con el tiempo de espera calculado
+                // ─── NUEVO: open_notification / reply_notification ─────
+                "open_notification" -> {
+                    val pkg = accion.params?.get("package") as? String ?: ""
+                    JarvisNotificationListener.openNotification(this@MyAccessibilityService, pkg)
+                    waitTime = 1200L
+                }
+
+                "reply_notification" -> {
+                    val pkg   = accion.params?.get("package") as? String ?: ""
+                    val texto = accion.params?.get("texto") as? String ?: ""
+                    if (texto.isNotBlank()) {
+                        JarvisNotificationListener.replyToNotification(pkg, texto)
+                    }
+                    waitTime = 1000L
+                }
+
+            }
+             reportarAlServidor(textoUltimaOrden, intencionUltimaOrden, actions, exitoAccion, detalleError)
+              // Programamos la siguiente acción con el tiempo de espera calculado
             handler.postDelayed(this, waitTime)
         }
     }
-//    private fun realizarTapPorTextoConRetorno(texto: String): Boolean {
+
+    // ── Pausa la cadena y pide confirmación por voz ──────────────────
+    private fun pausarParaConfirmacion(textoBoton: String) {
+        val mensaje = ultimoTextoEscrito
+        val pregunta = "¿Enviar el mensaje: $mensaje?"
+        Log.d("ACCESS", "Confirmación pendiente: '$pregunta'")
+
+        // Callback que retoma o cancela la cadena según el usuario responda
+        ActionExecutor.onConfirmacionPendiente = { confirmado ->
+            if (confirmado) {
+                Log.d("ACCESS", "Confirmado → ejecutando tap Enviar")
+                val elemento = buscarElementoPorTexto(textoBoton)
+                if (elemento != null) {
+                    tapCoordenadas(mapOf("x" to elemento.centerX, "y" to elemento.centerY))
+                }
+                ultimoTextoEscrito = ""
+                handler.postDelayed(stepRunnable, 800L)    // continúa la cadena
+            } else {
+                Log.d("ACCESS", "Cancelado por el usuario")
+                ultimoTextoEscrito = ""
+                currentActions = null                       // cancela todo
+            }
+        }
+
+        // Broadcast al JarvisVoiceController para que pregunte por voz
+        val intent = Intent("JARVIS.PEDIR_CONFIRMACION").apply {
+            putExtra("pregunta", pregunta)
+            setPackage(packageName)
+        }
+        sendBroadcast(intent)
+    }
+    /**
+     * Extrae el nombre del contacto de una frase como:
+     * "llama a hermana" → "hermana"
+     * "puedes llamar a mamá" → "mamá"
+     * "llama al 911" → "911"
+     */
+    private fun extraerNombreDeTexto(texto: String): String {
+        val t = texto.lowercase().trim()
+        // Patrones comunes de llamada
+        val patrones = listOf(
+            Regex("llam(?:a|ar) al? (.+)"),
+            Regex("llam(?:a|ar) (?:a )?(?:mi )?(.+)"),
+            Regex("comunica(?:me)? con (.+)"),
+            Regex("marca(?:r)? (?:a )?(.+)"),
+            Regex("(?:puedes? )?llam(?:a|ar) (?:a )?(?:mi )?(.+)")
+        )
+        for (patron in patrones) {
+            val match = patron.find(t)
+            if (match != null) {
+                return match.groupValues[1]
+                    .replace(Regex("^(a |mi |al )"), "")
+                    .trim()
+            }
+        }
+        // Si no matchea ningún patrón, devolvemos el texto limpio
+        return t.replace(Regex("^(llama a |llama al |llama |llamar a )"), "").trim()
+    }
+    private var retryCount = 0
+    //    private fun realizarTapPorTextoConRetorno(texto: String): Boolean {
 //        val root = rootInActiveWindow ?: return false
 //        val nodes = root.findAccessibilityNodeInfosByText(texto)
 //
@@ -394,70 +547,103 @@ private fun ejecutarAcciones(json: String){
     handler.removeCallbacks(stepRunnable)
 
     val listType = object : TypeToken<List<ActionDto>>() {}.type
-    currentActions = Gson().fromJson(json, listType)
+        currentActions = Gson().fromJson(json, listType)
+        currentIndex = 0
+        retryCount = 0  // ✅ reset
     //si el json esta bacio excane ala pantalla
     if (currentActions.isNullOrEmpty()){
         Log.d("ACCESS","iniciadno escaneo de pantalla")
         actualizarSnapDePantalla()
-       lastSnapshot?.let { snapshot ->
-           Log.i("ACCESS", "Elementos detectados: ${snapshot.totalElements}")
-           snapshot.elements.take(10).forEach { elem ->
-               Log.i("ACCESS", "  - ${elem.getSearchableText()} [${elem.className}]")
-           }
-       }
+        lastSnapshot?.elements?.take(10)?.forEach {
+            Log.i("ACCESS", "  · ${it.getSearchableText()} [${it.className}]")
+        }
     }else{
-        currentIndex = 0
+        Log.d("ACCESS_EXEC", "▶ Iniciando secuencia de ${currentActions!!.size} acciones")
+        currentActions!!.forEachIndexed { i, a ->
+            Log.d("ACCESS_EXEC", "  [$i] ${a.tipo} → ${a.params}")
+        }
         handler.post(stepRunnable)
     }
 }
     private fun ejecutarAccionGlobal(params: Map<String, Any>?) {
         val actionType = params?.get("action") as? String ?: return
-        Log.d("ACCESS", "🌍 Acción Global: $actionType")
         val globalAction = when (actionType) {
-            "home" -> AccessibilityService.GLOBAL_ACTION_HOME
-            "back" -> AccessibilityService.GLOBAL_ACTION_BACK
-            "notifications" -> AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
-            "recents" -> AccessibilityService.GLOBAL_ACTION_RECENTS
-            else -> -1
+            "home"          -> GLOBAL_ACTION_HOME
+            "back"          -> GLOBAL_ACTION_BACK
+            "notifications" -> GLOBAL_ACTION_NOTIFICATIONS
+            "recents"       -> GLOBAL_ACTION_RECENTS
+            else            -> { Log.w("ACCESS", "Acción global desconocida: $actionType"); return }
         }
-        if (globalAction != -1) {
-            performGlobalAction(globalAction)
-        }
+        performGlobalAction(globalAction)
+        Log.d("ACCESS_EXEC", "  ✅ Global action ejecutada: $actionType")
     }
 
 
-    fun scroll(params: Map<String, Any>?) {
+    fun scroll(direction: String) {
         val metrics = resources.displayMetrics
         val x = metrics.widthPixels / 2f
-        val yStart = metrics.heightPixels * 0.8f
-        val yEnd = metrics.heightPixels * 0.3f // Un poco más corto para mayor precisión
 
-        val path = android.graphics.Path()
-        path.moveTo(x, yStart)
-        path.lineTo(x, yEnd)
+        // down: arrastra de abajo hacia arriba (contenido sube)
+        // up:   arrastra de arriba hacia abajo (contenido baja)
+        val (yStart, yEnd) = when (direction) {
+            "up"   -> Pair(metrics.heightPixels * 0.25f, metrics.heightPixels * 0.75f)
+            "down" -> Pair(metrics.heightPixels * 0.75f, metrics.heightPixels * 0.25f)
+            "left" -> Pair(metrics.widthPixels * 0.8f, metrics.widthPixels * 0.2f)
+            "right"-> Pair(metrics.widthPixels * 0.2f, metrics.widthPixels * 0.8f)
+            else   -> Pair(metrics.heightPixels * 0.75f, metrics.heightPixels * 0.25f)
+        }
 
-        val stroke = GestureDescription.StrokeDescription(path, 400, 500)
+        val isHorizontal = direction == "left" || direction == "right"
+        val path = Path().apply {
+            if (isHorizontal) {
+                moveTo(yStart, metrics.heightPixels / 2f)
+                lineTo(yEnd,   metrics.heightPixels / 2f)
+            } else {
+                moveTo(x, yStart)
+                lineTo(x, yEnd)
+            }
+        }
+
+        val stroke  = GestureDescription.StrokeDescription(path, 0L, 400L)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        ejecutarGesture(gesture)
+    }
+    private fun ejecutarGesture(gesture: GestureDescription) {
+        dispatchGesture(
+            gesture,
+            object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    Log.d("ACCESS", "Gesture completado")
+                }
 
-        dispatchGesture(gesture, object:GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) {
-                Log.d("ACCESS", "✅ Gesto de scroll completado físicamente")
-            }
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                Log.e("ACCESS", "❌ El sistema canceló el gesto de scroll")
-            }
-        }, null)
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    Log.e("ACCESS", "Gesture cancelado")
+                }
+            },
+            handler
+        )
     }
     private fun tapCoordenadas(params: Map<String, Any>?) {
-        val x = (params?.get("x") as? Number)?.toFloat() ?: return
-        val y = (params?.get("y") as? Number)?.toFloat() ?: return
+        val x = when (val raw = params?.get("x")) {
+            is Number -> raw.toFloat()
+            else -> { Log.w("ACCESS", "tapCoordenadas: 'x' nulo o tipo inválido"); return }
+        }
+        val y = when (val raw = params?.get("y")) {
+            is Number -> raw.toFloat()
+            else -> { Log.w("ACCESS", "tapCoordenadas: 'y' nulo o tipo inválido"); return }
+        }
 
+        val metrics = resources.displayMetrics
+        if (x < 0 || y < 0 || x > metrics.widthPixels || y > metrics.heightPixels) {
+            Log.e("ACCESS", "tapCoordenadas: coordenadas fuera de pantalla x=$x y=$y")
+            return
+        }
         val path = Path().apply { moveTo(x, y) }
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
-            .build()
-
-        dispatchGesture(gesture, null, null)
+        // Un tap es un trazo de duración muy corta (ej. 50ms)
+        val stroke = GestureDescription.StrokeDescription(path, 0L, 50L)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        // ─ SOLUCIÓN: Usar llaves { } para Unit y pasar el handler correctamente ──
+        ejecutarGesture(gesture)
     }
 //    private fun tapPorTexto(params: Map<String, Any>?) {
 //        val texto = params?.get("texto") as? String ?: return
@@ -473,29 +659,44 @@ private fun ejecutarAcciones(json: String){
 //            }
 //        }
 //    }
-    private fun escribirTexto (params: Map<String, Any>?){
-        //extraemos el texto que queremos escribir en el aprametro
-        val texto = params?.get("texto") as? String ?: return
-        //obtenemos la raiz de la ventana activa par apoder buscar el elemento
+private fun escribirTexto(params: Map<String, Any>?) {
+    val texto = params?.get("texto") as? String ?: return
+    val root = rootInActiveWindow ?: return
 
-        val root = rootInActiveWindow ?: return
-    //intentamos buscar que elemnto tien eel curso parpadeante
-    // FOCUS_INPUT busca específicamente campos de texto o áreas donde se puede escribir
-        val focusNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-
-    //y si encontrmaos un lugar donde escribit
-    if (focusNode != null){
-        // Los comandos de accesibilidad complejos usan un 'Bundle' para pasar datos
-        val arguments = Bundle()
-        arguments.putCharSequence(
-            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-            texto
-        )
-        //esto reeemplaza todo el texto qwue existe en el campo
-        //ejecuitamos la accion Le ordenamos al nodo que cambie su contenido por el nuevo texto
-        focusNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,arguments)
+    // Intento 1: campo con foco activo
+    val focusNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+    if (focusNode != null) {
+        val args = Bundle()
+        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto)
+        val ok = focusNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        Log.d("ACCESS_EXEC", "  ${if (ok) "✅" else "❌"} escribirTexto con foco: '$texto'")
+        return
     }
+    // Intento 2: buscar primer EditText y darle foco
+    Log.w("ACCESS_EXEC", "  ⚠️ Sin foco activo — buscando EditText en snapshot")
+    val editableNode = lastSnapshot?.elements?.firstOrNull { it.isEditable }
+    if (editableNode != null) {
+        Log.d("ACCESS_EXEC", "  → Tapando EditText en (${editableNode.centerX}, ${editableNode.centerY}) para dar foco")
+        tapCoordenadas(mapOf("x" to editableNode.centerX, "y" to editableNode.centerY))
+        // Escribir después de dar foco (600ms)
+        handler.postDelayed({
+            val rootRetry = rootInActiveWindow ?: return@postDelayed
+            val focusRetry = rootRetry.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focusRetry != null) {
+                val args = Bundle()
+                args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+                focusRetry.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto)
+                val ok = focusRetry.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                Log.d("ACCESS_EXEC", "  ${if (ok) "✅" else "❌"} escribirTexto retry: '$texto'")
+            } else {
+                Log.e("ACCESS_EXEC", "  ❌ Aún sin foco tras tap — no se pudo escribir '$texto'")
+            }
+        }, 600L)
+    } else {
+        Log.e("ACCESS_EXEC", "  ❌ No hay EditText en pantalla para escribir '$texto'")
     }
+}
 //    private fun intentarClick(node: AccessibilityNodeInfo?): Boolean {
 //        var tempNode = node
 //        while (tempNode != null) {

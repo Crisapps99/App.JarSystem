@@ -1,80 +1,141 @@
+// ARCHIVO: app/src/main/java/com/example/myapplication/activity/ActionExecutor.kt
+// REEMPLAZA tu ActionExecutor existente con este
 package com.example.myapplication.activity
 
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.provider.MediaStore
 import android.util.Log
-import androidx.activity.ComponentActivity // Mejor si trabajas con Activity o AppCompatActivity
+import com.example.myapplication.core.ContactsManager
+import com.example.myapplication.core.MessagingManager
 
-/**
- * Objeto singleton para ejecutar acciones específicas de Android.
- * Requiere un Context o Activity para lanzar Intents.
- */
 object ActionExecutor {
 
-    /**
-     * Abre la aplicación de la cámara por defecto del dispositivo.
-     * @param context El contexto desde donde se lanza el Intent.
-     * @return Un mensaje de resultado de la acción.
-     */
-    fun openApp(context: Context, packageName: String): Boolean{
-        fun goHome(context: Context) {
-            val intent = Intent(Intent.ACTION_MAIN)
-            intent.addCategory(Intent.CATEGORY_HOME)
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+    // Callback para cuando el usuario confirme o rechace
+    // Se setea desde MyAccessibilityService
+    var onConfirmacionPendiente: ((confirmado: Boolean) -> Unit)? = null
+
+    fun sendWhatsAppMessage(context: Context, contactName: String, message: String) {
+        val contact = ContactsManager.findContact(context, contactName)
+
+        if (contact == null) {
+            Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado")
+            openApp(context, "com.whatsapp")
+            return
+        }
+
+        var numero = contact.phoneNumber.replace(Regex("[^0-9+]"), "")
+        if (numero.startsWith("0") && !numero.startsWith("00")) {
+            numero = "593" + numero.substring(1)
+        }
+        numero = numero.replace("+", "")
+
+        Log.d("JARVIS_ACTION", "📱 Abriendo chat con ${contact.name} ($numero)")
+        Log.d("JARVIS_ACTION", "📱 Mensaje preparado: '$message'")
+
+        // Abrir WhatsApp con el mensaje pre-escrito en el campo de texto
+        val url = "https://api.whatsapp.com/send?phone=$numero&text=${Uri.encode(message)}"
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(intent)
+
+        // Después de 3s WhatsApp ya cargó el chat con el mensaje escrito
+        // → pedir confirmación por voz EN LUGAR de enviar automáticamente
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            _pedirConfirmacionEnvio(context, contact.name, message)
+        }, 3000)
+    }
+
+    // REEMPLAZA _pedirConfirmacionEnvio completo:
+    private fun _pedirConfirmacionEnvio(context: Context, nombreContacto: String, mensaje: String) {
+        // Guard: evitar doble disparo
+        if (onConfirmacionPendiente != null) {
+            Log.w("JARVIS_ACTION", "⚠️ Confirmación ya pendiente — ignorando duplicado")
+            return
+        }
+
+        Log.d("JARVIS_ACTION", "❓ Pidiendo confirmación de envío")
+
+        onConfirmacionPendiente = { confirmado ->
+            if (confirmado) {
+                Log.d("JARVIS_ACTION", "✅ Usuario confirmó → enviando mensaje")
+                _tapEnviarWhatsApp(context)
+            } else {
+                Log.d("JARVIS_ACTION", "❌ Usuario canceló → saliendo de WhatsApp")
+                _salirDeWhatsApp(context)
+            }
+            onConfirmacionPendiente = null
+        }
+
+        val intentConfirm = Intent("JARVIS.PEDIR_CONFIRMACION").apply {
+            putExtra("pregunta", "¿Enviar mensaje a $nombreContacto?")  // ← más corta
+            putExtra("tipo", "envio_mensaje")
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(intentConfirm)
+    }
+
+    private fun _tapEnviarWhatsApp(context: Context) {
+        val accion = com.example.myapplication.api.ActionDto(
+            tipo = "ocr_tap",
+            params = mapOf("texto" to "Enviar")
+        )
+        val intent = Intent("JARVIS.EXECUTE_ACTIONS").apply {
+            putExtra("actions_json", com.google.gson.Gson().toJson(listOf(accion)))
+            putExtra("texto_original", "enviar whatsapp confirmado")
+            putExtra("intencion_original", "send_whatsapp_confirmed")
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(intent)
+        Log.d("JARVIS_ACTION", "📤 Tap Enviar ejecutado")
+    }
+
+    private fun _salirDeWhatsApp(context: Context) {
+        val accion = com.example.myapplication.api.ActionDto(
+            tipo = "global_action",
+            params = mapOf("action" to "back")
+        )
+        val intent = Intent("JARVIS.EXECUTE_ACTIONS").apply {
+            putExtra("actions_json", com.google.gson.Gson().toJson(listOf(accion)))
+            putExtra("texto_original", "cancelar envio whatsapp")
+            putExtra("intencion_original", "cancel_send")
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(intent)
+        Log.d("JARVIS_ACTION", "↩️ Saliendo de WhatsApp")
+    }
+
+    // ── El resto de métodos sin cambios ───────────────────────────────────────
+    fun openApp(context: Context, packageName: String) {
+        if (MessagingManager.isAppInstalled(context, packageName)) {
+            context.packageManager.getLaunchIntentForPackage(packageName)
+                ?.apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
+                ?.let { context.startActivity(it) }
+        } else {
+            MessagingManager.openPlayStore(context, packageName)
+        }
+    }
+
+    fun sendSms(context: Context, contactName: String, message: String) {
+        val contact = ContactsManager.findContact(context, contactName)
+        if (contact != null) MessagingManager.openSmsChat(context, contact.phoneNumber, message)
+        else Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado para SMS")
+    }
+
+    fun callContact(context: Context, contactName: String) {
+        val emergencias = listOf("911", "emergencia", "emergencias", "policía",
+            "policia", "bomberos", "ambulancia", "auxilio")
+        if (emergencias.any { contactName.lowercase().contains(it) }) {
+            ContactsManager.makeCall(context, "911")
+            return
+        }
+        val contact = ContactsManager.findContact(context, contactName)
+        if (contact != null) {
+            ContactsManager.makeCall(context, contact.phoneNumber)
+        } else {
+            val intent = Intent(Intent.ACTION_DIAL).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
             context.startActivity(intent)
         }
-        return try {
-            val pm= context.packageManager
-            val launchIntent = pm.getLaunchIntentForPackage(packageName)
-            //si no ha inten para abri registra log y retnorna false
-            if (launchIntent == null){
-                Log.e("ActionExecutor","launchIntent NULL para $packageName")
-                return false
-            }
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(launchIntent)
-            true
-        }catch (e: Exception){
-            Log.e("ActionExecutor","Error abriendo $packageName:${e.message}")
-            false
-        }
     }
-    fun openCamera(context: Context): String {
-        return try {
-            val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-            // Es crucial verificar si hay alguna app que pueda manejar este Intent
-            if (cameraIntent.resolveActivity(context.packageManager) != null) {
-                // Si estás dentro de una Activity, es mejor usar startActivity
-                context.startActivity(cameraIntent)
-                "Cámara abierta exitosamente."
-            } else {
-                "Error: No se encontró una aplicación de cámara para abrir."
-            }
-        } catch (e: Exception) {
-            "Error al intentar abrir la cámara: ${e.message}"
-        }
-    }
-
-    /**
-     * Abre Google Maps en una ubicación genérica (0,0) como ejemplo.
-     * @param context El contexto desde donde se lanza el Intent.
-     * @return Un mensaje de resultado de la acción.
-     */
-    fun openMap(context: Context): String {
-        return try {
-            val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=Punto+de+interes"))
-            if (mapIntent.resolveActivity(context.packageManager) != null) {
-                context.startActivity(mapIntent)
-                "Mapa abierto exitosamente."
-            } else {
-                "Error: No se encontró una aplicación de mapas para abrir."
-            }
-        } catch (e: Exception) {
-            "Error al intentar abrir el mapa: ${e.message}"
-        }
-    }
-
-    // Puedes añadir más funciones como openBrowser(url: String), makeCall(number: String), etc.
 }

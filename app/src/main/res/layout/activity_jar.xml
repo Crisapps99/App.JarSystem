@@ -9,101 +9,148 @@
     android:background="@drawable/jar_gradient_background"
     tools:context=".activity.JarActivity">
 
+    <!-- Orbe principal — más grande, centrado en el tercio superior -->
     <com.example.myapplication.ui.JarvisOrbView
         android:id="@+id/jarvisOrb"
-        android:layout_width="220dp"
-        android:layout_height="220dp"
-        android:visibility="visible"
-        android:elevation="0dp"
-        android:translationZ="0dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_width="300dp"
+        android:layout_height="300dp"
+        android:visibility="invisible"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginBottom="-100dp"/>
-<TextView
-    android:id="@+id/titleWel"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:text="Hola"
-    android:textSize="32sp"
-    android:textStyle="bold"
-    android:textColor="@color/text_primary"
-    android:fontFamily="@font/googlesans"
-    android:elevation="10dp"
-    app:layout_constraintTop_toTopOf="parent"
-    app:layout_constraintStart_toStartOf="parent"
-    app:layout_constraintEnd_toEndOf="parent"
-    android:layout_marginTop="100dp"/>
+        app:layout_constraintVertical_bias="0.28"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginTop="0dp"/>
+
+    <!-- Nombre del asistente -->
     <TextView
-        android:id="@+id/instructionsText"
-        android:layout_width="0dp"
+        android:id="@+id/titleWel"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="32dp"
-        android:layout_marginEnd="32dp"
-        android:layout_marginTop="16dp"
-        android:text="Prueba diciendo:\n&quot;Hola Jarvis&quot;"
-        android:textSize="20sp"
-        android:textColor="@color/text_primary"
-        android:fontFamily="@font/googlesans"
-        android:gravity="center"
-        android:elevation="10dp"
-        android:lineSpacingExtra="4dp"
-        app:layout_constraintTop_toBottomOf="@id/titleWel"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
-    <TextView
-        android:id="@+id/transcriptionTextView"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="32dp"
-        android:layout_marginEnd="32dp"
-        android:layout_marginBottom="32dp"
-        android:text=""
-        android:textSize="16sp"
+        android:text="N E X U S"
+        android:textSize="28sp"
+        android:textStyle="bold"
         android:textColor="@color/white"
         android:fontFamily="@font/googlesans"
-        android:gravity="center"
-        android:elevation="10dp"
-        android:padding="16dp"
-        android:background="@drawable/transcription_background"
-        android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/jarvisOrb"
+        android:letterSpacing="0.25"
+        android:alpha="0"
+        app:layout_constraintTop_toBottomOf="@id/jarvisOrb"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="12dp"/>
+
+    <!-- Estado / subtítulo dinámico -->
     <TextView
         android:id="@+id/statusText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Esperando..."
-        android:textSize="14sp"
+        android:text="Asistente personal"
+        android:textSize="13sp"
         android:textColor="#80FFFFFF"
         android:fontFamily="@font/googlesans"
-        android:elevation="10dp"
-        android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/instructionsText"
+        android:letterSpacing="0.08"
+        android:alpha="0"
+        app:layout_constraintTop_toBottomOf="@id/titleWel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="24dp"/>
-<!--    <ImageView-->
-<!--        android:id="@+id/micButton"-->
-<!--        android:layout_width="84dp"-->
-<!--        android:layout_height="68dp"-->
-<!--        app:layout_constraintBottom_toBottomOf="parent"-->
-<!--        app:layout_constraintEnd_toEndOf="parent"-->
-<!--        app:layout_constraintStart_toStartOf="parent"-->
-<!--        app:layout_constraintTop_toTopOf="parent"-->
-<!--        app:srcCompat="@android:drawable/ic_btn_speak_now" />-->
+        android:layout_marginTop="6dp"/>
 
-<!--    <Button-->
-<!--        android:id="@+id/btnTestEyes"-->
-<!--        android:layout_width="wrap_content"-->
-<!--        android:layout_height="wrap_content"-->
-<!--        android:text="Probar APIs"-->
-<!--        android:layout_marginTop="16dp"-->
-<!--        app:layout_constraintBottom_toBottomOf="parent"-->
-<!--        app:layout_constraintHorizontal_bias="1.0"-->
-<!--        app:layout_constraintStart_toStartOf="parent"-->
-<!--        app:layout_constraintTop_toTopOf="parent"-->
-<!--        app:layout_constraintVertical_bias="0.884" />-->
+    <!-- Card de transcripción / presentación — profesional -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardTranscription"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:alpha="0"
+        app:cardCornerRadius="20dp"
+        app:cardBackgroundColor="#1AFFFFFF"
+        app:cardElevation="0dp"
+        app:layout_constraintBottom_toTopOf="@id/btnComenzar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="24dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- Indicador de estado (punto pulsante + label) -->
+            <LinearLayout
+                android:id="@+id/statusIndicatorRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+
+                <View
+                    android:id="@+id/statusDot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/status_dot_bg"
+                    android:layout_marginEnd="8dp"/>
+
+                <TextView
+                    android:id="@+id/statusLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="NEXUS"
+                    android:textSize="10sp"
+                    android:textColor="#4DEEE9"
+                    android:fontFamily="@font/googlesans"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.15"/>
+            </LinearLayout>
+
+            <!-- Texto principal transcrito / presentación -->
+            <TextView
+                android:id="@+id/transcriptionTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textSize="15sp"
+                android:textColor="@color/white"
+                android:fontFamily="@font/googlesans"
+                android:lineSpacingMultiplier="1.5"
+                android:minLines="2"/>
+
+            <!-- Instrucción secundaria -->
+            <TextView
+                android:id="@+id/instructionsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textSize="13sp"
+                android:textColor="#80FFFFFF"
+                android:fontFamily="@font/googlesans"
+                android:layout_marginTop="8dp"
+                android:lineSpacingMultiplier="1.4"
+                android:visibility="gone"/>
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Botón inicial "Conocer a Nexus" -->
+    <com.ncorti.slidetoact.SlideToActView
+        android:id="@+id/btnComenzar"
+        android:layout_width="0dp"
+        android:layout_height="68dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="48dp"
+        android:alpha="0"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:area_margin="6dp"
+        app:outer_color="#4D4DEEE9"
+        app:inner_color="#4DEEE9"
+        app:border_radius="35dp"
+        app:text="Conocer a Nexus"
+        app:text_size="15sp"
+        app:slider_icon="@drawable/ic_mic_vector"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

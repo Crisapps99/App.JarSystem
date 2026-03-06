@@ -35,10 +35,11 @@ class JarvisOverlayService : Service(), JarvisUi {
         CoroutineScope(Dispatchers.Main + SupervisorJob()) //maneja tareas en segundo plato
 
     private var porcupineManager: PorcupineManager? = null
-    private val ACCESS_key = "YMYKZrTBnmQeviXKwGY8rrXUiUlcHBC1ApCQwg6G99JrluupBCFbUg=="
+    private val ACCESS_KEY = "YMYKZrTBnmQeviXKwGY8rrXUiUlcHBC1ApCQwg6G99JrluupBCFbUg=="
     private var currentJarvisState: JarvisState = JarvisState.IDLE
     private var audioVisualizer: Visualizer? = null //captura el sonido del sistema
-
+    private val KEYWORD_FILE = "hey-nexus_es_android_v4_0_0.ppn"   // ← tu archivo
+    private val MODEL_FILE   = "porcupine_params_es.pv"
     private var isOrbVisible = true
     private var isSessionActive = true
     private var isInitialized = false
@@ -58,7 +59,23 @@ class JarvisOverlayService : Service(), JarvisUi {
             initializeService()
         }
     }
-
+    override fun setOrbVisibility(visible: Boolean) {
+        serviceScope.launch(Dispatchers.Main) {
+            if (visible) {
+                // Mostramos el orbe y su contenedor
+                overlayView?.visibility = View.VISIBLE
+                orbView?.visibility = View.VISIBLE
+                showOverlay() // Ejecuta la animación de entrada si la tienes
+            } else {
+                // Ocultamos el orbe
+                orbView?.visibility = View.GONE
+                // IMPORTANTE: También ocultamos el contenedor principal para que
+                // no intercepte los clics del Modo Visual
+                overlayView?.visibility = View.GONE
+                Log.d("JARVIS_OVERLAY", "Orbe y contenedor ocultos para Modo Visual")
+            }
+        }
+    }
     private fun initializeService() {
         if (isInitialized) {
             Log.w("JARVIS_OVERLAY", "Servicio ya inicializado, ignorando")
@@ -304,8 +321,9 @@ class JarvisOverlayService : Service(), JarvisUi {
             VoiceProcessor.getInstance()
                 .clearFrameListeners() // el voice processor est elimpio antes de empesar
             porcupineManager = PorcupineManager.Builder()
-                .setAccessKey(ACCESS_key)
-                .setKeyword(BuiltInKeyword.JARVIS)
+                .setAccessKey(ACCESS_KEY)
+                .setKeywordPath(KEYWORD_FILE)  // ← "Hey Nexus" en español
+                .setModelPath(MODEL_FILE)
                 .setSensitivity(0.7f)
                 .build(this) { keywordIndex ->
                     if (keywordIndex == 0 && isSessionActive) {
@@ -313,19 +331,18 @@ class JarvisOverlayService : Service(), JarvisUi {
                     }
                 }
             //escucha pasiva mueve liegramente el orbe
-            val voiceProcessor = VoiceProcessor.getInstance()
-            voiceProcessor.addFrameListener { frame ->
-                val rms = calculateRMS(frame) //calcula el volcumen actual
+            VoiceProcessor.getInstance().addFrameListener { frame ->
+                val rms = calculateRMS(frame)
                 if (currentJarvisState == JarvisState.IDLE) {
-                    orbView?.post {
-                        orbView?.updateRms(rms)
-                    }
+                    orbView?.post { orbView?.updateRms(rms) }
                 }
             }
             porcupineManager?.start()
-            Log.d("JARVIS_OVERLAY", "Porcupine iniciado en el servicio")
+            Log.i("JARVIS_OVERLAY", "✅ Porcupine escuchando 'Hey Nexus'")
+        } catch (e: PorcupineException) {
+            Log.e("JARVIS_OVERLAY", "❌ PorcupineException: ${e.message}")
         } catch (e: Exception) {
-            Log.e("JARVIS", "Error al iniciar Porcupine")
+            Log.e("JARVIS_OVERLAY", "❌ Error Porcupine: ${e.message}")
         }
     }
 
@@ -401,8 +418,17 @@ class JarvisOverlayService : Service(), JarvisUi {
     }
 
     override fun showText(text: String) {
-        // Verificar si el usuario dijo "salir"
-        if (text.lowercase().contains("salir")) {
+
+        // Solo cerrar sesión si dice exactamente "salir" sin contexto de modo visual
+        val t = text.lowercase().trim()
+        val esSalidaModoVisual = listOf(
+            "salir de modo visual", "salir modo visual",
+            "desactivar modo visual", "cerrar modo visual",
+            "quitar modo visual"
+        ).any { t.contains(it) }
+
+        // Si es un comando de modo visual, no cerrar la sesión
+        if (!esSalidaModoVisual && (t == "salir" || t == "salir." || t == "adiós" || t == "adios")) {
             endSession()
             return
         }

@@ -13,147 +13,207 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.widget.Button
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.myapplication.R
 import com.example.myapplication.service.MyAccessibilityService
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
+import com.ncorti.slidetoact.SlideToActView
 
 class LoginActivity : AppCompatActivity() {
+
     private val OVERLAY_PERMISSION_CODE = 1000
+    private val MULTI_PERMISSION_CODE   = 200
+
+    private val colorActivo   = 0xFF1DE0A0.toInt()
+    private val colorInactivo = 0xFFE53935.toInt()
+
+    private lateinit var btnMicrofono:     Button
+    private lateinit var btnOverlay:       Button
+    private lateinit var btnAccesibilidad: Button
+    private lateinit var btnNotificaciones:Button
+    private lateinit var btnContactos:     Button
+    private lateinit var btnLlamadas:      Button
+    private lateinit var btnContinue:      SlideToActView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_login)
+
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(sys.left, sys.top, sys.right, sys.bottom)
             insets
         }
-        val inputLayout=findViewById<TextInputLayout>(R.id.nombreInput)
-        val btnContinue =findViewById<Button>(R.id.btnContinue)
-        val editText = findViewById<TextInputEditText>(R.id.NombreEditText)
 
-        //bloqueo del boton
-        btnContinue.isEnabled = false
-        btnContinue.alpha=0.5f
+        btnMicrofono      = findViewById(R.id.btnMicrofono)
+        btnOverlay        = findViewById(R.id.btnOverlay)
+        btnAccesibilidad  = findViewById(R.id.btnAccesibilidad)
+        btnNotificaciones = findViewById(R.id.btnNotificaciones)
+        btnContactos      = findViewById(R.id.btnContactos)
+        btnLlamadas       = findViewById(R.id.btnLlamadas)
+        btnContinue       = findViewById(R.id.btnContinue)
 
-        //validacion mientras escribe
-        editText.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        // ── Clicks permisos ──────────────────────────────────
 
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validarNombre(s.toString(), inputLayout, btnContinue)
+        btnMicrofono.setOnClickListener {
+            if (!tienePermiso(Manifest.permission.RECORD_AUDIO)) {
+                pedirPermisos(arrayOf(Manifest.permission.RECORD_AUDIO))
             }
-
-            override fun afterTextChanged(s: android.text.Editable?) {}
-        })
-
-        btnContinue.setOnClickListener{
-            checkPermissionsBeforeContinuing()
         }
 
-    }
-    private fun checkPermissionsBeforeContinuing() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 200)
-            return // Detenemos aquí hasta que el usuario acepte el micro
-        }
-        // Primero Superposición (Overlay)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            showOverlayPermissionDialog()
-        }
-        // Segundo Accesibilidad
-        else if (!isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) {
-            showAccessibilityDialog()
-        }
-        //  Si todo está bien, pasamos a JarActivity
-        else {
-            switchToActivity(
-                context = this@LoginActivity,
-                destinationActivity = JarActivity::class.java,
-                finishCurrent = true // Te recomiendo cerrar Login para no volver atrás
-            )
-        }
-    }
-    private fun showOverlayPermissionDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Permiso de Superposición")
-            .setMessage("Para que el orbe de Jarvis aparezca flotando sobre otras apps, activa el permiso 'Aparecer encima'.")
-            .setPositiveButton("Configurar") { _, _ ->
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
+        btnOverlay.setOnClickListener {
+            if (!tieneOverlay()) {
+                startActivityForResult(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")),
+                    OVERLAY_PERMISSION_CODE
                 )
-                startActivityForResult(intent, OVERLAY_PERMISSION_CODE)
             }
-            .setCancelable(false)
-            .show()
-    }
-    private fun showAccessibilityDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Servicio de Accesibilidad")
-            .setMessage("Jarvis necesita esto para entender qué pasa en tu pantalla. Busca 'MyAccessibilityService' y actívalo.")
-            .setPositiveButton("Ir a Ajustes") { _, _ ->
-                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                startActivity(intent)
+        }
+
+        btnAccesibilidad.setOnClickListener {
+            if (!tieneAccesibilidad()) {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
-            .setCancelable(false)
-            .show()
+        }
+
+        btnNotificaciones.setOnClickListener {
+            if (!tieneNotificaciones()) {
+                startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+            }
+        }
+
+        btnContactos.setOnClickListener {
+            if (!tienePermiso(Manifest.permission.READ_CONTACTS)) {
+                pedirPermisos(arrayOf(Manifest.permission.READ_CONTACTS))
+            }
+        }
+
+        btnLlamadas.setOnClickListener {
+            if (!tienePermiso(Manifest.permission.CALL_PHONE)) {
+                pedirPermisos(arrayOf(Manifest.permission.CALL_PHONE))
+            }
+        }
+
+        // ── SlideToAct ───────────────────────────────────────
+        btnContinue.onSlideCompleteListener = object : SlideToActView.OnSlideCompleteListener {
+            override fun onSlideComplete(view: SlideToActView) {
+                if (todosPermisosActivos()) {
+                    startActivity(Intent(this@LoginActivity, JarActivity::class.java))
+                    finish()
+                } else {
+                    view.resetSlider()
+                    mostrarQueFalta()
+                }
+            }
+        }
     }
-    // Cuando el usuario regresa de la pantalla de ajustes de Overlay
+
+    override fun onResume() {
+        super.onResume()
+        actualizarTodo()
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == OVERLAY_PERMISSION_CODE) {
-            // Re-evaluamos los permisos al volver
-            checkPermissionsBeforeContinuing()
+        if (requestCode == OVERLAY_PERMISSION_CODE) actualizarTodo()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        actualizarTodo()
+    }
+
+    // ── Checks ───────────────────────────────────────────────
+
+    private fun tienePermiso(p: String) =
+        ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
+
+    private fun tieneOverlay() =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
+
+    private fun tieneAccesibilidad() =
+        isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)
+
+    private fun tieneNotificaciones(): Boolean {
+        val enabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: ""
+        return enabled.contains(packageName)
+    }
+
+    private fun todosPermisosActivos() =
+        tienePermiso(Manifest.permission.RECORD_AUDIO) &&
+                tieneOverlay() &&
+                tieneAccesibilidad() &&
+                tieneNotificaciones() &&
+                tienePermiso(Manifest.permission.READ_CONTACTS) &&
+                tienePermiso(Manifest.permission.CALL_PHONE)
+
+    // ── UI ───────────────────────────────────────────────────
+
+    private fun actualizarTodo() {
+        setEstado(btnMicrofono,      tienePermiso(Manifest.permission.RECORD_AUDIO))
+        setEstado(btnOverlay,        tieneOverlay())
+        setEstado(btnAccesibilidad,  tieneAccesibilidad())
+        setEstado(btnNotificaciones, tieneNotificaciones())
+        setEstado(btnContactos,      tienePermiso(Manifest.permission.READ_CONTACTS))
+        setEstado(btnLlamadas,       tienePermiso(Manifest.permission.CALL_PHONE))
+        btnContinue.alpha = if (todosPermisosActivos()) 1f else 0.45f
+    }
+
+    private fun setEstado(btn: Button, activo: Boolean) {
+        if (activo) {
+            btn.text = "Activo ✓"
+            btn.backgroundTintList = android.content.res.ColorStateList.valueOf(colorActivo)
+            btn.isEnabled = false
+        } else {
+            btn.text = "Activar"
+            btn.backgroundTintList = android.content.res.ColorStateList.valueOf(colorInactivo)
+            btn.isEnabled = true
         }
     }
-    // Función auxiliar para saber si Accesibilidad está activo
-    private fun isAccessibilityServiceEnabled(context: Context, service: Class<out AccessibilityService>): Boolean {
-        val expectedComponentName = ComponentName(context, service)
-        val enabledServices = Settings.Secure.getString(
+
+    private fun pedirPermisos(perms: Array<String>) {
+        ActivityCompat.requestPermissions(this, perms, MULTI_PERMISSION_CODE)
+    }
+
+    private fun mostrarQueFalta() {
+        val msg = buildString {
+            if (!tienePermiso(Manifest.permission.RECORD_AUDIO)) appendLine("• Micrófono")
+            if (!tieneOverlay())                                  appendLine("• Superposición")
+            if (!tieneAccesibilidad())                            appendLine("• Accesibilidad")
+            if (!tieneNotificaciones())                           appendLine("• Notificaciones")
+            if (!tienePermiso(Manifest.permission.READ_CONTACTS)) appendLine("• Contactos")
+            if (!tienePermiso(Manifest.permission.CALL_PHONE))    appendLine("• Llamadas")
+        }.trim()
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Permisos pendientes")
+            .setMessage("Activa los siguientes permisos:\n\n$msg")
+            .setPositiveButton("Entendido", null)
+            .show()
+    }
+
+    // ── Utilidad accesibilidad ───────────────────────────────
+
+    private fun isAccessibilityServiceEnabled(
+        context: Context, service: Class<out AccessibilityService>
+    ): Boolean {
+        val expected = ComponentName(context, service)
+        val enabled  = Settings.Secure.getString(
             context.contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
-
-        val colonSplitter = TextUtils.SimpleStringSplitter(':')
-        colonSplitter.setString(enabledServices)
-        while (colonSplitter.hasNext()) {
-            val componentName = colonSplitter.next()
-            if (componentName.equals(expectedComponentName.flattenToString(), ignoreCase = true)) {
-                return true
-            }
+        val splitter = TextUtils.SimpleStringSplitter(':')
+        splitter.setString(enabled)
+        while (splitter.hasNext()) {
+            if (splitter.next().equals(expected.flattenToString(), ignoreCase = true)) return true
         }
         return false
-    }
-    private fun validarNombre(
-        nombre:String,
-        input: TextInputLayout,
-        boton: Button
-    ){
-        val soloLetras="^[a-zA-ZáéíóúÁÉÍÓÚñÑ ]+\$".toRegex()
-        when {
-            nombre.isEmpty()->{
-                input.error="Ingreesa tu nombre"
-                boton.isEnabled=false
-                boton.alpha=0.5f
-            }
-            !soloLetras.matches(nombre)->{
-                input.error = "solo s epermite letras"
-                boton.isEnabled=false
-                boton.alpha=0.5f
-            }
-            else->{
-                input.error = null
-                boton.isEnabled= true
-                boton.alpha= 1f
-
-            }
-        }
     }
 }
