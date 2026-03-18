@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NEXUS" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/primary_dark</item>
+        <item name="colorPrimaryVariant">@color/primary_variant_dark</item>
+        <item name="colorSecondary">@color/secondary_dark</item>
+
+        <item name="colorBackground">@color/background_dark</item>
+        <item name="android:colorBackground">@color/background_dark</item>
+
+        <item name="colorTextPrimary">@color/text_primary_dark</item>
+        <item name="colorTextSecondary">@color/text_secondary_dark</item>
+        <item name="colorAccentCyan">@color/accent_cyan_dark</item>
+        <item name="colorAccentRed">@color/accent_red_dark</item>
+        <item name="colorOrbGlow">@color/orb_glow_dark</item>
+        <item name="colorButtonOuter">@color/button_outer_dark</item>
+        <item name="colorButtonInner">@color/button_inner_dark</item>
+
+        <item name="android:statusBarColor">@color/background_dark</item>
+        <item name="android:navigationBarColor">@color/background_dark</item>
+    </style>
+</resources>

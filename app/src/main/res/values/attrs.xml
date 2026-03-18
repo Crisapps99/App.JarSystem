@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="colorBackground" format="color" />
+    <attr name="colorSurface" format="color" />
+    <attr name="colorSurfaceVariant" format="color" />
+    <attr name="colorTextPrimary" format="color" />
+    <attr name="colorTextSecondary" format="color" />
+    <attr name="colorTextTertiary" format="color" />
+    <attr name="colorTextHint" format="color" />
+    <attr name="colorAccentCyan" format="color" />
+    <attr name="colorAccentRed" format="color" />
+    <attr name="colorOrbGlow" format="color" />
+    <attr name="colorOrbCore" format="color" />
+    <attr name="colorOrbPulse" format="color" />
+    <attr name="colorStatusDot" format="color" />
+    <attr name="colorPermissionRow" format="color" />
+    <attr name="colorButtonOuter" format="color" />
+    <attr name="colorButtonInner" format="color" />
+</resources>

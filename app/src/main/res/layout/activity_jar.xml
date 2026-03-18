@@ -6,7 +6,7 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/jar_gradient_background"
+    android:background="#F5F5F5"
     tools:context=".activity.JarActivity">
 
     <!-- Orbe principal — más grande, centrado en el tercio superior -->
@@ -30,7 +30,7 @@
         android:text="N E X U S"
         android:textSize="28sp"
         android:textStyle="bold"
-        android:textColor="@color/white"
+        android:textColor="#1A1A1A"
         android:fontFamily="@font/googlesans"
         android:letterSpacing="0.25"
         android:alpha="0"
@@ -46,7 +46,7 @@
         android:layout_height="wrap_content"
         android:text="Asistente personal"
         android:textSize="13sp"
-        android:textColor="#80FFFFFF"
+        android:textColor="#666666"
         android:fontFamily="@font/googlesans"
         android:letterSpacing="0.08"
         android:alpha="0"
@@ -64,8 +64,8 @@
         android:layout_marginEnd="24dp"
         android:alpha="0"
         app:cardCornerRadius="20dp"
-        app:cardBackgroundColor="#1AFFFFFF"
-        app:cardElevation="0dp"
+        app:cardBackgroundColor="#FFFFFF"
+        app:cardElevation="4dp"
         app:layout_constraintBottom_toTopOf="@id/btnComenzar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -90,7 +90,7 @@
                     android:id="@+id/statusDot"
                     android:layout_width="8dp"
                     android:layout_height="8dp"
-                    android:background="@drawable/status_dot_bg"
+                    android:background="#0095D4"
                     android:layout_marginEnd="8dp"/>
 
                 <TextView
@@ -99,7 +99,7 @@
                     android:layout_height="wrap_content"
                     android:text="NEXUS"
                     android:textSize="10sp"
-                    android:textColor="#4DEEE9"
+                    android:textColor="#0095D4"
                     android:fontFamily="@font/googlesans"
                     android:textStyle="bold"
                     android:letterSpacing="0.15"/>
@@ -112,7 +112,7 @@
                 android:layout_height="wrap_content"
                 android:text=""
                 android:textSize="15sp"
-                android:textColor="@color/white"
+                android:textColor="#1A1A1A"
                 android:fontFamily="@font/googlesans"
                 android:lineSpacingMultiplier="1.5"
                 android:minLines="2"/>
@@ -124,7 +124,7 @@
                 android:layout_height="wrap_content"
                 android:text=""
                 android:textSize="13sp"
-                android:textColor="#80FFFFFF"
+                android:textColor="#666666"
                 android:fontFamily="@font/googlesans"
                 android:layout_marginTop="8dp"
                 android:lineSpacingMultiplier="1.4"
@@ -146,8 +146,8 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:area_margin="6dp"
-        app:outer_color="#4D4DEEE9"
-        app:inner_color="#4DEEE9"
+        app:outer_color="#4D0095D4"
+        app:inner_color="#0095D4"
         app:border_radius="35dp"
         app:text="Conocer a Nexus"
         app:text_size="15sp"

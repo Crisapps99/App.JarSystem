@@ -7,7 +7,8 @@ plugins {
 }
 
 android {
-    namespace = "com.example.myapplication"
+    namespace = "com.example.myapplication" +
+            ""
     compileSdk = 36
 
     sourceSets {
@@ -22,6 +23,12 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+                abiFilters += listOf("arm64-v8a", "x86_64")
+            }
+        }
         // Cargar API KEY desde local.properties
         val props = Properties()
         val localPropsFile = rootProject.file("local.properties")
@@ -33,8 +40,14 @@ android {
         val geminiKey = props.getProperty("GEMINI_API_KEY") ?: ""
 
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
-    }
 
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")  // necesita = y file()
+            version = "3.22.1"
+        }
+    }
     buildFeatures{
         viewBinding = true
         buildConfig = true
@@ -60,16 +73,17 @@ android {
 }
 
 dependencies {
+    implementation("ai.picovoice:porcupine-android:4.0.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
 
     // También es recomendable tener esta para ViewModels si los usas:
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
-    //picovoice
-    implementation ("ai.picovoice:porcupine-android:4.0.0")
+//    //picovoice
+//    implementation ("ai.picovoice:porcupine-android:4.0.0")
     implementation("com.google.code.gson:gson:2.10.1")
     //botn deslizale
-    implementation ("com.ncorti:slidetoact:0.9.0")
+    implementation("com.ncorti:slidetoact:0.9.0")
     //dependencia lottie
     implementation("com.airbnb.android:lottie:6.3.0")
     // En la sección dependencies { ... } de app/build.gradle.kts

@@ -6,7 +6,7 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/gradient_background"
+    android:background="#F5F5F5"
     tools:context=".activity.LoginActivity">
 
     <TextView
@@ -17,7 +17,7 @@
         android:textSize="38sp"
         android:textStyle="bold"
         android:fontFamily="@font/googlesans"
-        android:textColor="@color/white"
+        android:textColor="#1A1A1A"
         android:letterSpacing="0.05"
         android:layout_marginTop="52dp"
         app:layout_constraintTop_toTopOf="parent"
@@ -31,7 +31,7 @@
         android:text="Activa los permisos para comenzar"
         android:textSize="14sp"
         android:fontFamily="@font/googlesans"
-        android:textColor="#B3FFFFFF"
+        android:textColor="#666666"
         android:layout_marginTop="6dp"
         app:layout_constraintTop_toBottomOf="@id/titleApp"
         app:layout_constraintStart_toStartOf="parent"
@@ -55,8 +55,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="20dp"
-            app:cardBackgroundColor="#1AFFFFFF"
-            app:cardElevation="0dp">
+            app:cardBackgroundColor="#FFFFFF"
+            app:cardElevation="4dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -68,7 +68,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Permisos necesarios"
-                    android:textColor="@color/white"
+                    android:textColor="#1A1A1A"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:fontFamily="@font/googlesans"
@@ -82,16 +82,17 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:layout_marginBottom="8dp"
-                    android:background="@drawable/permission_row_bg"
+                    android:background="#F5F5F5"
                     android:paddingStart="14dp"
-                    android:paddingEnd="10dp">
+                    android:paddingEnd="10dp"
+                    android:visibility="visible">
 
                     <ImageView
                         android:layout_width="26dp"
                         android:layout_height="26dp"
                         android:src="@drawable/ic_mic_vector"
-                        android:tint="#4DEEE9"
-                        android:contentDescription="Micrófono"/>
+                        android:contentDescription="Micrófono"
+                        app:tint="#0095D4"/>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -103,7 +104,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Micrófono"
-                            android:textColor="@color/white"
+                            android:textColor="#1A1A1A"
                             android:textSize="13sp"
                             android:textStyle="bold"
                             android:fontFamily="@font/googlesans"/>
@@ -111,7 +112,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Para escucharte y responder"
-                            android:textColor="#99FFFFFF"
+                            android:textColor="#999999"
                             android:textSize="11sp"
                             android:fontFamily="@font/googlesans"/>
                     </LinearLayout>
@@ -138,7 +139,7 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:layout_marginBottom="8dp"
-                    android:background="@drawable/permission_row_bg"
+                    android:background="#F5F5F5"
                     android:paddingStart="14dp"
                     android:paddingEnd="10dp">
 
@@ -146,8 +147,8 @@
                         android:layout_width="26dp"
                         android:layout_height="26dp"
                         android:src="@android:drawable/ic_menu_view"
-                        android:tint="#4DEEE9"
-                        android:contentDescription="Superposición"/>
+                        android:contentDescription="Superposición"
+                        app:tint="#0095D4"/>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -159,7 +160,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Superposición"
-                            android:textColor="@color/white"
+                            android:textColor="#1A1A1A"
                             android:textSize="13sp"
                             android:textStyle="bold"
                             android:fontFamily="@font/googlesans"/>
@@ -167,7 +168,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Para mostrar el orbe flotante"
-                            android:textColor="#99FFFFFF"
+                            android:textColor="#999999"
                             android:textSize="11sp"
                             android:fontFamily="@font/googlesans"/>
                     </LinearLayout>
@@ -194,7 +195,7 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:layout_marginBottom="8dp"
-                    android:background="@drawable/permission_row_bg"
+                    android:background="#F5F5F5"
                     android:paddingStart="14dp"
                     android:paddingEnd="10dp">
 
@@ -202,8 +203,8 @@
                         android:layout_width="26dp"
                         android:layout_height="26dp"
                         android:src="@android:drawable/ic_menu_help"
-                        android:tint="#4DEEE9"
-                        android:contentDescription="Accesibilidad"/>
+                        android:contentDescription="Accesibilidad"
+                        app:tint="#0095D4"/>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -215,7 +216,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Accesibilidad"
-                            android:textColor="@color/white"
+                            android:textColor="#1A1A1A"
                             android:textSize="13sp"
                             android:textStyle="bold"
                             android:fontFamily="@font/googlesans"/>
@@ -223,7 +224,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Para leer y entender tu pantalla"
-                            android:textColor="#99FFFFFF"
+                            android:textColor="#999999"
                             android:textSize="11sp"
                             android:fontFamily="@font/googlesans"/>
                     </LinearLayout>
@@ -250,7 +251,7 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:layout_marginBottom="8dp"
-                    android:background="@drawable/permission_row_bg"
+                    android:background="#F5F5F5"
                     android:paddingStart="14dp"
                     android:paddingEnd="10dp">
 
@@ -258,8 +259,8 @@
                         android:layout_width="26dp"
                         android:layout_height="26dp"
                         android:src="@android:drawable/ic_popup_reminder"
-                        android:tint="#4DEEE9"
-                        android:contentDescription="Notificaciones"/>
+                        android:contentDescription="Notificaciones"
+                        app:tint="#0095D4"/>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -271,7 +272,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Notificaciones"
-                            android:textColor="@color/white"
+                            android:textColor="#1A1A1A"
                             android:textSize="13sp"
                             android:textStyle="bold"
                             android:fontFamily="@font/googlesans"/>
@@ -279,7 +280,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Para leer mensajes y alertas"
-                            android:textColor="#99FFFFFF"
+                            android:textColor="#999999"
                             android:textSize="11sp"
                             android:fontFamily="@font/googlesans"/>
                     </LinearLayout>
@@ -306,7 +307,7 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:layout_marginBottom="8dp"
-                    android:background="@drawable/permission_row_bg"
+                    android:background="#F5F5F5"
                     android:paddingStart="14dp"
                     android:paddingEnd="10dp">
 
@@ -314,8 +315,8 @@
                         android:layout_width="26dp"
                         android:layout_height="26dp"
                         android:src="@android:drawable/ic_menu_myplaces"
-                        android:tint="#4DEEE9"
-                        android:contentDescription="Contactos"/>
+                        android:contentDescription="Contactos"
+                        app:tint="#0095D4"/>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -327,7 +328,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Contactos"
-                            android:textColor="@color/white"
+                            android:textColor="#1A1A1A"
                             android:textSize="13sp"
                             android:textStyle="bold"
                             android:fontFamily="@font/googlesans"/>
@@ -335,7 +336,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Para llamar y enviar mensajes"
-                            android:textColor="#99FFFFFF"
+                            android:textColor="#999999"
                             android:textSize="11sp"
                             android:fontFamily="@font/googlesans"/>
                     </LinearLayout>
@@ -361,7 +362,7 @@
                     android:layout_height="58dp"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:background="@drawable/permission_row_bg"
+                    android:background="#F5F5F5"
                     android:paddingStart="14dp"
                     android:paddingEnd="10dp">
 
@@ -369,8 +370,8 @@
                         android:layout_width="26dp"
                         android:layout_height="26dp"
                         android:src="@android:drawable/ic_menu_call"
-                        android:tint="#4DEEE9"
-                        android:contentDescription="Llamadas"/>
+                        android:contentDescription="Llamadas"
+                        app:tint="#0095D4"/>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -382,7 +383,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Llamadas"
-                            android:textColor="@color/white"
+                            android:textColor="#1A1A1A"
                             android:textSize="13sp"
                             android:textStyle="bold"
                             android:fontFamily="@font/googlesans"/>
@@ -390,7 +391,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Para realizar llamadas por voz"
-                            android:textColor="#99FFFFFF"
+                            android:textColor="#999999"
                             android:textSize="11sp"
                             android:fontFamily="@font/googlesans"/>
                     </LinearLayout>
@@ -424,8 +425,8 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:area_margin="6dp"
-        app:outer_color="#4D4DEEE9"
-        app:inner_color="#4DEEE9"
+        app:outer_color="#4D0095D4"
+        app:inner_color="#0095D4"
         app:border_radius="35dp"
         app:text="Comenzar con Jarvoice"
         app:text_size="15sp"

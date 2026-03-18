@@ -28,17 +28,17 @@ object NotificationMemory {
 
     private val _list = mutableListOf<NotificationItem>()
     private const val MAX = 50
-
     val all: List<NotificationItem> get() = _list.toList()
-
+    private val notifications = mutableMapOf<String, NotificationItem>()
     // ── Escribir ───────────────────────────────────────────────────
 
     fun addNotification(item: NotificationItem) {
-        _list.removeAll { it.sbnKey == item.sbnKey }   // eliminar duplicado si ya estaba
-        _list.add(0, item)
-        if (_list.size > MAX) _list.removeAt(_list.size - 1)
+        notifications[item.sbnKey] = item
     }
 
+    fun getNotifications(): List<NotificationItem> {
+        return notifications.values.toList()
+    }
     fun removeNotification(sbnKey: String) {
         _list.removeAll { it.sbnKey == sbnKey }
     }

@@ -14,6 +14,7 @@ import android.animation.ValueAnimator
 import android.content.Intent
 import android.view.animation.AccelerateDecelerateInterpolator
 import com.example.myapplication.ui.JarvisOrbView
+import com.example.myapplication.utils.ThemeUtils
 
 
 class MainActivity : AppCompatActivity() {
@@ -24,10 +25,16 @@ class MainActivity : AppCompatActivity() {
     private var isTransitioning = false  // evita doble-tap
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemeUtils.applyTheme(this)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
+        // Ejemplo: detectar si estamos en modo oscuro
+        val isDark = ThemeUtils.isDarkMode(this)
+        println("¿Modo oscuro activado? $isDark")
 
+        // Ejemplo: cambiar tema cuando el usuario lo desee
+        // setupThemeButton()
         IngresoButton = findViewById(R.id.Ingresobutton)
         orbView = findViewById(R.id.orbView)
         val textView = findViewById<TextView>(R.id.textView)

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema Base - NEXUS (Modo Oscuro por defecto) -->
+    <style name="Theme.NEXUS" parent="Theme.MaterialComponents.NoActionBar">
+
+        <!-- Colores primarios de Material Design -->
+        <item name="colorPrimary">@color/primary_dark</item>
+        <item name="colorPrimaryVariant">@color/primary_variant_dark</item>
+        <item name="colorSecondary">@color/secondary_dark</item>
+        <item name="colorSecondaryVariant">@color/primary_variant_dark</item>
+
+        <!-- Colores de fondo -->
+        <item name="colorBackground">@color/background_dark</item>
+        <item name="android:colorBackground">@color/background_dark</item>
+        <item name="colorSurface">@color/surface_dark</item>
+        <item name="colorSurfaceVariant">@color/surface_light_dark</item>
+
+        <!-- Colores de texto -->
+        <item name="colorTextPrimary">@color/text_primary_dark</item>
+        <item name="colorTextSecondary">@color/text_secondary_dark</item>
+        <item name="colorTextTertiary">@color/text_tertiary_dark</item>
+        <item name="colorTextHint">@color/text_hint_dark</item>
+        <item name="android:textColorPrimary">@color/text_primary_dark</item>
+        <item name="android:textColorSecondary">@color/text_secondary_dark</item>
+
+        <!-- Colores de acentos -->
+        <item name="colorAccentCyan">@color/accent_cyan_dark</item>
+        <item name="colorAccentRed">@color/accent_red_dark</item>
+        <item name="colorError">@color/accent_red_dark</item>
+
+        <!-- Colores del orbe -->
+        <item name="colorOrbGlow">@color/orb_glow_dark</item>
+        <item name="colorOrbCore">@color/orb_core_dark</item>
+        <item name="colorOrbPulse">@color/orb_pulse_dark</item>
+
+        <!-- Status y elementos (drawables) -->
+        <item name="colorStatusDot">@color/status_dot_dark</item>
+
+        <!-- Botones -->
+        <item name="colorButtonOuter">@color/button_outer_dark</item>
+        <item name="colorButtonInner">@color/button_inner_dark</item>
+
+        <!-- Barras de estado y navegación -->
+        <item name="android:statusBarColor">@color/background_dark</item>
+        <item name="android:navigationBarColor">@color/background_dark</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+
+        <!-- Vistas generales -->
+        <item name="android:windowBackground">@color/background_dark</item>
+
+    </style>
+</resources>

@@ -1,25 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
-    <color name="bluewhite">#e3f1fe</color>
-    <color name="blackwhite">#37c7f6</color>
-    <color name="blackwhi">#000000</color>
-    <!-- Colores para tema CLARO -->
-    <color name="background_primary">#F8F9FA</color>
-    <color name="background_secondary">#FFFFFF</color>
-    <color name="text_primary">#1F1F1F</color>
-    <color name="text_secondary">#5F6368</color>
-    <color name="orb_color_1">#4285F4</color>
-    <color name="orb_color_2">#34A853</color>
-    <color name="orb_color_3">#FBBC04</color>
-    <color name="button_background">#E8F0FE</color>
-    <color name="button_slider">#4285F4</color>
-    //gradiente claro
-    <color name="jar_gradient_start">#E8D5C4</color>
-    <color name="jar_gradient_center">#C8B5A6</color>
-    <color name="jar_gradient_end">#8B7355</color>
-    <color name="google_overlay_dark">#B3000000</color>
-    <color name="google_overlay_light">#4D000000</color>
-    <color name="google_accent_blue">#4285F4</color>
+    <!-- Colores primarios - Modo Oscuro -->
+    <color name="primary_dark">#4DEEE9</color>
+    <color name="primary_variant_dark">#35D4CB</color>
+    <color name="secondary_dark">#FF6B6B</color>
+
+    <!-- Fondos -->
+    <color name="background_dark">#0A0E27</color>
+    <color name="surface_dark">#1A1F3A</color>
+    <color name="surface_light_dark">#1AFFFFFF</color>
+
+    <!-- Textos -->
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#B3FFFFFF</color>
+    <color name="text_tertiary_dark">#80FFFFFF</color>
+    <color name="text_hint_dark">#99FFFFFF</color>
+
+    <!-- Acentos -->
+    <color name="accent_cyan_dark">#4DEEE9</color>
+    <color name="accent_cyan_light_dark">#5EFFFF</color>
+    <color name="accent_red_dark">#E53935</color>
+
+    <!-- Orbe -->
+    <color name="orb_glow_dark">#4DEEE9</color>
+    <color name="orb_core_dark">#2DD4BF</color>
+    <color name="orb_pulse_dark">#5EFFFF</color>
+    <color name="orb_color_1">#4DEEE9</color>
+    <color name="orb_color_2">#7400FF</color>
+    <color name="orb_color_3">#0078FF</color>
+
+    <!-- Status -->
+    <color name="status_dot_dark">#4DEEE9</color>
+    <color name="status_active_dark">#00FF88</color>
+
+    <!-- Botones -->
+    <color name="button_outer_dark">#4D4DEEE9</color>
+    <color name="button_inner_dark">#4DEEE9</color>
+
+    <!-- Colores básicos (necesarios para layouts y XML) -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+
+    <!-- Colores para modo claro (si los necesitas después) -->
+    <color name="primary_light">#0095D4</color>
+    <color name="primary_variant_light">#0077B6</color>
+    <color name="secondary_light">#FF6B6B</color>
+    <color name="background_light">#F5F5F5</color>
+    <color name="surface_light">#FFFFFF</color>
+    <color name="surface_variant_light">#E8F4F8</color>
+    <color name="text_primary_light">#1A1A1A</color>
+    <color name="text_secondary_light">#666666</color>
+    <color name="text_tertiary_light">#999999</color>
+    <color name="text_hint_light">#AAAAAA</color>
+    <color name="accent_cyan_light">#0095D4</color>
+    <color name="accent_cyan_bright_light">#00B4E8</color>
+    <color name="accent_red_light">#E53935</color>
+    <color name="orb_glow_light">#0095D4</color>
+    <color name="orb_core_light">#0077B6</color>
+    <color name="orb_pulse_light">#00B4E8</color>
+    <color name="orb_color_1_light">#0095D4</color>
+    <color name="orb_color_2_light">#4285F4</color>
+    <color name="orb_color_3_light">#1E88E5</color>
+    <color name="status_dot_light">#0095D4</color>
+    <color name="status_active_light">#00C853</color>
+    <color name="button_outer_light">#4D0095D4</color>
+    <color name="button_inner_light">#0095D4</color>
+    <color name="divider_light">#DDDDDD</color>
+    <color name="border_light">#E0E0E0</color>
 </resources>

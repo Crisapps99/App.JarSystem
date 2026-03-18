@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Colores primarios -->
+    <color name="primary_dark">#4DEEE9</color>
+    <color name="primary_variant_dark">#35D4CB</color>
+    <color name="secondary_dark">#FF6B6B</color>
+
+    <!-- Fondos -->
+    <color name="background_dark">#0A0E27</color>
+    <color name="surface_dark">#1A1F3A</color>
+    <color name="surface_light_dark">#1AFFFFFF</color>
+
+    <!-- Textos -->
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#B3FFFFFF</color>
+    <color name="text_tertiary_dark">#80FFFFFF</color>
+    <color name="text_hint_dark">#99FFFFFF</color>
+
+    <!-- Acentos -->
+    <color name="accent_cyan_dark">#4DEEE9</color>
+    <color name="accent_red_dark">#E53935</color>
+
+    <!-- Orbe -->
+    <color name="orb_glow_dark">#4DEEE9</color>
+    <color name="orb_core_dark">#2DD4BF</color>
+    <color name="orb_pulse_dark">#5EFFFF</color>
+
+    <!-- Status -->
+    <color name="status_dot_dark">#4DEEE9</color>
+
+    <!-- Botones -->
+    <color name="button_outer_dark">#4D4DEEE9</color>
+    <color name="button_inner_dark">#4DEEE9</color>
+</resources>

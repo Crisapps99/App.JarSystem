@@ -5,6 +5,16 @@ object ScreenMemory {
     var lastSeenTexts: List<String> = emptyList()
 
     var lastSnapshot: ScreenSnapshot? = null
+    var lastUpdateTimestamp: Long = 0
+    fun updateSnapshot(snapshot: ScreenSnapshot) {
+        this.lastSnapshot = snapshot
+        this.lastUpdateTimestamp = System.currentTimeMillis()
+    }
+
+    // Verifica si la información tiene menos de 2 segundos
+    fun isDataFresh(): Boolean {
+        return (System.currentTimeMillis() - lastUpdateTimestamp) < 2000
+    }
     /**
      * Obtiene el contexto en formato lista simple
      */

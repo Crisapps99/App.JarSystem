@@ -39,8 +39,7 @@ data class ScreenElement(
 
     //  METADATOS
     val importance: Int,               // Prioridad calculada
-    val visibility: String
-
+    val visibility: String,
 ){
     fun getSearchableText(): String{
         return buildString{

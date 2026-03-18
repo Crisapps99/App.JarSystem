@@ -1,150 +1,64 @@
 package com.example.myapplication.service
 
 import android.app.Notification
+import android.app.RemoteInput
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.RemoteInput
 import com.example.myapplication.core.NotificationMemory
 
-/**
- * Servicio que escucha TODAS las notificaciones del sistema.
- *
- * Para activarlo el usuario debe ir a:
- *   Ajustes → Aplicaciones → Acceso especial → Acceso a notificaciones → activar esta app
- *
- * Capacidades:
- *  - Captura notificaciones y las guarda en NotificationMemory
- *  - openNotification(context, packageName) → abre la app desde la notificación
- *  - replyToNotification(packageName, texto) → responde inline (WhatsApp, Telegram, SMS, etc.)
- */
 class JarvisNotificationListener : NotificationListenerService() {
 
     companion object {
-        private const val TAG = "NOTIF_LISTENER"
-        private var instance: JarvisNotificationListener? = null
+        private const val TAG = "JARVIS_NOTIF"
 
-        // ── Abrir notificación de una app específica ───────────────
-        fun openNotification(context: Context, packageName: String): Boolean {
-            val notif = NotificationMemory.getLatestFromApp(packageName)
-            if (notif == null) {
-                Log.w(TAG, "No hay notificación de $packageName")
-                return false
-            }
-            return try {
-                notif.contentIntent?.send()
-                Log.d(TAG, "Notificación abierta: ${notif.appName}")
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Error abriendo notificación: ${e.message}")
-                // Fallback: abrir la app directamente
-                val launchIntent = context.packageManager
-                    .getLaunchIntentForPackage(packageName)
-                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                if (launchIntent != null) context.startActivity(launchIntent)
-                false
-            }
+        @Volatile
+        var instance: JarvisNotificationListener? = null
+
+        fun tienePermiso(context: Context): Boolean {
+            val habilitados = android.provider.Settings.Secure.getString(
+                context.contentResolver,
+                "enabled_notification_listeners"
+            ) ?: return false
+            return habilitados.contains(context.packageName)
         }
 
-        // ── Responder inline a la última notificación de una app ──
-        fun replyToNotification(packageName: String, replyText: String): Boolean {
-            val notif = NotificationMemory.getLatestFromApp(packageName) ?: run {
-                Log.w(TAG, "Sin notificación de $packageName para responder")
-                return false
+        fun abrirAjustesPermiso(context: Context) {
+            val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-
-            val action = notif.replyAction ?: run {
-                Log.w(TAG, "La notificación de ${notif.appName} no tiene acción de respuesta")
-                return false
-            }
-
-            val remoteInput = notif.remoteInputKey ?: run {
-                Log.w(TAG, "La notificación de ${notif.appName} no tiene RemoteInput")
-                return false
-            }
-
-            return try {
-                val bundle = Bundle().apply {
-                    putCharSequence(remoteInput, replyText)
-                }
-                val fillIntent = Intent().apply {
-                    RemoteInput.addResultsToIntent(
-                        arrayOf(RemoteInput.Builder(remoteInput).build()),
-                        this,
-                        bundle,
-                    )
-                }
-                // Si instance es null, el servicio no está corriendo.
-                instance?.let { serviceContext ->
-                    action.actionIntent.send(serviceContext, 0, fillIntent)
-                    Log.d(TAG, "Respuesta enviada a ${notif.appName}: '$replyText'")
-                    true
-                } ?: false
-            } catch (e: Exception) {
-                Log.e(TAG, "Error al responder: ${e.message}")
-                false
-            }
+            context.startActivity(intent)
         }
-
-        fun isAvailable() = instance != null
     }
 
-    // ── Ciclo de vida del servicio ────────────────────────────────
-
-    override fun onCreate() {
-        super.onCreate()
+    override fun onListenerConnected() {
+        super.onListenerConnected()
         instance = this
-        Log.d(TAG, "NotificationListener conectado")
+        Log.d(TAG, "✅ Listener conectado — cargando panel")
+        refrescarNotificacionesActivas()
     }
 
-    override fun onDestroy() {
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
         instance = null
-        super.onDestroy()
+        Log.d(TAG, "⚠️ Listener desconectado")
     }
 
-    // ── Captura de notificaciones entrantes ───────────────────────
+    // --- EVENTOS ---
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
+        if (sbn.packageName == packageName) return
 
-        // Ignorar notificaciones propias
-        // Dentro de onNotificationPosted
-        if (sbn.packageName == "com.android.systemui") return // Ignorar spam de carga
+        // ✅ FIX: Usar getCharSequence para evitar ClassCastException (SpannableString)
+        val item = convertirSbn(sbn) ?: return
 
-        val notification  = sbn.notification ?: return
-        val extras        = notification.extras ?: return
-
-        val appName   = getAppName(sbn.packageName)
-        val title     = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
-        val body      = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
-            ?: extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
-
-        // Solo guardar si tiene contenido útil
-        if (title.isBlank() && body.isBlank()) return
-
-        // Buscar acción de respuesta inline (WhatsApp, Telegram, Messenger, SMS…)
-        val replyAction = findReplyAction(notification)
-        val remoteInputKey = replyAction?.remoteInputs?.firstOrNull()?.resultKey
-
-        val item = NotificationMemory.NotificationItem(
-            sbnKey        = sbn.key,
-            appName       = appName,
-            packageName   = sbn.packageName,
-            title         = title,
-            body          = body,
-            timestamp     = sbn.postTime,
-            contentIntent = notification.contentIntent,
-            replyAction   = replyAction,
-            remoteInputKey= remoteInputKey,
-        )
-
+        Log.d(TAG, "📬 Nueva: [${item.appName}] ${item.title}: ${item.body.take(60)}")
         NotificationMemory.addNotification(item)
-        Log.d(TAG, "[$appName] $title: ${body.take(50)}" +
-                if (replyAction != null) " [respuesta inline disponible]" else "")
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
@@ -152,33 +66,146 @@ class JarvisNotificationListener : NotificationListenerService() {
         NotificationMemory.removeNotification(sbn.key)
     }
 
-    // ── Utilidades ────────────────────────────────────────────────
+    // --- LÓGICA DE SINCRONIZACIÓN ---
 
-    private fun getAppName(packageName: String): String {
-        return try {
-            val info = packageManager.getApplicationInfo(packageName, 0)
-            packageManager.getApplicationLabel(info).toString()
+    fun refrescarNotificacionesActivas() {
+        try {
+            val activas = activeNotifications ?: return
+            NotificationMemory.clear()
+
+            val ordenadas = activas.sortedByDescending { it.postTime }
+            var cargadas = 0
+
+            for (sbn in ordenadas) {
+                if (sbn.packageName == packageName) continue
+                val item = convertirSbn(sbn) ?: continue
+                NotificationMemory.addNotification(item)
+                cargadas++
+            }
+            Log.d(TAG, "✅ $cargadas notificaciones sincronizadas")
         } catch (e: Exception) {
-            packageName.substringAfterLast(".")
+            Log.e(TAG, "❌ Error refrescando: ${e.message}")
         }
     }
 
-    /**
-     * Busca la acción de respuesta directa en la notificación.
-     * Compatible con WhatsApp, Telegram, Messenger, SMS, Gmail.
-     */
-    private fun findReplyAction(notification: Notification): Notification.Action? {
-        val actions = notification.actions ?: return null
+    // --- CONVERSIÓN SEGURA ---
 
-        return actions.firstOrNull { action: Notification.Action ->
-            val hasRemoteInput = action.remoteInputs?.isNotEmpty() == true
-            val title = action.title?.toString()?.lowercase() ?: ""
-            hasRemoteInput && (
-                    title.contains("responder") ||
-                            title.contains("reply") ||
-                            title.contains("contestar") ||
-                            title.contains("answer")
-                    )
-        } ?: actions.firstOrNull { it.remoteInputs?.isNotEmpty() == true }
+    private fun convertirSbn(sbn: StatusBarNotification): NotificationMemory.NotificationItem? {
+        return try {
+            val extras = sbn.notification.extras
+
+            // ✅ Extracción universal segura (Acepta String y SpannableString)
+            val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
+
+            // Intentar obtener el cuerpo del mensaje priorizando el texto largo
+            val body = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
+                ?: extras.getCharSequence(Notification.EXTRA_TEXT)
+                ?: extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)
+                    )?.toString()?.trim() ?: ""
+
+            if (title.isBlank() && body.isBlank()) return null
+
+            val appName = obtenerNombreApp(sbn.packageName)
+
+            // Buscar si permite respuesta directa (WhatsApp, Messenger, etc.)
+            var replyAction: Notification.Action? = null
+            var remoteInputKey: String? = null
+
+            sbn.notification.actions?.forEach { action ->
+                action.remoteInputs?.let { inputs ->
+                    if (inputs.isNotEmpty()) {
+                        replyAction = action
+                        remoteInputKey = inputs[0].resultKey
+                    }
+                }
+            }
+
+            NotificationMemory.NotificationItem(
+                sbnKey = sbn.key,
+                appName = appName,
+                packageName = sbn.packageName,
+                title = title,
+                body = body,
+                timestamp = sbn.postTime,
+                contentIntent = sbn.notification.contentIntent,
+                replyAction = replyAction,
+                remoteInputKey = remoteInputKey
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error en convertirSbn: ${e.message}")
+            null
+        }
+    }
+    /**
+     * Responde una notificación con RemoteInput (reply inline sin abrir la app).
+     * Solo funciona en apps con respuesta directa: WhatsApp, Messenger, Telegram, etc.
+     */
+    fun replyToNotification(targetPackage: String, textoRespuesta: String) {
+        try {
+            val activas = activeNotifications ?: return
+            // Buscamos la notificación que coincida con el paquete (ej: "com.whatsapp")
+            val target = activas.firstOrNull {
+                it.packageName.contains(targetPackage, ignoreCase = true)
+            }
+
+            if (target == null) {
+                Log.w(TAG, "⚠️ No se encontró notificación respondible para: $targetPackage")
+                return
+            }
+
+            val actions = target.notification.actions
+            if (actions.isNullOrEmpty()) {
+                Log.w(TAG, "⚠️ La notificación no tiene acciones de respuesta")
+                return
+            }
+
+            var respondido = false
+            for (action in actions) {
+                // Buscamos si la acción tiene RemoteInputs (el campo para escribir)
+                val remoteInputs = action.remoteInputs
+                if (remoteInputs.isNullOrEmpty()) continue
+
+                // Creamos el "puente" para enviar el texto
+                val replyIntent = Intent()
+                val bundle = Bundle()
+                bundle.putCharSequence(remoteInputs[0].resultKey, textoRespuesta)
+                android.app.RemoteInput.addResultsToIntent(remoteInputs, replyIntent, bundle)
+
+                // Enviamos la respuesta "en las sombras"
+                action.actionIntent.send(applicationContext, 0, replyIntent)
+
+                respondido = true
+                Log.d(TAG, "✅ Respuesta enviada a $targetPackage: '$textoRespuesta'")
+                break
+            }
+
+            if (!respondido) {
+                Log.w(TAG, "⚠️ Ninguna acción de esta app permite respuesta directa")
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error en replyToNotification: ${e.message}")
+        }
+    }
+    private fun obtenerNombreApp(pkg: String): String {
+        return try {
+            val info = packageManager.getApplicationInfo(pkg, 0)
+            packageManager.getApplicationLabel(info).toString()
+        } catch (e: Exception) {
+            pkg.split(".").lastOrNull()?.replaceFirstChar { it.uppercase() } ?: pkg
+        }
+    }
+
+    // --- ACCIONES ADICIONALES ---
+
+    fun openNotification(context: Context, targetPackage: String) {
+        activeNotifications?.firstOrNull { it.packageName.contains(targetPackage, true) }?.let {
+            it.notification.contentIntent?.send()
+        }
+    }
+
+    fun descartarTodas() {
+        cancelAllNotifications()
+        NotificationMemory.clear()
     }
 }

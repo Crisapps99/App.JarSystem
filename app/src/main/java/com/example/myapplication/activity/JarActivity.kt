@@ -156,11 +156,11 @@ class JarActivity : AppCompatActivity(), JarvisUi {
             "intro_1"
         ) {
             animateTextChange(
-                "Puedo ayudarte a hacer llamadas, leer mensajes, abrir aplicaciones y mucho más, " +
+                "Puedo ayudarte a hacer llamadas, leer Notificaciones, abrir aplicaciones y mucho más, " +
                         "todo con tu voz."
             )
             speak(
-                "Puedo ayudarte a hacer llamadas, leer mensajes, abrir aplicaciones y mucho más, " +
+                "Puedo ayudarte a hacer llamadas, leer Notificaciones, abrir aplicaciones y mucho más, " +
                         "todo con tu voz.",
                 "intro_2"
             ) {

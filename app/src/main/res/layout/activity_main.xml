@@ -6,7 +6,7 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/gradient_background"
+    android:background="#F5F5F5"
     tools:context=".MainActivity">
 
     <!-- Orbe central (reemplaza al Lottie) -->
@@ -40,7 +40,7 @@
         android:textSize="42sp"
         android:textStyle="bold"
         android:fontFamily="@font/googlesans"
-        android:textColor="@color/white"
+        android:textColor="#1A1A1A"
         android:letterSpacing="0.05"
         app:layout_constraintTop_toBottomOf="@id/orbContainer"
         app:layout_constraintBottom_toTopOf="@id/textViewSub"
@@ -55,7 +55,7 @@
         android:text="Tu asistente de voz inteligente"
         android:textSize="16sp"
         android:fontFamily="@font/googlesans"
-        android:textColor="#B3FFFFFF"
+        android:textColor="#666666"
         android:layout_marginTop="8dp"
         app:layout_constraintTop_toBottomOf="@id/textView"
         app:layout_constraintBottom_toTopOf="@id/Ingresobutton"
@@ -74,8 +74,8 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:area_margin="6dp"
-        app:outer_color="#4D4DEEE9"
-        app:inner_color="#4DEEE9"
+        app:outer_color="#4D0095D4"
+        app:inner_color="#0095D4"
         app:border_radius="35dp"
         app:text_size="18sp"
         app:slider_icon="@drawable/ic_mic_vector"/>
