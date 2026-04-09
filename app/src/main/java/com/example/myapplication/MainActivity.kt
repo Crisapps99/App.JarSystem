@@ -109,7 +109,6 @@ class MainActivity : AppCompatActivity() {
 
                 pulseAnimator?.cancel()
 
-                // Animación rápida simultánea: todo se desvanece a la vez
                 val duration = 200L
 
                 IngresoButton.animate()

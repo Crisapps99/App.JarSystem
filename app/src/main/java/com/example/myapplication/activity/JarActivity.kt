@@ -46,7 +46,7 @@ class JarActivity : AppCompatActivity(), JarvisUi {
     private val RECORD_AUDIO_PERMISSION_CODE = 200
 
     private var porcupineManager: PorcupineManager? = null
-    private val ACCESS_KEY  = "YMYKZrTBnmQeviXKwGY8rrXUiUlcHBC1ApCQwg6G99JrluupBCFbUg=="
+    private val ACCESS_KEY  = "UcCqJXCaJhQNTLLrzyejwfeCHn++rwmH66RhWrMBJ4zxxLIVjvJ9mw=="
     private val keywordFile = "hey-nexus_es_android_v4_0_0.ppn"
 
     private var currentJarvisState: JarvisState = JarvisState.IDLE

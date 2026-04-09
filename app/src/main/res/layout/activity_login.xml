@@ -6,430 +6,412 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5"
+    android:background="@drawable/bg_gradient_login"
     tools:context=".activity.LoginActivity">
 
-    <TextView
-        android:id="@+id/titleApp"
-        android:layout_width="wrap_content"
+    <!-- ═══════════════════════════════════════════════════════════════
+         BARRA SUPERIOR CON PROGRESO
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <LinearLayout
+        android:id="@+id/topProgressBar"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="NEXUS"
-        android:textSize="38sp"
-        android:textStyle="bold"
-        android:fontFamily="@font/googlesans"
-        android:textColor="#1A1A1A"
-        android:letterSpacing="0.05"
-        android:layout_marginTop="52dp"
+        android:orientation="vertical"
+        android:background="#FFFFFF"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <TextView
-        android:id="@+id/subtitleApp"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Activa los permisos para comenzar"
-        android:textSize="14sp"
-        android:fontFamily="@font/googlesans"
-        android:textColor="#666666"
-        android:layout_marginTop="6dp"
-        app:layout_constraintTop_toBottomOf="@id/titleApp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        <!-- Título pequeño -->
+        <TextView
+            android:id="@+id/progressTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Configuración Inicial"
+            android:textSize="14sp"
+            android:fontFamily="@font/googlesans"
+            android:textStyle="bold"
+            android:textColor="#0095D4"
+            android:layout_marginBottom="6dp" />
+
+        <!-- Barra de progreso lineal -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="6dp">
+
+            <!-- Barra de progreso visual -->
+            <ProgressBar
+                android:id="@+id/permissionProgressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="0dp"
+                android:layout_height="4dp"
+                android:layout_weight="1"
+                android:progress="0"
+                android:max="100"
+                android:progressDrawable="@drawable/progress_bar_drawable"
+                android:layout_gravity="center_vertical" />
+
+            <!-- Porcentaje de progreso -->
+            <TextView
+                android:id="@+id/progressPercentage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0%"
+                android:textSize="12sp"
+                android:fontFamily="@font/googlesans"
+                android:textColor="#0095D4"
+                android:textStyle="bold"
+                android:layout_marginStart="8dp" />
+
+        </LinearLayout>
+
+        <!-- Indicador: Paso X de Y -->
+        <TextView
+            android:id="@+id/stepIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Paso 1 de 6"
+            android:textSize="11sp"
+            android:fontFamily="@font/googlesans"
+            android:textColor="#999999" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CONTENIDO PRINCIPAL (ScrollView)
+         ═══════════════════════════════════════════════════════════════ -->
 
     <ScrollView
         android:id="@+id/scrollPermisos"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginStart="20dp"
-        android:layout_marginEnd="20dp"
-        android:layout_marginTop="20dp"
-        android:layout_marginBottom="16dp"
         android:scrollbars="none"
-        app:layout_constraintTop_toBottomOf="@id/subtitleApp"
-        app:layout_constraintBottom_toTopOf="@id/btnContinue"
+        android:overScrollMode="never"
+        android:fillViewport="true"
+        app:layout_constraintTop_toBottomOf="@id/topProgressBar"
+        app:layout_constraintBottom_toTopOf="@id/bottomContainer"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <androidx.cardview.widget.CardView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="20dp"
-            app:cardBackgroundColor="#FFFFFF"
-            app:cardElevation="4dp">
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="24dp"
+            android:paddingBottom="24dp">
 
+            <!-- CONTENEDOR DE PERMISO ÚNICO (se reemplaza según paso) -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/permissionCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="8dp"
+                app:cardBackgroundColor="#FFFFFF"
+                android:layout_marginBottom="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <!-- EMOJI/ICONO DEL PERMISO -->
+                    <TextView
+                        android:id="@+id/permissionEmoji"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📱"
+                        android:textSize="48sp"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginBottom="16dp" />
+
+                    <!-- NOMBRE DEL PERMISO -->
+                    <TextView
+                        android:id="@+id/permissionName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="MICRÓFONO"
+                        android:textSize="20sp"
+                        android:fontFamily="@font/googlesans"
+                        android:textStyle="bold"
+                        android:textColor="#0095D4"
+                        android:gravity="center"
+                        android:layout_marginBottom="8dp" />
+
+                    <!-- DESCRIPCIÓN -->
+                    <TextView
+                        android:id="@+id/permissionDescription"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Para escuchar tus comandos de voz"
+                        android:textSize="14sp"
+                        android:fontFamily="@font/googlesans"
+                        android:textColor="#666666"
+                        android:gravity="center"
+                        android:lineSpacingExtra="2dp"
+                        android:layout_marginBottom="16dp" />
+
+                    <!-- EXPLICACIÓN DETALLADA -->
+                    <TextView
+                        android:id="@+id/permissionExplanation"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="JarVoice usa el micrófono para reconocer lo que dices y ejecutar tus comandos automáticamente. Sin este permiso, JarVoice no podrá funcionar."
+                        android:textSize="13sp"
+                        android:fontFamily="@font/googlesans"
+                        android:textColor="#777777"
+                        android:gravity="center"
+                        android:lineSpacingExtra="1.5dp"
+                        android:layout_marginBottom="20dp" />
+
+                    <!-- DIVIDER -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#EEEEEE"
+                        android:layout_marginBottom="16dp" />
+
+                    <!-- ESTADO DEL PERMISO -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="20dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Estado:"
+                            android:textSize="13sp"
+                            android:fontFamily="@font/googlesans"
+                            android:textColor="#666666"
+                            android:layout_weight="1" />
+
+                        <TextView
+                            android:id="@+id/permissionStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="⚫ NO ACTIVO"
+                            android:textSize="13sp"
+                            android:fontFamily="@font/googlesans"
+                            android:textStyle="bold"
+                            android:textColor="#E53935" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </androidx.cardview.widget.CardView>
+
+            <!-- BOTÓN DE ACTIVACIÓN PRINCIPAL -->
+            <Button
+                android:id="@+id/btnActivatePermission"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="⚙️ ACTIVAR MICRÓFONO"
+                android:textSize="16sp"
+                android:fontFamily="@font/googlesans"
+                android:textStyle="bold"
+                android:textColor="@color/white"
+                android:background="@drawable/btn_primary_gradient"
+                app:cornerRadius="12dp"
+                android:layout_marginBottom="12dp" />
+
+
+
+            <!-- PANEL DE AYUDA (inicialmente oculto) -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/helpPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="#F5F9FF"
+                android:visibility="gone"
+                android:layout_marginBottom="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="📋 Guía paso a paso:"
+                        android:textSize="14sp"
+                        android:fontFamily="@font/googlesans"
+                        android:textStyle="bold"
+                        android:textColor="#0095D4"
+                        android:layout_marginBottom="12dp" />
+
+<!--                    <TextView-->
+<!--                        android:layout_width="match_parent"-->
+<!--                        android:layout_height="wrap_content"-->
+<!--                        android:text="1️⃣  Abre \"Ajustes\" en tu teléfono\n\n2️⃣  Busca \"Aplicaciones\" o \"Apps\"\n\n3️⃣  Selecciona \"JarVoice\"\n\n4️⃣  Toca \"Permisos\"\n\n5️⃣  Enciende el botón de \"Micrófono\" 🎤"-->
+<!--                        android:textSize="13sp"-->
+<!--                      android:fontFamily="@font/googlesans"-->
+<!--                      android:textColor="#555555"-->
+<!--                    android:lineSpacingExtra="6dp"-->
+<!--                    android:layout_marginBottom="12dp" />-->
+
+                    <Button
+                        android:id="@+id/btnOpenSettings"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:text="⚙️ Abrir Ajustes Directamente"
+                        android:textSize="12sp"
+                        android:fontFamily="@font/googlesans"
+                        android:textColor="@color/white"
+                        android:background="@drawable/btn_accent_gradient"
+                        app:cornerRadius="8dp" />
+
+                </LinearLayout>
+
+            </androidx.cardview.widget.CardView>
+
+            <!-- INFORMACIÓN ADICIONAL -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="18dp">
+                android:background="@drawable/info_box_background"
+                android:padding="16dp"
+                android:layout_marginBottom="20dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="ℹ️ ¿Por qué necesito estos permisos?"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/googlesans"
+                    android:textStyle="bold"
+                    android:textColor="#0095D4"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="JarVoice es un asistente de voz que necesita acceso a tu micrófono, pantalla y datos personales para funcionar. Usamos esta información SOLO en tu teléfono, sin compartir con terceros."
+                    android:textSize="12sp"
+                    android:fontFamily="@font/googlesans"
+                    android:textColor="#666666"
+                    android:lineSpacingExtra="2dp" />
+
+            </LinearLayout>
+
+            <!-- LISTA DE PERMISOS PENDIENTES -->
+            <LinearLayout
+                android:id="@+id/pendingPermissionsList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="16dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Permisos necesarios"
-                    android:textColor="#1A1A1A"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
+                    android:text="⏳ Permisos Pendientes:"
+                    android:textSize="12sp"
                     android:fontFamily="@font/googlesans"
-                    android:layout_marginBottom="14dp"/>
+                    android:textColor="#999999"
+                    android:layout_marginBottom="8dp" />
 
-                <!-- Micrófono -->
+                <!-- Dinámico: se rellena por código -->
                 <LinearLayout
-                    android:id="@+id/rowMicrofono"
+                    android:id="@+id/permissionsCheckList"
                     android:layout_width="match_parent"
-                    android:layout_height="58dp"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp"
-                    android:background="#F5F5F5"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="10dp"
-                    android:visibility="visible">
-
-                    <ImageView
-                        android:layout_width="26dp"
-                        android:layout_height="26dp"
-                        android:src="@drawable/ic_mic_vector"
-                        android:contentDescription="Micrófono"
-                        app:tint="#0095D4"/>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Micrófono"
-                            android:textColor="#1A1A1A"
-                            android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:fontFamily="@font/googlesans"/>
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Para escucharte y responder"
-                            android:textColor="#999999"
-                            android:textSize="11sp"
-                            android:fontFamily="@font/googlesans"/>
-                    </LinearLayout>
-                    <Button
-                        android:id="@+id/btnMicrofono"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:text="Activar"
-                        android:textSize="10sp"
-                        android:textColor="@color/white"
-                        android:fontFamily="@font/googlesans"
-                        android:backgroundTint="#E53935"
-                        android:stateListAnimator="@null"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        app:cornerRadius="20dp"/>
-                </LinearLayout>
-
-                <!-- Superposición -->
-                <LinearLayout
-                    android:id="@+id/rowOverlay"
-                    android:layout_width="match_parent"
-                    android:layout_height="58dp"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp"
-                    android:background="#F5F5F5"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="10dp">
-
-                    <ImageView
-                        android:layout_width="26dp"
-                        android:layout_height="26dp"
-                        android:src="@android:drawable/ic_menu_view"
-                        android:contentDescription="Superposición"
-                        app:tint="#0095D4"/>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Superposición"
-                            android:textColor="#1A1A1A"
-                            android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:fontFamily="@font/googlesans"/>
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Para mostrar el orbe flotante"
-                            android:textColor="#999999"
-                            android:textSize="11sp"
-                            android:fontFamily="@font/googlesans"/>
-                    </LinearLayout>
-                    <Button
-                        android:id="@+id/btnOverlay"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:text="Activar"
-                        android:textSize="10sp"
-                        android:textColor="@color/white"
-                        android:fontFamily="@font/googlesans"
-                        android:backgroundTint="#E53935"
-                        android:stateListAnimator="@null"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        app:cornerRadius="20dp"/>
-                </LinearLayout>
-
-                <!-- Accesibilidad -->
-                <LinearLayout
-                    android:id="@+id/rowAccesibilidad"
-                    android:layout_width="match_parent"
-                    android:layout_height="58dp"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp"
-                    android:background="#F5F5F5"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="10dp">
-
-                    <ImageView
-                        android:layout_width="26dp"
-                        android:layout_height="26dp"
-                        android:src="@android:drawable/ic_menu_help"
-                        android:contentDescription="Accesibilidad"
-                        app:tint="#0095D4"/>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Accesibilidad"
-                            android:textColor="#1A1A1A"
-                            android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:fontFamily="@font/googlesans"/>
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Para leer y entender tu pantalla"
-                            android:textColor="#999999"
-                            android:textSize="11sp"
-                            android:fontFamily="@font/googlesans"/>
-                    </LinearLayout>
-                    <Button
-                        android:id="@+id/btnAccesibilidad"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:text="Activar"
-                        android:textSize="10sp"
-                        android:textColor="@color/white"
-                        android:fontFamily="@font/googlesans"
-                        android:backgroundTint="#E53935"
-                        android:stateListAnimator="@null"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        app:cornerRadius="20dp"/>
-                </LinearLayout>
-
-                <!-- Notificaciones -->
-                <LinearLayout
-                    android:id="@+id/rowNotificaciones"
-                    android:layout_width="match_parent"
-                    android:layout_height="58dp"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp"
-                    android:background="#F5F5F5"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="10dp">
-
-                    <ImageView
-                        android:layout_width="26dp"
-                        android:layout_height="26dp"
-                        android:src="@android:drawable/ic_popup_reminder"
-                        android:contentDescription="Notificaciones"
-                        app:tint="#0095D4"/>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Notificaciones"
-                            android:textColor="#1A1A1A"
-                            android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:fontFamily="@font/googlesans"/>
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Para leer mensajes y alertas"
-                            android:textColor="#999999"
-                            android:textSize="11sp"
-                            android:fontFamily="@font/googlesans"/>
-                    </LinearLayout>
-                    <Button
-                        android:id="@+id/btnNotificaciones"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:text="Activar"
-                        android:textSize="10sp"
-                        android:textColor="@color/white"
-                        android:fontFamily="@font/googlesans"
-                        android:backgroundTint="#E53935"
-                        android:stateListAnimator="@null"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        app:cornerRadius="20dp"/>
-                </LinearLayout>
-
-                <!-- Contactos -->
-                <LinearLayout
-                    android:id="@+id/rowContactos"
-                    android:layout_width="match_parent"
-                    android:layout_height="58dp"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp"
-                    android:background="#F5F5F5"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="10dp">
-
-                    <ImageView
-                        android:layout_width="26dp"
-                        android:layout_height="26dp"
-                        android:src="@android:drawable/ic_menu_myplaces"
-                        android:contentDescription="Contactos"
-                        app:tint="#0095D4"/>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Contactos"
-                            android:textColor="#1A1A1A"
-                            android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:fontFamily="@font/googlesans"/>
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Para llamar y enviar mensajes"
-                            android:textColor="#999999"
-                            android:textSize="11sp"
-                            android:fontFamily="@font/googlesans"/>
-                    </LinearLayout>
-                    <Button
-                        android:id="@+id/btnContactos"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:text="Activar"
-                        android:textSize="10sp"
-                        android:textColor="@color/white"
-                        android:fontFamily="@font/googlesans"
-                        android:backgroundTint="#E53935"
-                        android:stateListAnimator="@null"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        app:cornerRadius="20dp"/>
-                </LinearLayout>
-
-                <!-- Llamadas -->
-                <LinearLayout
-                    android:id="@+id/rowLlamadas"
-                    android:layout_width="match_parent"
-                    android:layout_height="58dp"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:background="#F5F5F5"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="10dp">
-
-                    <ImageView
-                        android:layout_width="26dp"
-                        android:layout_height="26dp"
-                        android:src="@android:drawable/ic_menu_call"
-                        android:contentDescription="Llamadas"
-                        app:tint="#0095D4"/>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Llamadas"
-                            android:textColor="#1A1A1A"
-                            android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:fontFamily="@font/googlesans"/>
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Para realizar llamadas por voz"
-                            android:textColor="#999999"
-                            android:textSize="11sp"
-                            android:fontFamily="@font/googlesans"/>
-                    </LinearLayout>
-                    <Button
-                        android:id="@+id/btnLlamadas"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:text="Activar"
-                        android:textSize="10sp"
-                        android:textColor="@color/white"
-                        android:fontFamily="@font/googlesans"
-                        android:backgroundTint="#E53935"
-                        android:stateListAnimator="@null"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        app:cornerRadius="20dp"/>
-                </LinearLayout>
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
 
             </LinearLayout>
-        </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
+
     </ScrollView>
 
-    <com.ncorti.slidetoact.SlideToActView
-        android:id="@+id/btnContinue"
+    <!-- ═══════════════════════════════════════════════════════════════
+         CONTENEDOR INFERIOR (Botones de navegación)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <LinearLayout
+        android:id="@+id/bottomContainer"
         android:layout_width="0dp"
-        android:layout_height="68dp"
-        android:layout_marginStart="20dp"
-        android:layout_marginEnd="20dp"
-        android:layout_marginBottom="36dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@android:color/white"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="16dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:area_margin="6dp"
-        app:outer_color="#4D0095D4"
-        app:inner_color="#0095D4"
-        app:border_radius="35dp"
-        app:text="Comenzar con Jarvoice"
-        app:text_size="15sp"
-        app:slider_icon="@drawable/ic_mic_vector"/>
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- BOTONES DE NAVEGACIÓN -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <!-- Botón Anterior -->
+            <Button
+                android:id="@+id/btnPrevious"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="← Anterior"
+                android:textSize="14sp"
+                android:fontFamily="@font/googlesans"
+                android:textColor="#0095D4"
+                android:background="@drawable/btn_secondary_outline"
+                app:cornerRadius="10dp"
+                android:layout_marginEnd="8dp"
+                android:enabled="false"
+                android:alpha="0.5" />
+
+            <!-- Botón Siguiente / Continuar -->
+            <Button
+                android:id="@+id/btnNext"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="Siguiente →"
+                android:textSize="14sp"
+                android:fontFamily="@font/googlesans"
+                android:textColor="@color/white"
+                android:background="@drawable/btn_primary_gradient"
+                app:cornerRadius="10dp"
+                android:enabled="false"
+                android:alpha="0.5" />
+
+        </LinearLayout>
+
+        <!-- INFORMACIÓN DE PRIVACIDAD -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔒 Tu privacidad es importante. No compartimos datos con terceros."
+            android:textSize="11sp"
+            android:fontFamily="@font/googlesans"
+            android:textColor="#999999"
+            android:gravity="center"
+            android:layout_marginTop="12dp" />
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

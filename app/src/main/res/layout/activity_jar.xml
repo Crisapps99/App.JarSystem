@@ -133,6 +133,26 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
+    <!-- BOTÓN SKIP - Omitir todo y ir a activación -->
+    <Button
+        android:id="@+id/btnSkip"
+        android:layout_width="0dp"
+        android:layout_height="50dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="16dp"
+        android:text="⏭️ Omitir"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:background="@drawable/btn_skip_dradient"
+        android:visibility="gone"
+        android:alpha="0"
+        android:translationY="20dp"
+        app:layout_constraintBottom_toTopOf="@id/btnComenzar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
     <!-- Botón inicial "Conocer a Nexus" -->
     <com.ncorti.slidetoact.SlideToActView
         android:id="@+id/btnComenzar"

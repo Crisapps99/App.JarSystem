@@ -39,7 +39,7 @@ import android.os.Vibrator
 import android.os.VibrationEffect
 import android.os.Build
 import com.example.myapplication.service.JarvisNotificationListener
-
+import com.example.myapplication.core.CommandAnalyzer
 enum class JarvisState { IDLE, LISTENING, THINKING, SPEAKING }
 
 interface JarvisUi {
@@ -67,7 +67,7 @@ object ElevenLabsConfig {
 }
 
 enum class TtsMode { ANDROID, ELEVEN_LABS }
-private val TTS_MODE = TtsMode.ANDROID
+private val TTS_MODE = TtsMode.ELEVEN_LABS
 
 class JarvisVoiceController(
     private val context: Context,
@@ -138,8 +138,9 @@ class JarvisVoiceController(
         inicializarSessionManager()
         registrarReceivers()
         setState(JarvisState.IDLE)
-        Log.i(TAG, "✅ Controlador inicializado")
+        Log.i(TAG, " Controlador inicializado")
     }
+
     private fun solicitarAudioFocusSR() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val attrs = android.media.AudioAttributes.Builder()
@@ -148,7 +149,7 @@ class JarvisVoiceController(
                 .build()
 
             audioFocusRequest = android.media.AudioFocusRequest.Builder(
-                // ✅ MAY_DUCK: el video baja volumen pero NO se pausa
+                //  MAY_DUCK: el video baja volumen pero NO se pausa
                 // Si usas GAIN, el video se pausa completamente
                 android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
             )
@@ -178,10 +179,10 @@ class JarvisVoiceController(
         hybridListo = try {
             hybridTranscriber.init()
         } catch (e: Exception) {
-            Log.e(TAG, "❌ HybridTranscriber falló: ${e.message}")
+            Log.e(TAG, " HybridTranscriber falló: ${e.message}")
             false
         }
-        Log.i(TAG, if (hybridListo) "✅ SR inicializado" else "❌ SR no disponible")
+        Log.i(TAG, if (hybridListo) " SR inicializado" else " SR no disponible")
     }
 
 
@@ -205,7 +206,7 @@ class JarvisVoiceController(
             }
         )
         audioEngine.start()
-        Log.i(TAG, "✅ Motor de audio iniciado")
+        Log.i(TAG, " Motor de audio iniciado")
     }
 
     /**
@@ -218,21 +219,21 @@ class JarvisVoiceController(
             onSpeechStarted = {
                 // Ya no usamos AudioEngine para grabar — SR maneja el micrófono
                 // Dejamos vacío o solo log
-                Log.d(TAG, "🎙️ [VAD] Inicio de habla (informativo)")
+                Log.d(TAG, " [VAD] Inicio de habla (informativo)")
             },
 
             onSpeechEnded = {
                 // Ya no hay audioData — SR entrega texto directamente
-                Log.d(TAG, "🎙️ [VAD] Fin de habla (informativo)")
+                Log.d(TAG, " [VAD] Fin de habla (informativo)")
             },
 
             onInterruption = {
-                Log.d(TAG, "🛑 Interrupción del usuario")
+                Log.d(TAG, " Interrupción del usuario")
                 detenerTTS()
             },
 
             onSessionTimeout = {
-                Log.d(TAG, "⏱️ Timeout de sesión")
+                Log.d(TAG, " Timeout de sesión")
                 stopListeningCompletamente()
                 ui.showToast("Escucha detenida")
             }
@@ -248,48 +249,117 @@ class JarvisVoiceController(
      * Se ejecuta en IO para no bloquear el hilo principal.
      */
     private fun procesarTexto(texto: String) {
-        // Ya tenemos el texto del SR — no hay transcripción que esperar
-        mainHandler.post {
-            if (esperandoConfirmacion) {
-                procesarRespuestaConfirmacion(texto)
-                return@post
-            }
-            val intencion = CommandAnalyzer.clasificar(texto)
+        // PRIMERO: Intentar con ActionAnalyzer mejorado
+        val intencion = CommandAnalyzer.clasificar(texto)
 
-            when (intencion) {CommandAnalyzer.Intent.MUSIC -> { ejecutarMusica(texto); return@post }
-                CommandAnalyzer.Intent.NAVIGATION -> { ejecutarNavegacion(texto); return@post }
-                CommandAnalyzer.Intent.SEARCH -> { ejecutarBusquedaWeb(texto); return@post }
-                CommandAnalyzer.Intent.TIME -> { ejecutarComandoHora(); return@post }
-                CommandAnalyzer.Intent.WEATHER -> { ejecutarClima(); return@post }
-                CommandAnalyzer.Intent.NOTIFICATIONS -> {
-                    val resumen = obtenerResumenNotificaciones()
-                    hablar(resumen) {
-                        isProcessing = false
-                        // Opcional: Jarvis vuelve a escuchar por si quieres que las lea completas
-                        if (sesionActiva) {
-                            mainHandler.postDelayed({ iniciarSRContinuo() }, 500)
-                        }
-                    }
-                    return@post // <--- ESTO ES VITAL
+        Log.d(TAG, "Intención detectada: $intencion")
+
+        when (intencion) {
+            CommandAnalyzer.Intent.CALL_CONTACT -> {
+                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
+                hablar("Llamando a $contacto") {
+                    ActionExecutor.callContact(context, contacto)
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
                 }
-                CommandAnalyzer.Intent.UNKNOWN -> {
-                // Si es UNKNOWN, el código sigue hacia abajo para buscar en la IA o Comandos Visuales
-                Log.d(TAG, "Intención local desconocida, intentando IA/Visual...")
             }
 
+            CommandAnalyzer.Intent.SEND_MESSAGE -> {
+                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
+                hablar("Enviando mensaje a $contacto") {
+                    ActionExecutor.sendWhatsAppMessage(context, contacto, "")
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                }
             }
-            if (interceptarComandoVisual(texto)) {
-                isProcessing = false
-                if (sesionActiva) iniciarSRContinuo()
-                return@post
+
+            CommandAnalyzer.Intent.SEND_WHATSAPP -> {
+                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
+                hablar("Enviando por WhatsApp a $contacto") {
+                    ActionExecutor.sendWhatsAppMessage(context, contacto, "")
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                }
             }
-            if (esFraseDeSalida(texto)) {
-                terminarSesion()
-                return@post
+
+            CommandAnalyzer.Intent.SEND_TELEGRAM -> {
+                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
+                hablar("Enviando por Telegram a $contacto") {
+                    ActionExecutor.sendTelegramMessage(context, contacto, "")
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                }
             }
-            enviarComandoAlServidor(texto)
+
+            CommandAnalyzer.Intent.PLAY_MUSIC -> {
+                val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
+                ejecutarMusica(busqueda)
+            }
+
+            CommandAnalyzer.Intent.OPEN_YOUTUBE -> {
+                hablar("Abriendo YouTube") {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://www.youtube.com"))
+                    intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    context.startActivity(intent)
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                }
+            }
+
+            CommandAnalyzer.Intent.GET_DIRECTIONS -> {
+                val destino = CommandAnalyzer.detectarParametro(texto, intencion)
+                ejecutarNavegacion(destino)
+            }
+
+            CommandAnalyzer.Intent.OPEN_MAPS -> {
+                hablar("Abriendo Google Maps") {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://maps.google.com"))
+                    intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    context.startActivity(intent)
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                }
+            }
+
+            CommandAnalyzer.Intent.WEATHER -> {
+                ejecutarClima()
+            }
+
+            CommandAnalyzer.Intent.TIME -> {
+                ejecutarComandoHora()
+            }
+
+            CommandAnalyzer.Intent.SEARCH_WEB -> {
+                val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
+                ejecutarBusquedaWeb(busqueda)
+            }
+
+            CommandAnalyzer.Intent.UNKNOWN -> {
+                // Intentar con modo visual o servidor
+                if (interceptarComandoVisual(texto)) {
+                    isProcessing = false
+                    if (sesionActiva) iniciarSRContinuo()
+                    return
+                }
+
+                if (esFraseDeSalida(texto)) {
+                    terminarSesion()
+                    return
+                }
+
+                // Enviar al servidor
+                enviarComandoAlServidor(texto)
+            }
+
+            else -> {
+                // Fallback: enviar al servidor
+                enviarComandoAlServidor(texto)
+            }
         }
     }
+
     private fun ejecutarComandoHora() {
         val cal = java.util.Calendar.getInstance()
         val hora = cal.get(java.util.Calendar.HOUR_OF_DAY)
@@ -333,7 +403,7 @@ class JarvisVoiceController(
                 }
                 context.startActivity(intent)
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error al reproducir: ${e.message}")
+                Log.e(TAG, " Error al reproducir: ${e.message}")
                 // Fallback: Si falla, abrir búsqueda normal en YouTube
                 val fallbackYT = Intent(Intent.ACTION_SEARCH).apply {
                     setPackage("com.google.android.youtube")
@@ -424,7 +494,7 @@ class JarvisVoiceController(
 
             val snapshot = ScreenMemory.lastSnapshot
 
-            // ✅ UNIVERSAL: ENVIAR TODOS LOS ELEMENTOS SIN FILTRAR
+            // UNIVERSAL: ENVIAR TODOS LOS ELEMENTOS SIN FILTRAR
             val contextoDetallado = snapshot?.elements
                 ?.sortedByDescending { it.importance }
                 ?.take(100)  // Aumentar límite para más contexto
@@ -442,7 +512,7 @@ class JarvisVoiceController(
                 "clickableCount"  to (snapshot?.clickableElements ?: 0),
                 "editableCount"   to (snapshot?.editableElements ?: 0),
                 "timestamp"       to System.currentTimeMillis(),
-                // ✅ SIN appContext específico - Es UNIVERSAL
+                //  SIN appContext específico - Es UNIVERSAL
                 "screenInfo"      to "Todos los elementos clickeables/editables/scrollables están en contexto_detallado"
             )
 
@@ -473,7 +543,7 @@ class JarvisVoiceController(
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error: ${e.message}")
+                Log.e(TAG, " Error: ${e.message}")
                 hablar("Error de conexión.") {
                     isProcessing = false
                     if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
@@ -548,14 +618,121 @@ class JarvisVoiceController(
             if (status == TextToSpeech.SUCCESS) {
                 tts.setLanguage(Locale("es", "ES"))
                 ttsListo = true
-                Log.d(TAG, "✅ TTS listo")
+                Log.d(TAG, " TTS listo")
             } else {
-                Log.e(TAG, "❌ Error TTS: $status")
+                Log.e(TAG, " Error TTS: $status")
+            }
+        }
+    }
+//     ────────────────────────────────────────────────────────────────────────
+//     TTS — ELEVEN LABS
+//     ────────────────────────────────────────────────────────────────────────
+
+    private fun hablarElevenLabs(texto: String, alTerminar: (() -> Unit)? = null) {
+        setState(JarvisState.SPEAKING)
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .build()
+
+                val jsonBody = JSONObject().apply {
+                    put("text", texto)
+                    put("model_id", ElevenLabsConfig.MODEL_ID)
+                    put("voice_settings", JSONObject().apply {
+                        put("stability",         ElevenLabsConfig.STABILITY)
+                        put("similarity_boost",  ElevenLabsConfig.SIMILARITY_BOOST)
+                        put("style",             ElevenLabsConfig.STYLE)
+                        put("use_speaker_boost", ElevenLabsConfig.SPEAKER_BOOST)
+                    })
+                }.toString()
+
+                val request = Request.Builder()
+                    .url("https://api.elevenlabs.io/v1/text-to-speech/${ElevenLabsConfig.VOICE_ID}")
+                    .addHeader("xi-api-key",   ElevenLabsConfig.API_KEY)
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Accept",       "audio/mpeg")
+                    .post(jsonBody.toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                val response = client.newCall(request).execute()
+
+                if (!response.isSuccessful) {
+                    Log.e(TAG, " ElevenLabs HTTP ${response.code} — fallback a Android TTS")
+                    withContext(Dispatchers.Main) { hablarAndroid(texto, alTerminar) }
+                    return@launch
+                }
+
+                val audioBytes = response.body!!.bytes()
+                val tempFile = java.io.File(context.cacheDir, "jarvis_el_${System.currentTimeMillis()}.mp3")
+                tempFile.writeBytes(audioBytes)
+
+                withContext(Dispatchers.Main) {
+                    reproducirAudioElevenLabs(tempFile, alTerminar)
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, " ElevenLabs excepción: ${e.message} — fallback a Android TTS")
+                withContext(Dispatchers.Main) { hablarAndroid(texto, alTerminar) }
             }
         }
     }
 
+    private fun reproducirAudioElevenLabs(archivo: java.io.File, alTerminar: (() -> Unit)? = null) {
+        iniciarAnimacionOrbeSimulada()
+
+        val mediaPlayer = MediaPlayer().apply {
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            setDataSource(archivo.absolutePath)
+            prepare()
+        }
+
+        // Permitir interrupción temprana igual que en hablarAndroid
+        mainHandler.postDelayed({
+            sessionManager.setAllowEarlyInput(true)
+        }, 50L)
+
+        mediaPlayer.setOnCompletionListener {
+            mainHandler.post {
+                ui.updateORB(0f)
+                ttsTerminoTimestamp = System.currentTimeMillis()
+                sessionManager.setAllowEarlyInput(false)
+                archivo.delete()
+                mediaPlayer.release()
+                alTerminar?.invoke()
+                if (sesionActiva) {
+                    mainHandler.postDelayed({
+                        hybridTranscriber.reiniciarEscucha()
+                    }, 800L)
+                }
+            }
+        }
+
+        mediaPlayer.setOnErrorListener { _, what, extra ->
+            Log.e(TAG, " MediaPlayer error: what=$what extra=$extra — fallback a Android TTS")
+            archivo.delete()
+            mediaPlayer.release()
+            hablarAndroid("", alTerminar) // solo ejecuta el callback
+            true
+        }
+
+        mediaPlayer.start()
+    }
+    // ── Router TTS — cambia TTS_MODE arriba del archivo para alternar ────────
     private fun hablar(texto: String, alTerminar: (() -> Unit)? = null) {
+        when (TTS_MODE) {
+            TtsMode.ANDROID     -> hablarAndroid(texto, alTerminar)
+            TtsMode.ELEVEN_LABS -> hablarElevenLabs(texto, alTerminar)
+        }
+    }
+    private fun hablarAndroid(texto: String, alTerminar: (() -> Unit)? = null) {
         if (!ttsListo) {
             alTerminar?.invoke()
             return
@@ -569,33 +746,33 @@ class JarvisVoiceController(
 
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(id: String?) {
-                Log.d(TAG, "🔊 TTS INICIÓ - activando micrófono para captura")
+                Log.d(TAG, " TTS INICIÓ - activando micrófono para captura")
                 iniciarAnimacionOrbeSimulada()
 
-                // ✅ CRUCIAL: Activa micrófono MIENTRAS TTS habla
+                //  CRUCIAL: Activa micrófono MIENTRAS TTS habla
                 // Esto permite que captures TODAS las palabras sin perder nada
                 mainHandler.postDelayed({
-                    Log.d(TAG, "🎙️ [TEMPRANO] Activando escucha - usuario puede hablar ahora")
+                    Log.d(TAG, " [TEMPRANO] Activando escucha - usuario puede hablar ahora")
                     sessionManager.setAllowEarlyInput(true)
                 }, 50L)  // Pequeño delay para que TTS estabilice
             }
 
-            // ✅ CAMBIO: Este método onDone() debe quedar así:
+            //  CAMBIO: Este método onDone() debe quedar así:
             override fun onDone(id: String?) {
-                Log.d(TAG, "🔊 TTS TERMINÓ")
+                Log.d(TAG, " TTS TERMINÓ")
                 mainHandler.post {
                     ui.updateORB(0f)
                     ttsTerminoTimestamp = System.currentTimeMillis()
                     sessionManager.setAllowEarlyInput(false)
 
-                    // ✅ Ejecutar callback
+                    //  Ejecutar callback
                     alTerminar?.invoke()
 
-                    // ✅ NUEVO: Reiniciar SR explícitamente después de TTS
+                    //  NUEVO: Reiniciar SR explícitamente después de TTS
                     if (sesionActiva) {
-                        Log.d(TAG, "⏳ Esperando 800ms antes de reiniciar SR...")
+                        Log.d(TAG, " Esperando 800ms antes de reiniciar SR...")
                         mainHandler.postDelayed({
-                            Log.d(TAG, "🔄 SR reiniciado después de TTS")
+                            Log.d(TAG, "SR reiniciado después de TTS")
                             hybridTranscriber.reiniciarEscucha()
                         }, 800L)
                     }
@@ -603,7 +780,7 @@ class JarvisVoiceController(
             }
 
             override fun onError(id: String?) {
-                Log.e(TAG, "❌ Error en TTS")
+                Log.e(TAG, " Error en TTS")
                 mainHandler.post {
                     sessionManager.setAllowEarlyInput(false)
                     alTerminar?.invoke()
@@ -623,7 +800,7 @@ class JarvisVoiceController(
             ui.updateORB(0f)
             ttsTerminoTimestamp = System.currentTimeMillis()
             isProcessing = false
-            Log.d(TAG, "⏹️ TTS detenido por interrupción")
+            Log.d(TAG, " TTS detenido por interrupción")
         }
     }
 
@@ -702,7 +879,7 @@ class JarvisVoiceController(
                 iniciarSRContinuo()
             }
         }
-        Log.d(TAG, "▶️ Sesión iniciada")
+        Log.d(TAG, "Sesión iniciada")
     }
     private fun iniciarSRContinuo() {
         solicitarAudioFocusSR()
@@ -713,25 +890,25 @@ class JarvisVoiceController(
             language = "es",
             onResult = { texto ->
                 if (!isProcessing && sesionActiva) {
-                    Log.d(TAG, "✅ SR resultado: \"$texto\"")
+                    Log.d(TAG, " SR resultado: \"$texto\"")
                     ui.showText(texto)
                     isProcessing = true
                     setState(JarvisState.THINKING)
 
-                    // ✅ Vibración en lugar de sonido
+                    //  Vibración en lugar de sonido
                     hacerVibrar(100)
 
                     procesarTexto(texto)
                 }
             },
             onError = { error ->
-                Log.w(TAG, "⚠️ SR error (se reinicia): $error")
+                Log.w(TAG, "️ SR error (se reinicia): $error")
             },
             onSpeechStarted = {
                 if (sesionActiva && !isProcessing) {
                     setState(JarvisState.LISTENING)
 
-                    // ✅ Vibración en lugar de sonido
+                    //  Vibración en lugar de sonido
                     hacerVibrar(50)
                 }
             },
@@ -760,7 +937,7 @@ class JarvisVoiceController(
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "⚠️ Vibración no disponible: ${e.message}")
+            Log.w(TAG, " Vibración no disponible: ${e.message}")
         }
     }
     fun activarDesdeWakeWord() {
@@ -782,7 +959,7 @@ class JarvisVoiceController(
 
         porcupineController?.reanudarPorcupine()
         setState(JarvisState.IDLE)
-        Log.d(TAG, "⏹️ Sesión detenida completamente")
+        Log.d(TAG, " Sesión detenida completamente")
     }
 
     private fun terminarSesion() {
@@ -880,7 +1057,7 @@ class JarvisVoiceController(
 
                             mainHandler.postDelayed({
                                 if (sesionActiva) {
-                                    Log.d(TAG, "🎙️ Escuchando respuesta de confirmación...")
+                                    Log.d(TAG, " Escuchando respuesta de confirmación...")
                                     iniciarSRContinuo()
                                 }
                             }, 600L)
@@ -905,7 +1082,7 @@ class JarvisVoiceController(
         val tiempoDesdeFinTTS = System.currentTimeMillis() - ttsTerminoTimestamp
 
         if (tiempoDesdeFinTTS < ECO_WINDOW_MS) {
-            Log.d(TAG, "⚠️ Eco ignorado (${tiempoDesdeFinTTS}ms)")
+            Log.d(TAG, " Eco ignorado (${tiempoDesdeFinTTS}ms)")
             return
         }
 
@@ -967,7 +1144,7 @@ class JarvisVoiceController(
         isProcessing = true
         mainHandler.post { ui.setOrbVisibility(false) }
         scope.launch {
-            Log.d(TAG, "🔍 [DEBUG VISUAL] Solicitando captura de pantalla inmediata...")
+            Log.d(TAG, " [DEBUG VISUAL] Solicitando captura de pantalla inmediata...")
             MyAccessibilityService.instance?.captureCurrentScreenNow()
             delay(1200)  // Aumentamos un poco para apps pesadas como FB
 
@@ -975,8 +1152,8 @@ class JarvisVoiceController(
             val elementos = snapshot?.elements ?: emptyList()
 
             // --- BLOQUE DE LOGS PARA DEPURACIÓN ---
-            Log.d(TAG, "📱 App activa: ${snapshot?.packageName}")
-            Log.d(TAG, "🔢 Elementos encontrados: ${elementos.size}")
+            Log.d(TAG, " App activa: ${snapshot?.packageName}")
+            Log.d(TAG, "Elementos encontrados: ${elementos.size}")
 
             elementos.take(10).forEachIndexed { index, el ->
                 Log.d(TAG, "   #$index -> Texto: [${el.text}] | Clase: ${el.className} | Clickable: ${el.isClickable}")
@@ -985,8 +1162,8 @@ class JarvisVoiceController(
 
             withContext(Dispatchers.Main) {
                 if (elementos.isEmpty()) {
-                    // ✅ RETRY: intentar una segunda captura
-                    Log.w(TAG, "⚠️ Primera captura vacía, reintentando...")
+                    // RETRY: intentar una segunda captura
+                    Log.w(TAG, "Primera captura vacía, reintentando...")
                     MyAccessibilityService.instance?.captureNow()
 
                     delay(800)
@@ -1052,7 +1229,7 @@ class JarvisVoiceController(
 
         Log.d(TAG, "🖱️ CLICK en #$numero: x=${elemento.centerX} y=${elemento.centerY}")
 
-        // ✅ IMPORTANTE: Ejecuta el tap DIRECTAMENTE sin pasar por acciones
+        //  IMPORTANTE: Ejecuta el tap DIRECTAMENTE sin pasar por acciones
         // para evitar delays
         scope.launch {
             // Descarta acciones en espera
@@ -1132,7 +1309,7 @@ class JarvisVoiceController(
     }
 
     private fun ejecutarAccionesTecnicas(actions: List<ActionDto>, textoOriginal: String, intencion: String) {
-        Log.d("ACCESS_FLOW", "📤 Enviando ${actions.size} acciones por broadcast...")
+        Log.d("ACCESS_FLOW", " Enviando ${actions.size} acciones por broadcast...")
         Log.d("ACCESS_FLOW", "   Acciones: ${actions.map { it.tipo }}")
 
         val json = Gson().toJson(actions)
@@ -1145,7 +1322,7 @@ class JarvisVoiceController(
             setPackage(context.packageName)
         }
         context.sendBroadcast(intent)
-        Log.d("ACCESS_FLOW", "✅ Broadcast enviado a MyAccessibilityService")
+        Log.d("ACCESS_FLOW", " Broadcast enviado a MyAccessibilityService")
     }
 
     private fun obtenerSaludoGemma(callback: (String?) -> Unit) {
@@ -1197,6 +1374,6 @@ class JarvisVoiceController(
         runCatching { context.unregisterReceiver(orbHideReceiver) }
         runCatching { context.unregisterReceiver(wakeWordReceiver) }
 
-        Log.d(TAG, "✅ Controlador destruido")
+        Log.d(TAG, " Controlador destruido")
     }
 }

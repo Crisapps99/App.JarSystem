@@ -38,14 +38,14 @@ class JarvisNotificationListener : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         instance = this
-        Log.d(TAG, "✅ Listener conectado — cargando panel")
+        Log.d(TAG, " Listener conectado — cargando panel")
         refrescarNotificacionesActivas()
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         instance = null
-        Log.d(TAG, "⚠️ Listener desconectado")
+        Log.d(TAG, " Listener desconectado")
     }
 
     // --- EVENTOS ---
@@ -54,7 +54,7 @@ class JarvisNotificationListener : NotificationListenerService() {
         sbn ?: return
         if (sbn.packageName == packageName) return
 
-        // ✅ FIX: Usar getCharSequence para evitar ClassCastException (SpannableString)
+        //  FIX: Usar getCharSequence para evitar ClassCastException (SpannableString)
         val item = convertirSbn(sbn) ?: return
 
         Log.d(TAG, "📬 Nueva: [${item.appName}] ${item.title}: ${item.body.take(60)}")
@@ -82,9 +82,9 @@ class JarvisNotificationListener : NotificationListenerService() {
                 NotificationMemory.addNotification(item)
                 cargadas++
             }
-            Log.d(TAG, "✅ $cargadas notificaciones sincronizadas")
+            Log.d(TAG, " $cargadas notificaciones sincronizadas")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error refrescando: ${e.message}")
+            Log.e(TAG, " Error refrescando: ${e.message}")
         }
     }
 
@@ -94,7 +94,7 @@ class JarvisNotificationListener : NotificationListenerService() {
         return try {
             val extras = sbn.notification.extras
 
-            // ✅ Extracción universal segura (Acepta String y SpannableString)
+            // Extracción universal segura (Acepta String y SpannableString)
             val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
 
             // Intentar obtener el cuerpo del mensaje priorizando el texto largo
@@ -132,7 +132,7 @@ class JarvisNotificationListener : NotificationListenerService() {
                 remoteInputKey = remoteInputKey
             )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error en convertirSbn: ${e.message}")
+            Log.e(TAG, " Error en convertirSbn: ${e.message}")
             null
         }
     }
@@ -149,13 +149,13 @@ class JarvisNotificationListener : NotificationListenerService() {
             }
 
             if (target == null) {
-                Log.w(TAG, "⚠️ No se encontró notificación respondible para: $targetPackage")
+                Log.w(TAG, "️ No se encontró notificación respondible para: $targetPackage")
                 return
             }
 
             val actions = target.notification.actions
             if (actions.isNullOrEmpty()) {
-                Log.w(TAG, "⚠️ La notificación no tiene acciones de respuesta")
+                Log.w(TAG, " La notificación no tiene acciones de respuesta")
                 return
             }
 
@@ -175,16 +175,16 @@ class JarvisNotificationListener : NotificationListenerService() {
                 action.actionIntent.send(applicationContext, 0, replyIntent)
 
                 respondido = true
-                Log.d(TAG, "✅ Respuesta enviada a $targetPackage: '$textoRespuesta'")
+                Log.d(TAG, " Respuesta enviada a $targetPackage: '$textoRespuesta'")
                 break
             }
 
             if (!respondido) {
-                Log.w(TAG, "⚠️ Ninguna acción de esta app permite respuesta directa")
+                Log.w(TAG, "⚠ Ninguna acción de esta app permite respuesta directa")
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error en replyToNotification: ${e.message}")
+            Log.e(TAG, " Error en replyToNotification: ${e.message}")
         }
     }
     private fun obtenerNombreApp(pkg: String): String {

@@ -17,14 +17,14 @@ class VoiceSessionManager(
     companion object {
         private const val TAG = "VAD_MANAGER"
 
-        // ✅ PARÁMETROS VAD (optimizados para respuesta rápida)
+        //  PARÁMETROS VAD (optimizados para respuesta rápida)
         private const val SPEECH_ONSET_THRESHOLD = 3.5f
         private const val SPEECH_OFFSET_THRESHOLD = 2.0f
-        private const val ONSET_FRAMES_REQUIRED = 2          // ✅ REDUCIDO (64ms en lugar de 96ms)
+        private const val ONSET_FRAMES_REQUIRED = 2          // REDUCIDO (64ms en lugar de 96ms)
         private const val OFFSET_FRAMES_REQUIRED = 25        // Silencio para terminar
         private const val MIN_SPEECH_FRAMES = 6
         private const val SESSION_TIMEOUT_MS = 20_000L
-        private const val POST_TTS_WINDOW_MS = 200L          // ✅ REDUCIDO
+        private const val POST_TTS_WINDOW_MS = 200L          //  REDUCIDO
     }
 
     private var sessionState = SessionState.IDLE
@@ -35,7 +35,7 @@ class VoiceSessionManager(
     private var offsetCount = 0
     private var sessionTimeoutJob: Job? = null
 
-    // ✅ NUEVO: Variables para early input
+    //  NUEVO: Variables para early input
     private var allowEarlyInput = false
     private var earliestInputTime = 0L
     private var ttsTerminoTimestamp = 0L
@@ -46,18 +46,18 @@ class VoiceSessionManager(
         SPEAKING   // Detectó voz, grabando
     }
 
-    // ✅ NUEVO: Setter para permitir entrada temprana
+    //  NUEVO: Setter para permitir entrada temprana
     fun setAllowEarlyInput(allow: Boolean) {
         allowEarlyInput = allow
         if (allow) {
             earliestInputTime = System.currentTimeMillis()
-            Log.d(TAG, "✅ Early input ACTIVADO - escuchando mientras TTS habla")
+            Log.d(TAG, " Early input ACTIVADO - escuchando mientras TTS habla")
         } else {
-            Log.d(TAG, "⏹️ Early input DESACTIVADO - modo normal")
+            Log.d(TAG, " Early input DESACTIVADO - modo normal")
         }
     }
 
-    // ✅ NUEVO: Setter para timestamp de TTS
+    //  NUEVO: Setter para timestamp de TTS
     fun setTtsEndTimestamp(timestamp: Long) {
         ttsTerminoTimestamp = timestamp
         Log.d(TAG, "📍 TTS terminó en: $timestamp")
@@ -70,7 +70,7 @@ class VoiceSessionManager(
         offsetCount = 0
         allowEarlyInput = false
         ttsTerminoTimestamp = 0L
-        Log.d(TAG, "▶️ Sesión iniciada - esperando voz")
+        Log.d(TAG, " Sesión iniciada - esperando voz")
         scheduleSessionTimeout()
     }
 
@@ -79,17 +79,17 @@ class VoiceSessionManager(
         assistantSpeaking = false
         allowEarlyInput = false
         sessionTimeoutJob?.cancel()
-        Log.d(TAG, "⏹️ Sesión detenida")
+        Log.d(TAG, " Sesión detenida")
     }
 
     fun onAssistantStartedSpeaking() {
         assistantSpeaking = true
-        Log.d(TAG, "🤖 Asistente hablando — VAD en modo interrupción")
+        Log.d(TAG, " Asistente hablando — VAD en modo interrupción")
     }
 
     fun onAssistantFinishedSpeaking() {
         assistantSpeaking = false
-        Log.d(TAG, "✅ Asistente terminó — esperando respuesta del usuario")
+        Log.d(TAG, " Asistente terminó — esperando respuesta del usuario")
     }
 
     fun processFrame(rms: Float) {
@@ -97,7 +97,7 @@ class VoiceSessionManager(
 
         val currentTime = System.currentTimeMillis()
 
-        // ✅ LÓGICA DE ECO:
+        //  LÓGICA DE ECO:
         // Si early input está activo (TTS todavía hablando), IGNORA eco
         // Si early input está inactivo, usa ventana anti-eco normal
         val inEcoWindow = if (allowEarlyInput) {
@@ -120,7 +120,7 @@ class VoiceSessionManager(
             return
         }
 
-        // ✅ DETECCIÓN DE VOZ
+        //  DETECCIÓN DE VOZ
         when {
             // Detecta INICIO de voz
             rms > SPEECH_ONSET_THRESHOLD -> {
@@ -134,7 +134,7 @@ class VoiceSessionManager(
 
                 // Después de N frames, confirma inicio de voz
                 if (onsetCount >= ONSET_FRAMES_REQUIRED && sessionState == SessionState.WAITING) {
-                    Log.d(TAG, "✅ Inicio de voz CONFIRMADO (${onsetCount * 32}ms)")
+                    Log.d(TAG, " Inicio de voz CONFIRMADO (${onsetCount * 32}ms)")
                     sessionState = SessionState.SPEAKING
                     speechStartTime = currentTime
                     onsetCount = 0
@@ -150,14 +150,14 @@ class VoiceSessionManager(
                 if (offsetCount >= OFFSET_FRAMES_REQUIRED) {
                     val duration = currentTime - speechStartTime
                     if (duration >= MIN_SPEECH_FRAMES * 32) {
-                        Log.d(TAG, "✅ Fin de voz — duración ~${duration}ms")
+                        Log.d(TAG, " Fin de voz — duración ~${duration}ms")
                         sessionState = SessionState.WAITING
                         onsetCount = 0
                         offsetCount = 0
                         allowEarlyInput = false  // Desactiva early input cuando termina el usuario
                         onSpeechEnded?.invoke()
                     } else {
-                        Log.d(TAG, "⚠️ Audio muy corto (${duration}ms) - ignorando")
+                        Log.d(TAG, " Audio muy corto (${duration}ms) - ignorando")
                         sessionState = SessionState.WAITING
                         onsetCount = 0
                         offsetCount = 0
@@ -172,7 +172,7 @@ class VoiceSessionManager(
 
         // Timeout de sesión
         if (currentTime - sessionStartTime > SESSION_TIMEOUT_MS) {
-            Log.d(TAG, "⏱️ Timeout de sesión (20s sin voz)")
+            Log.d(TAG, " Timeout de sesión (20s sin voz)")
             sessionTimeoutJob?.cancel()
             onSessionTimeout?.invoke()
         }

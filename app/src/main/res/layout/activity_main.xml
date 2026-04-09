@@ -58,26 +58,56 @@
         android:textColor="#666666"
         android:layout_marginTop="8dp"
         app:layout_constraintTop_toBottomOf="@id/textView"
-        app:layout_constraintBottom_toTopOf="@id/Ingresobutton"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Botón slide to act -->
-    <com.ncorti.slidetoact.SlideToActView
-        android:id="@+id/Ingresobutton"
+    <!-- ═══════════════════════════════════════════════════════════════
+       CONTENEDOR INFERIOR (Fixed - siempre visible)
+       ═══════════════════════════════════════════════════════════════ -->
+
+    <LinearLayout
+        android:id="@+id/bottomContainer"
         android:layout_width="0dp"
-        android:layout_height="70dp"
-        android:layout_marginStart="32dp"
-        android:layout_marginEnd="32dp"
-        android:layout_marginBottom="80dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@android:color/white"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:area_margin="6dp"
-        app:outer_color="#4D0095D4"
-        app:inner_color="#0095D4"
-        app:border_radius="35dp"
-        app:text_size="18sp"
-        app:slider_icon="@drawable/ic_mic_vector"/>
+        app:layout_constraintEnd_toEndOf="parent">
+
+
+        <!-- BOTÓN SLIDE TO ACT -->
+        <com.ncorti.slidetoact.SlideToActView
+            android:id="@+id/Ingresobutton"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            app:area_margin="8dp"
+            app:outer_color="#E8F0FE"
+            app:inner_color="#0095D4"
+            app:border_radius="30dp"
+            app:text="Desliza para comenzar"
+            app:text_size="16sp"
+            app:text_color="#0095D4"
+            app:slider_icon="@drawable/ic_mic_vector"
+            app:slider_icon_color="#FFFFFF" />
+
+        <!-- NOTA IMPORTANTE -->
+        <TextView
+            android:id="@+id/disclaimerText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔒 Tu privacidad es importante. No compartimos datos."
+            android:textSize="11sp"
+            android:fontFamily="@font/googlesans"
+            android:textColor="#BBBBBB"
+            android:gravity="center"
+            android:layout_marginTop="12dp" />
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

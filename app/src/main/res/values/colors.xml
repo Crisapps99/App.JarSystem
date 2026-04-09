@@ -68,4 +68,27 @@
     <color name="button_inner_light">#0095D4</color>
     <color name="divider_light">#DDDDDD</color>
     <color name="border_light">#E0E0E0</color>
+    <!-- NUEVOS: Colores para orbe mejorado -->
+    <color name="orb_primary">#0095D4</color>
+    <color name="orb_secondary">#00C853</color>
+    <color name="orb_tertiary">#2196F3</color>
+    <color name="orb_accent">#FF6B6B</color>
+
+    <!-- NUEVOS: Colores para acciones -->
+    <color name="action_call">#00AA00</color>
+    <color name="action_message">#0095D4</color>
+    <color name="action_whatsapp">#25D366</color>
+    <color name="action_telegram">#0088CC</color>
+    <color name="action_music">#FF6B6B</color>
+    <color name="action_maps">#4285F4</color>
+    <color name="action_weather">#2196F3</color>
+    <color name="action_time">#FF9800</color>
+    <color name="action_search">#4285F4</color>
+    <color name="action_youtube">#FF0000</color>
+
+    <!-- NUEVOS: Tema claro -->
+    <color name="text_primary">#1A1A1A</color>
+    <color name="text_secondary">#666666</color>
+    <color name="bg_primary">#FFFFFF</color>
+    <color name="bg_secondary">#F5F5F5</color>
 </resources>

@@ -79,6 +79,7 @@ data class ActionRequestEnriquecido(
     @SerializedName("contexto_detallado") val contextoDetallado: List<ElementoDetalladoDto> = emptyList(),
     @SerializedName("metadata") val metadata: Map<String, Any> = emptyMap()
 )
+
 /**
  * Respuesta principal del endpoint /predecir
  */
@@ -90,26 +91,29 @@ data class JarvisResponse(
     @SerializedName("payload") val payload: List<ActionDto>? = null,
     @SerializedName("confidence") val confidence: Float? = null
 )
+
 /**
  * Representa una acción individual a ejecutar
  */
 data class ActionDto(
-    @SerializedName("tipo")      val tipo: String,
-    @SerializedName("params")    val params: Map<String, Any>? = null,
+    @SerializedName("tipo") val tipo: String,
+    @SerializedName("params") val params: Map<String, Any>? = null,
     // Campos raíz para android_intent
-    @SerializedName("action")    val action: String? = null,
-    @SerializedName("package")   val pkg: String? = null,
-    @SerializedName("data")      val data: String? = null,
+    @SerializedName("action") val action: String? = null,
+    @SerializedName("package") val pkg: String? = null,
+    @SerializedName("data") val data: String? = null,
     @SerializedName("mime_type") val mimeType: String? = null,
-    @SerializedName("extras")    val extras: Map<String, Any>? = null,
+    @SerializedName("extras") val extras: Map<String, Any>? = null,
     @SerializedName("component") val component: String? = null,
 )
+
 /**
  * Saludo de Jarvis
  */
 data class SaludoResponse(
     @SerializedName("saludo") val saludo: String? = null
 )
+
 /**
  * Reporte de feedback para aprendizaje
  */
@@ -120,73 +124,7 @@ data class ReporteFeedback(
     @SerializedName("resultado") val resultado: String,
     @SerializedName("error_detalle") val error_detalle: String? = null
 )
-//)
-///**
-// * DTO para enviar elementos de pantalla con metadatos al servidor
-// */
-//data class ElementoDetalladoDto(
-//    val text: String,           // Texto visible combinado
-//    val x: Int,                 // Centro X para tap
-//    val y: Int,                 // Centro Y para tap
-//    val clickable: Boolean,     // ¿Es clicable?
-//    val editable: Boolean,      // ¿Es campo de texto?
-//    val type: String,           // Tipo de widget (Button, EditText, etc.)
-//    val importance: Int,        // 0-100
-//    val actions: List<String>   // ["click", "long_click", "set_text"]
-//)
-//
-//// ═══════════════════════════════════════════════════════════════════
-//// 📤 MODELOS DE RESPONSE (Respuesta del servidor)
-//// ═══════════════════════════════════════════════════════════════════
-//
-//
-//
-//
-//
-///**
-// * Saludo inicial de Jarvis
-// */
-//data class GreetingResponse(
-//    val saludo: String? = null
-//)
-//
-///**
-// * Respuesta genérica para endpoints simples
-// */
-//data class SimpleApiResponse(
-//    val success: Boolean,
-//    val message: String? = null
-//)
-//
-//// ═══════════════════════════════════════════════════════════════════
-//// 📝 MODELOS DE FEEDBACK (Aprendizaje)
-//// ═══════════════════════════════════════════════════════════════════
-//
-///**
-// * Reporte de feedback para que Jarvis aprenda
-// */
-//data class ReporteFeedback(
-//    val texto_original: String,
-//    val intencion_detectada: String,
-//    val json_generado: List<ActionDto>,
-//    val resultado: String,              // "EXITO" o "ERROR"
-//    val error_detalle: String? = null
-//)
 
-// ═══════════════════════════════════════════════════════════════════
-// 🌐 INTERFACES DE API (Retrofit)
-// ═══════════════════════════════════════════════════════════════════
-//interface GroqApiService {
-//    @Multipart
-//    @POST("v1/audio/transcriptions")
-//    suspend fun transcribeAudio(
-//        @Part audio: MultipartBody.Part,
-//        @Part("model") model: RequestBody = "whisper-large-v3".toRequestBody("text/plain".toMediaType()),
-//        @Part("language") language: RequestBody = "es".toRequestBody("text/plain".toMediaType())
-//    ): GroqResponse
-//}
-
-//data class GroqResponse(val text: String)
 /**
  * API principal de acciones
  */
@@ -205,24 +143,26 @@ interface ActionApiService {
     suspend fun regards(): SaludoResponse
 }
 
-    /**
-     * API de feedback y aprendizaje
-     */
-    interface JarvisFeedbackApi {
-        @POST("retroalimentacion")
-        suspend fun enviarFeedback(@Body reporte: ReporteFeedback
-        ): Response<ResponseBody>
-    }
-    /**
-     * API de debugging
-     */
-    interface JarvisDebugApi {
-        @Headers("Content-Type: application/json")
-        @POST("debug/pantalla")
-        suspend fun debugPantalla(
-            @Body data: Map<String, Any>
-        ): Response<ResponseBody>
-    }
+/**
+ * API de feedback y aprendizaje
+ */
+interface JarvisFeedbackApi {
+    @POST("retroalimentacion")
+    suspend fun enviarFeedback(
+        @Body reporte: ReporteFeedback
+    ): Response<ResponseBody>
+}
+
+/**
+ * API de debugging
+ */
+interface JarvisDebugApi {
+    @Headers("Content-Type: application/json")
+    @POST("debug/pantalla")
+    suspend fun debugPantalla(
+        @Body data: Map<String, Any>
+    ): Response<ResponseBody>
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // RETROFIT CLIENT (Singleton)
@@ -244,30 +184,9 @@ object RetrofitClient {
     val debugApi: JarvisDebugApi by lazy {
         retrofit.create(JarvisDebugApi::class.java)
     }
-//    // --- 🚀 NUEVO: Configuración para GROQ ---
-//    private const val GROQ_URL = "https://api.groq.com/openai/"
-//    private const val GROQ_API_KEY = "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" // Reemplaza con tu llave real
-//
-//    private val okHTTPGroq = OkHttpClient.Builder()
-//        .addInterceptor { chain ->
-//            val request = chain.request().newBuilder()
-//                .addHeader("Authorization", "Bearer $GROQ_API_KEY")
-//                .build()
-//            chain.proceed(request)
-//        }
-//        .addInterceptor(logging)
-//        .build()
-//
-//    private val retrofitGroq = Retrofit.Builder()
-//        .baseUrl(GROQ_URL)
-//        .client(okHTTPGroq)
-//        .addConverterFactory(GsonConverterFactory.create())
-//        .build()
-//
-//    val groqApiService: GroqApiService by lazy {
-//        retrofitGroq.create(GroqApiService::class.java)
-//    }
+
 }
+
 /**
  * Convierte un ScreenElement a ElementoDetalladoDto para enviar al servidor
  */
@@ -300,30 +219,3 @@ fun com.example.myapplication.model.ScreenElement.toDto(): ElementoDetalladoDto 
         visibility = this.visibility
     )
 }
-//
-///**
-// * Convierte un ScreenSnapshot completo a lista de DTOs
-// */
-//fun com.example.myapplication.model.ScreenSnapshot.toDtoList(): List<ElementoDetalladoDto> {
-//    return this.elements
-//        .filter { it.importance > 30 } // Solo elementos importantes
-//        .map { it.toDto() }
-//}
-//
-//// ═══════════════════════════════════════════════════════════════════
-//// 📝 MODELOS LEGACY (Mantener si se usan en otra parte)
-//// ═══════════════════════════════════════════════════════════════════
-//
-//data class ActionResponse(
-//    @SerializedName("action") val action: String,
-//    @SerializedName("response_text") val responseText: String? = null
-//)
-//
-//data class CommandData(
-//    val frase: String = "",
-//    val intent: String = "",
-//    val categoria: String = "",
-//    val componente: String = "",
-//    val entities: Map<String, String> = emptyMap(),
-//    val created_at: String = ""
-//)
