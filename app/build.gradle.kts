@@ -65,6 +65,11 @@ android {
             )
         }
     }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -75,11 +80,14 @@ android {
 }
 
 dependencies {
-    implementation ("edu.cmu.pocketsphinx:pocketsphinx-android:5.0.0")
-    implementation("ai.picovoice:porcupine-android:4.0.0")
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
+//    implementation ("edu.cmu.pocketsphinx:pocketsphinx-android:5.0.0")
+//    implementation("ai.picovoice:porcupine-android:4.0.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
-
+    //vosk
+    implementation("com.alphacephei:vosk-android:0.3.47@aar")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
     // También es recomendable tener esta para ViewModels si los usas:
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
 //    //picovoice

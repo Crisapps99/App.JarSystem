@@ -39,7 +39,7 @@ import android.os.Vibrator
 import android.os.VibrationEffect
 import android.os.Build
 import com.example.myapplication.service.JarvisNotificationListener
-import com.example.myapplication.core.CommandAnalyzer
+//import com.example.myapplication.core.CommandAnalyzer
 enum class JarvisState { IDLE, LISTENING, THINKING, SPEAKING }
 
 interface JarvisUi {
@@ -67,7 +67,7 @@ object ElevenLabsConfig {
 }
 
 enum class TtsMode { ANDROID, ELEVEN_LABS }
-private val TTS_MODE = TtsMode.ELEVEN_LABS
+private val TTS_MODE = TtsMode.ANDROID
 
 class JarvisVoiceController(
     private val context: Context,
@@ -193,19 +193,11 @@ class JarvisVoiceController(
     private fun inicializarAudioEngine() {
         audioEngine = ContinuousAudioEngine(
             onFrameAvailable = { frame ->
-                // Solo Porcupine cuando sesión inactiva
-                if (!sesionActiva) {
-                    procesarFrameParaPorcupine(frame)
-                }
-                // NOTA: cuando sesionActiva==true, el SR tiene el micrófono
-                // El ContinuousAudioEngine puede estar corriendo en paralelo
-                // pero NO interferirá porque SR usa su propio canal de audio
             },
             onRmsChanged = { rms ->
                 mainHandler.post { ui.updateORB(rms) }
             }
         )
-        audioEngine.start()
         Log.i(TAG, " Motor de audio iniciado")
     }
 
@@ -528,8 +520,11 @@ class JarvisVoiceController(
 
                 if (response.success) {
                     ui.showText(response.response_text)
-                    val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
-                    if (esAccionTecnica && !response.payload.isNullOrEmpty()) {
+//                    val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
+//                    if (esAccionTecnica && !response.payload.isNullOrEmpty()) {
+//                        ejecutarAccionesTecnicas(response.payload, texto, response.action ?: "unknown")
+//                    }
+                    if (!response.payload.isNullOrEmpty()) {
                         ejecutarAccionesTecnicas(response.payload, texto, response.action ?: "unknown")
                     }
                     hablar(response.response_text) {

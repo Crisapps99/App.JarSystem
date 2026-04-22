@@ -21,7 +21,7 @@ object CommandAnalyzer {
         val t = texto.lowercase().trim()
 
         return when {
-            // Música
+             //Música
             t.contains("reproduce") || t.contains("pon música") ||
                     t.contains("pon la canción") || t.contains("spotify") ||
                     t.contains("youtube music") -> Intent.PLAY_MUSIC

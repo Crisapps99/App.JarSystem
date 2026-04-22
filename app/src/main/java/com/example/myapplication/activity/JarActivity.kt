@@ -1,8 +1,8 @@
 package com.example.myapplication.activity
-
-import ai.picovoice.android.voiceprocessor.VoiceProcessor
-import ai.picovoice.porcupine.PorcupineException
-import ai.picovoice.porcupine.PorcupineManager
+//
+//import ai.picovoice.android.voiceprocessor.VoiceProcessor
+//import ai.picovoice.porcupine.PorcupineException
+//import ai.picovoice.porcupine.PorcupineManager
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.animation.Animator
@@ -38,16 +38,17 @@ import com.example.myapplication.service.JarvisOverlayService
 import com.ncorti.slidetoact.SlideToActView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.example.myapplication.core.VoskWakeWordDetector
 
 class JarActivity : AppCompatActivity(), JarvisUi {
 
     private lateinit var binding: ActivityJarBinding
     private lateinit var controller: JarvisVoiceController
     private val RECORD_AUDIO_PERMISSION_CODE = 200
-
-    private var porcupineManager: PorcupineManager? = null
-    private val ACCESS_KEY  = "UcCqJXCaJhQNTLLrzyejwfeCHn++rwmH66RhWrMBJ4zxxLIVjvJ9mw=="
-    private val keywordFile = "hey-nexus_es_android_v4_0_0.ppn"
+    private var wakeDetector: VoskWakeWordDetector? = null
+//    private var porcupineManager: PorcupineManager? = null
+//    private val ACCESS_KEY  = "UcCqJXCaJhQNTLLrzyejwfeCHn++rwmH66RhWrMBJ4zxxLIVjvJ9mw=="
+//    private val keywordFile = "hey-nexus_es_android_v4_0_0.ppn"
 
     private var currentJarvisState: JarvisState = JarvisState.IDLE
     private var audioVisualizer: android.media.audiofx.Visualizer? = null
@@ -171,7 +172,7 @@ class JarActivity : AppCompatActivity(), JarvisUi {
             }
         }
     }
-
+//
     // ── Fase de espera de wake word ──────────────────────────
     private fun startWakeWordPhase() {
         currentPhase = Phase.WAITING_WAKEWORD
@@ -274,51 +275,32 @@ class JarActivity : AppCompatActivity(), JarvisUi {
         }
     }
 
-    // ── Porcupine ────────────────────────────────────────────
+
     private fun setupPorcupine() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), RECORD_AUDIO_PERMISSION_CODE)
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.RECORD_AUDIO), RECORD_AUDIO_PERMISSION_CODE)
             return
         }
-        try {
-            val fileList = assets.list("") ?: arrayOf()
-            if (!fileList.contains(keywordFile)) {
-                Log.e("NEXUS", "Keyword file no encontrado en assets")
-                return
+        wakeDetector = VoskWakeWordDetector(
+            context = this, onWakeWordDetected = {
+                Log.i("Nexus","hey dexus detectado V")
+                runOnUiThread { onWakeWordDetected() }
             }
-            porcupineManager = PorcupineManager.Builder()
-                .setAccessKey(ACCESS_KEY)
-                .setKeywordPath(keywordFile)
-                .setModelPath("porcupine_params_es.pv")
-                .setSensitivity(0.7f)
-                .build(this) { keywordIndex ->
-                    if (keywordIndex == 0) {
-                        Log.i("NEXUS", "🔥 Hey Nexus detectado")
-                        runOnUiThread { onWakeWordDetected() }
-                    }
-                }
-
-            VoiceProcessor.getInstance().addFrameListener { frame ->
-                val rms = calculateRMS(frame)
-                runOnUiThread {
-                    if (currentPhase == Phase.WAITING_WAKEWORD) {
-                        binding.jarvisOrb.updateRms(rms * 0.6f)
-                    }
-                }
+        )
+        //carga modelo y edmpiez aa escuchar
+        wakeDetector?.init(
+            onReady = {
+                wakeDetector?.start()
+                isListeningForWakeWord = true
+                Log.d("Nexus","Vosk iniciando")
+            },
+            onError = { msg ->
+                Log.e("Nexus","Erorr al cargar Vosk: $msg")
+                showRetryMessage()
             }
-
-            porcupineManager?.start()
-            isListeningForWakeWord = true
-            Log.d("NEXUS", "Porcupine iniciado")
-
-        } catch (e: PorcupineException) {
-            Log.e("NEXUS", "Error Porcupine: ${e.message}")
-            showRetryMessage()
-        } catch (e: Exception) {
-            Log.e("NEXUS", "Error general: ${e.message}")
-            showRetryMessage()
-        }
+        )
     }
 
     private fun showRetryMessage() {
@@ -411,7 +393,7 @@ class JarActivity : AppCompatActivity(), JarvisUi {
         }
     }
     override fun onRecognizerReady() {
-        runOnUiThread { porcupineManager?.stop() }
+        runOnUiThread { wakeDetector?.stop() }
     }
 
     override fun renderState(state: JarvisState) {
@@ -421,7 +403,7 @@ class JarActivity : AppCompatActivity(), JarvisUi {
                 JarvisState.LISTENING -> {
                     setStatusLabel("ESCUCHANDO", "#4DEEE9")
                     animateTextChange("Escuchando...")
-                    porcupineManager?.stop()
+                    wakeDetector?.stop()
                 }
                 JarvisState.THINKING -> {
                     setStatusLabel("PENSANDO", "#7BD7F8")
@@ -433,7 +415,7 @@ class JarActivity : AppCompatActivity(), JarvisUi {
                 JarvisState.IDLE -> {
                     binding.jarvisOrb.reset()
                     if (!hasDetectedWakeWord) {
-                        try { porcupineManager?.start() } catch (e: Exception) { }
+                        try { wakeDetector?.start() } catch (e: Exception) { }
                     }
                 }
             }
@@ -502,9 +484,9 @@ class JarActivity : AppCompatActivity(), JarvisUi {
     override fun onDestroy() {
         runCatching { unregisterReceiver(overlayReadyReceiver) }
         if (!hasDetectedWakeWord) {
-            porcupineManager?.stop()
-            porcupineManager?.delete()
-            VoiceProcessor.getInstance().clearFrameListeners()
+            wakeDetector?.stop()
+//            wakeDetector?.delete()
+//            wakeDetector.getInstance().clearFrameListeners()
         }
         audioVisualizer?.release()
         controller.destroy()

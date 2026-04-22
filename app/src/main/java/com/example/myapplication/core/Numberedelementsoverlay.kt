@@ -71,7 +71,7 @@ class NumberedElementsOverlay(private val context: Context){
             //a;adimos la vista a la pantalla del sisitem a
             windowManager?.addView(view, params)
             isVisible = true
-            Log.d("NUMBERED_OVERLAY", "✅ Mostrando ${elementosNumerados.size} elementos numerados")
+            Log.d("NUMBERED_OVERLAY", "Mostrando ${elementosNumerados.size} elementos numerados")
 
             // Imprimimos en el Log qué número corresponde a qué texto para depuración
             elementosNumerados.forEachIndexed { i, e ->

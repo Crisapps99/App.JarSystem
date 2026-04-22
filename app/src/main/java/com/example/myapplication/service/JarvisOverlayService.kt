@@ -1,8 +1,8 @@
 package com.example.myapplication.service
 
-import ai.picovoice.porcupine.PorcupineException
-import ai.picovoice.porcupine.PorcupineManager
-import ai.picovoice.android.voiceprocessor.VoiceProcessor
+//import ai.picovoice.porcupine.PorcupineException
+//import ai.picovoice.porcupine.PorcupineManager
+//import ai.picovoice.android.voiceprocessor.VoiceProcessor
 import android.app.*
 import android.content.Context
 import android.content.Intent
@@ -18,34 +18,8 @@ import com.example.myapplication.R
 import com.example.myapplication.core.*
 import com.example.myapplication.ui.JarvisOrbView
 import kotlinx.coroutines.*
+import com.example.myapplication.core.VoskWakeWordDetector
 
-/**
- * JarvisOverlayService — SIMPLIFICADO
- *
- * CAMBIOS RESPECTO A LA VERSIÓN ANTERIOR:
- *
- * ❌ ELIMINADO:
- *   - CobraVADProcessor y todo su setup
- *   - setupGlobalVisualizer() (el Visualizer del sistema era solo para TTS de ElevenLabs)
- *   - calculateEnergy() y calculateRMS() duplicados
- *   - VoiceProcessor.addFrameListener() para Cobra
- *   - porcupineLock / porcupinePausado duplicados con el controller
- *   - Toda la lógica de audio que ahora vive en ContinuousAudioEngine
- *
- * ✅ CONSERVADO:
- *   - Porcupine para detección de wake word (sigue usando VoiceProcessor en IDLE)
- *   - Overlay de ventana flotante
- *   - Notificación foreground
- *   - PorcupineController interface
- *
- * NOTA SOBRE PORCUPINE + CONTINUOUSAUDIOENGINE:
- *   Porcupine sigue usando VoiceProcessor (su propio AudioRecord) en modo IDLE.
- *   Cuando la sesión se activa, Porcupine se pausa y VoiceProcessor se detiene.
- *   ContinuousAudioEngine ya estaba corriendo en background — sin conflicto.
- *
- *   El conflicto anterior era Cobra (otro AudioRecord) corriendo al mismo tiempo
- *   que Porcupine. Con Cobra eliminado, ese conflicto desaparece.
- */
 class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
     // ── Overlay ──────────────────────────────────────────────────────────────
@@ -59,16 +33,17 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     private lateinit var controller: JarvisVoiceController
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // ── Porcupine (wake word) ─────────────────────────────────────────────────
-    private var porcupineManager: PorcupineManager? = null
-    private val ACCESS_KEY = "YMYKZrTBnmQeviXKwGY8rrXUiUlcHBC1ApCQwg6G99JrluupBCFbUg=="
-    private val KEYWORD_FILE = "hey-nexus_es_android_v4_0_0.ppn"
-    private val MODEL_FILE = "porcupine_params_es.pv"
+//    // ── Porcupine (wake word) ─────────────────────────────────────────────────
+//    private var porcupineManager: PorcupineManager? = null
+//    private val ACCESS_KEY = "YMYKZrTBnmQeviXKwGY8rrXUiUlcHBC1ApCQwg6G99JrluupBCFbUg=="
+//    private val KEYWORD_FILE = "hey-nexus_es_android_v4_0_0.ppn"
+//    private val MODEL_FILE = "porcupine_params_es.pv"
 
     // Estado simplificado de Porcupine
     @Volatile private var porcupinePausado = false
     private val porcupineLock = Any()
-
+//vosk
+    private var wakeDetector: VoskWakeWordDetector? = null
     // ── Estado general ────────────────────────────────────────────────────────
     private var currentJarvisState: JarvisState = JarvisState.IDLE
     private var isSessionActive = true
@@ -78,8 +53,8 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "jarvis_overlay_channel"
         private const val TAG = "JARVIS_OVERLAY"
-        private const val FRAME_LENGTH = 512
-        private const val SAMPLE_RATE = 16000
+//        private const val FRAME_LENGTH = 512
+//        private const val SAMPLE_RATE = 16000
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -125,17 +100,9 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         // Detiene Porcupine y VoiceProcessor
         synchronized(porcupineLock) {
             try {
-                porcupineManager?.stop()
-                porcupineManager?.delete()
+                wakeDetector?.stop()
             } catch (e: Exception) {
                 Log.e(TAG, "Error limpiando Porcupine: ${e.message}")
-            }
-
-            try {
-                VoiceProcessor.getInstance().stop()
-                VoiceProcessor.getInstance().clearFrameListeners()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error limpiando VoiceProcessor: ${e.message}")
             }
         }
 
@@ -158,34 +125,27 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
     private fun setupPorcupine() {
         try {
-            // Limpia listeners anteriores por si hay alguno huérfano
-            VoiceProcessor.getInstance().clearFrameListeners()
-
-            porcupineManager = PorcupineManager.Builder()
-                .setAccessKey(ACCESS_KEY)
-                .setKeywordPath(KEYWORD_FILE)
-                .setModelPath(MODEL_FILE)
-                .setSensitivity(0.7f)
-                .build(this) { keywordIndex ->
-                    if (keywordIndex == 0 && isSessionActive) {
+            wakeDetector = VoskWakeWordDetector(
+                context = this,
+                onWakeWordDetected = {
+                    if (isSessionActive) {
                         serviceScope.launch(Dispatchers.Main) { onWakeWordDetected() }
                     }
                 }
+            )
 
-            // NOTA: ya NO agregamos un FrameListener para Cobra aquí.
-            // El único listener que podría ir aquí es para alimentar datos al orbe en IDLE,
-            // pero ahora ContinuousAudioEngine ya maneja eso vía onRmsChanged.
-
-            porcupineManager?.start()
-            // VoiceProcessor.getInstance().start() es llamado internamente por PorcupineManager
-            porcupinePausado = false
-
-            Log.i(TAG, "✅ Porcupine listo — escuchando wake word")
-
-        } catch (e: PorcupineException) {
-            Log.e(TAG, "❌ PorcupineException: ${e.message}")
+            wakeDetector?.init(
+                onReady = {
+                    wakeDetector?.start()
+                    porcupinePausado = false
+                    Log.i(TAG, "✅ Vosk listo — escuchando wake word")
+                },
+                onError = { msg ->
+                    Log.e(TAG, "❌ Error cargando Vosk: $msg")
+                }
+            )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error Porcupine: ${e.message}", e)
+            Log.e(TAG, "❌ Error Vosk: ${e.message}", e)
         }
     }
 
@@ -215,13 +175,9 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             if (porcupinePausado) return
 
             try {
-                porcupineManager?.stop()
-                // Detiene VoiceProcessor para liberar el AudioRecord de Porcupine
-                // Esto es importante: sin esto, VoiceProcessor y ContinuousAudioEngine
-                // tendrían dos AudioRecords abiertos al mismo tiempo
-                VoiceProcessor.getInstance().stop()
+                wakeDetector?.stop()
                 porcupinePausado = true
-                Log.d("JARVIS_PORCUPINE", "⏸️ Porcupine pausado — VoiceProcessor detenido")
+                Log.d("JARVIS_PORCUPINE", "⏸️ Vosk pausado — VoiceProcessor detenido")
             } catch (e: Exception) {
                 Log.e("JARVIS_PORCUPINE", "Error pausando: ${e.message}")
             }
@@ -234,11 +190,9 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
                 if (!porcupinePausado) return@synchronized
 
                 try {
-                    // Reinicia VoiceProcessor antes de Porcupine
-                    VoiceProcessor.getInstance().start(FRAME_LENGTH, SAMPLE_RATE)
-                    porcupineManager?.start()
+                    wakeDetector?.start()
                     porcupinePausado = false
-                    Log.d("JARVIS_PORCUPINE", "▶️ Porcupine reanudado — VoiceProcessor activo")
+                    Log.d("JARVIS_PORCUPINE", "▶️ Vosk reanudado — VoiceProcessor activo")
                 } catch (e: Exception) {
                     Log.e("JARVIS_PORCUPINE", "Error reanudando: ${e.message}")
                 }

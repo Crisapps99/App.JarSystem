@@ -627,6 +627,92 @@ class MyAccessibilityService : AccessibilityService() {
                         waitTime = 300L
                     }
                 }
+                "call" -> {
+                    val contact = accion.params?.get("contact") as? String ?: ""
+                    Log.d(TAG, "│ ☎️ call: '$contact'")
+                    ActionExecutor.callContact(this@MyAccessibilityService, contact)
+                    waitTime = 3000L
+                }
+
+                "set_alarm" -> {
+                    val hour   = (accion.params?.get("hour") as? Number)?.toInt() ?: 7
+                    val minute = (accion.params?.get("minute") as? Number)?.toInt() ?: 0
+                    val label  = accion.params?.get("label") as? String ?: "Alarma"
+                    Log.d(TAG, "│ ⏰ set_alarm: $hour:$minute '$label'")
+                    val intent = Intent(android.provider.AlarmClock.ACTION_SET_ALARM).apply {
+                        putExtra(android.provider.AlarmClock.EXTRA_HOUR, hour)
+                        putExtra(android.provider.AlarmClock.EXTRA_MINUTES, minute)
+                        putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, label)
+                        putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(intent)
+                    waitTime = 1500L
+                }
+
+                "play_music" -> {
+                    val query = accion.params?.get("query") as? String ?: ""
+                    Log.d(TAG, "│ 🎵 play_music: '$query'")
+                    val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
+                        putExtra(android.app.SearchManager.QUERY, query)
+                        putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    try { startActivity(intent) } catch (e: Exception) {
+                        Log.e(TAG, "│ ❌ play_music falló: ${e.message}")
+                    }
+                    waitTime = 1500L
+                }
+
+                "navigate_to" -> {
+                    val destination = accion.params?.get("destination") as? String ?: ""
+                    Log.d(TAG, "│ 🗺️ navigate_to: '$destination'")
+                    val uri = Uri.parse("google.navigation:q=${Uri.encode(destination)}")
+                    val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                        setPackage("com.google.android.apps.maps")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    try { startActivity(intent) } catch (e: Exception) {
+                        val fallback = Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://maps.google.com/?q=${Uri.encode(destination)}")).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(fallback)
+                    }
+                    waitTime = 2000L
+                }
+
+                "search_web" -> {
+                    val query = accion.params?.get("query") as? String ?: ""
+                    Log.d(TAG, "│ 🔍 search_web: '$query'")
+                    val intent = Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.google.com/search?q=${Uri.encode(query)}")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(intent)
+                    waitTime = 1500L
+                }
+
+                "toggle_setting" -> {
+                    val setting = accion.params?.get("setting") as? String ?: ""
+                    val state   = accion.params?.get("state") as? String ?: "on"
+                    Log.d(TAG, "│ ⚙️ toggle_setting: $setting → $state")
+                    when (setting) {
+                        "flashlight" -> {
+                            val cam = getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+                            cam.setTorchMode(cam.cameraIdList[0], state == "on")
+                        }
+                        "wifi"      -> ejecutarAcciones(Gson().toJson(listOf(ActionDto("toggle_wifi", mapOf("state" to state)))))
+                        "bluetooth" -> ejecutarAcciones(Gson().toJson(listOf(ActionDto("toggle_bluetooth", mapOf("state" to state)))))
+                        "dnd" -> {
+                            val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                        }
+                    }
+                    waitTime = 500L
+                }
                 "record_video" -> {
                     val modo = accion.params?.get("mode") as? String ?: "normal"  // normal, portrait, frontal
                     val duracion = (accion.params?.get("duration") as? Number)?.toInt() ?: 0  // 0 = sin límite
@@ -946,11 +1032,62 @@ class MyAccessibilityService : AccessibilityService() {
                 }
 
                 "type_text" -> {
-                    val texto = accion.params?.get("texto") as? String ?: ""
+                    val texto = accion.params?.get("texto") as? String
+                        ?: accion.params?.get("text") as? String  // fallback por si Gemini usa "text"
+                        ?: ""
                     ultimoTextoEscrito = texto
                     Log.d(TAG, "│ ⌨️ type_text: '$texto'")
-                    escribirTexto(accion.params)
-                    waitTime = 800L
+
+                    if (texto.isBlank()) {
+                        Log.w(TAG, "│ ⚠️ Texto vacío, ignorando")
+                        exitoAccion = false
+                    } else {
+                        val root = rootInActiveWindow
+                        if (root == null) {
+                            Log.e(TAG, "│ ❌ Sin ventana activa")
+                            exitoAccion = false
+                        } else {
+                            // Intento 1: campo con foco actual
+                            val focusNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                            if (focusNode != null && focusNode.isEditable) {
+                                val args = Bundle()
+                                args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto)
+                                val ok = focusNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                                Log.d(TAG, "│ ${if (ok) "✅" else "❌"} type_text con foco: '$texto'")
+                                exitoAccion = ok
+                            } else {
+                                // Intento 2: primer campo editable en árbol
+                                val editable = encontrarCampoEditable(root)
+                                if (editable != null) {
+                                    // Dar foco tocando el campo primero
+                                    val bounds = Rect()
+                                    editable.getBoundsInScreen(bounds)
+                                    if (!bounds.isEmpty) {
+                                        tapCoordenadas(mapOf("x" to bounds.centerX(), "y" to bounds.centerY()))
+                                    }
+                                    handler.postDelayed({
+                                        val rootRetry = rootInActiveWindow ?: return@postDelayed
+                                        val focusRetry = rootRetry.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                                            ?: encontrarCampoEditable(rootRetry)
+                                        if (focusRetry != null) {
+                                            val args = Bundle()
+                                            args.putCharSequence(
+                                                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto
+                                            )
+                                            val ok = focusRetry.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                                            Log.d(TAG, "│ ${if (ok) "✅" else "❌"} type_text retry: '$texto'")
+                                        } else {
+                                            Log.e(TAG, "│ ❌ No se encontró campo editable tras tap")
+                                        }
+                                    }, 600L)
+                                } else {
+                                    Log.w(TAG, "│ ⚠️ No hay campo editable en pantalla")
+                                    exitoAccion = false
+                                }
+                            }
+                        }
+                    }
+                    waitTime = 900L
                 }
 
                 "tap_send_button" -> {
