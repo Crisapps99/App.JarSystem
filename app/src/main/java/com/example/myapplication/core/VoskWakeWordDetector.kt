@@ -61,6 +61,7 @@ class VoskWakeWordDetector(
         if (isActive) { Log.w(TAG, "Ya activo"); return }
         if (!modelListo || model == null) {
             Log.w(TAG, "⚠️ Modelo no cargado — llama init() primero")
+            detectado = false
             return
         }
 

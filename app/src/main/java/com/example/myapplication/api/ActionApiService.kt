@@ -141,6 +141,13 @@ interface ActionApiService {
     //    saludo de gema
     @GET("/jarvis")
     suspend fun regards(): SaludoResponse
+
+    @Headers("Content-Type: application/json")
+    @POST("/jarvis/action-json")
+   suspend fun pedirJsonAccion(
+       @Body request: ActionRequestEnriquecido
+   ): JarvisResponse
+
 }
 
 /**

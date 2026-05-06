@@ -44,6 +44,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     private val porcupineLock = Any()
 //vosk
     private var wakeDetector: VoskWakeWordDetector? = null
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     // ── Estado general ────────────────────────────────────────────────────────
     private var currentJarvisState: JarvisState = JarvisState.IDLE
     private var isSessionActive = true
@@ -185,7 +186,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     }
 
     override fun reanudarPorcupine() {
-        serviceScope.launch {
+        mainHandler.post {
             synchronized(porcupineLock) {
                 if (!porcupinePausado) return@synchronized
 
@@ -359,11 +360,18 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     }
 
     private fun endSession() {
-        isSessionActive = false
-        transcriptionText?.text = "Hasta luego"
+        // No destruir el servicio — solo terminar la sesión y volver a escuchar wake word
+        transcriptionText?.post {
+            transcriptionText?.text = "Hasta luego"
+            transcriptionText?.visibility = View.VISIBLE
+        }
         serviceScope.launch {
             delay(1500)
-            stopSelf()
+            withContext(Dispatchers.Main) {
+                transcriptionText?.visibility = View.GONE
+                isSessionActive = true
+                Log.d(TAG, "✅ Sesión terminada — Vosk escuchando wake word")
+            }
         }
     }
 }

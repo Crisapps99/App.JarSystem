@@ -164,15 +164,9 @@ class HybridSpeechTranscriber(
                 Log.e(TAG, "❌ SR error: $msg (código: $error)")
 
                 when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH,
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                        if (sesionActiva) {
-                            Log.d(TAG, " Reiniciando escucha (error: $msg)...")
-                            val duracion = System.currentTimeMillis() - speechStartTimestamp
-                            val esRuido = duracion < 1500L
-                            mainHandler.postDelayed({ escucharUnaVez() }, 300L)
-                            Log.d(TAG, " Reiniciando escucha (error: $msg)...")
-                        }
+                    SpeechRecognizer.ERROR_CLIENT -> {
+                        // Ocurre al cancelar normalmente — ignorar
+                        Log.d(TAG, "⚠️ ERROR_CLIENT ignorado (cancelación normal)")
                     }
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
                         if (sesionActiva) {
@@ -181,11 +175,7 @@ class HybridSpeechTranscriber(
                         }
                     }
                     else -> {
-                        Log.e(TAG, "️ Error real: $msg")
                         onErrorCallback?.invoke(msg)
-                        if (sesionActiva) {
-                            mainHandler.postDelayed({ escucharUnaVez() }, 600L)
-                        }
                     }
                 }
             }

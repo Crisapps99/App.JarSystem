@@ -235,122 +235,151 @@ class JarvisVoiceController(
     // ────────────────────────────────────────────────────────────────────────
     // FLUJO PRINCIPAL: TRANSCRIPCIÓN Y PROCESAMIENTO
     // ────────────────────────────────────────────────────────────────────────
+    private fun procesarTexto(texto: String) {
+        if (modoVisualActivo) {
+            val numero = extraerNumeroDeTexto(texto.lowercase().trim())
+            if (numero != null && numero >= 1) { ejecutarClickNumerico(numero); return }
+        }
 
+        // ── Router local primero ─────────────────────────────────────────
+        val resultado = CommandAnalyzer.tryResolve(texto)
+        if (resultado != null) {
+            Log.d("JARVIS_CTRL", "✅ Router local resolvió: ${resultado.payload.map { it.tipo }}")
+            ejecutarAccionesTecnicas(resultado.payload, texto, "local")
+            val textoVoz = resultado.responseText
+            if (textoVoz.isNotBlank()) {
+                hablar(textoVoz) {
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                }
+            } else {
+                // el AccesibilityService habla por sí solo (query_time, query_date)
+                mainHandler.postDelayed({
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                }, 1500L)
+            }
+            return
+        }
+
+        // ── Fallback al servidor ─────────────────────────────────────────
+        enviarComandoAlServidor(texto)
+    }
     /**
      * Transcribe el audio con Whisper y luego procesa el texto resultante.
      * Se ejecuta en IO para no bloquear el hilo principal.
      */
-    private fun procesarTexto(texto: String) {
-        // PRIMERO: Intentar con ActionAnalyzer mejorado
-        val intencion = CommandAnalyzer.clasificar(texto)
-
-        Log.d(TAG, "Intención detectada: $intencion")
-
-        when (intencion) {
-            CommandAnalyzer.Intent.CALL_CONTACT -> {
-                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
-                hablar("Llamando a $contacto") {
-                    ActionExecutor.callContact(context, contacto)
-                    isProcessing = false
-                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
-                }
-            }
-
-            CommandAnalyzer.Intent.SEND_MESSAGE -> {
-                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
-                hablar("Enviando mensaje a $contacto") {
-                    ActionExecutor.sendWhatsAppMessage(context, contacto, "")
-                    isProcessing = false
-                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
-                }
-            }
-
-            CommandAnalyzer.Intent.SEND_WHATSAPP -> {
-                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
-                hablar("Enviando por WhatsApp a $contacto") {
-                    ActionExecutor.sendWhatsAppMessage(context, contacto, "")
-                    isProcessing = false
-                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
-                }
-            }
-
-            CommandAnalyzer.Intent.SEND_TELEGRAM -> {
-                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
-                hablar("Enviando por Telegram a $contacto") {
-                    ActionExecutor.sendTelegramMessage(context, contacto, "")
-                    isProcessing = false
-                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
-                }
-            }
-
-            CommandAnalyzer.Intent.PLAY_MUSIC -> {
-                val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
-                ejecutarMusica(busqueda)
-            }
-
-            CommandAnalyzer.Intent.OPEN_YOUTUBE -> {
-                hablar("Abriendo YouTube") {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://www.youtube.com"))
-                    intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                    context.startActivity(intent)
-                    isProcessing = false
-                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
-                }
-            }
-
-            CommandAnalyzer.Intent.GET_DIRECTIONS -> {
-                val destino = CommandAnalyzer.detectarParametro(texto, intencion)
-                ejecutarNavegacion(destino)
-            }
-
-            CommandAnalyzer.Intent.OPEN_MAPS -> {
-                hablar("Abriendo Google Maps") {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://maps.google.com"))
-                    intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                    context.startActivity(intent)
-                    isProcessing = false
-                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
-                }
-            }
-
-            CommandAnalyzer.Intent.WEATHER -> {
-                ejecutarClima()
-            }
-
-            CommandAnalyzer.Intent.TIME -> {
-                ejecutarComandoHora()
-            }
-
-            CommandAnalyzer.Intent.SEARCH_WEB -> {
-                val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
-                ejecutarBusquedaWeb(busqueda)
-            }
-
-            CommandAnalyzer.Intent.UNKNOWN -> {
-                // Intentar con modo visual o servidor
-                if (interceptarComandoVisual(texto)) {
-                    isProcessing = false
-                    if (sesionActiva) iniciarSRContinuo()
-                    return
-                }
-
-                if (esFraseDeSalida(texto)) {
-                    terminarSesion()
-                    return
-                }
-
-                // Enviar al servidor
-                enviarComandoAlServidor(texto)
-            }
-
-            else -> {
-                // Fallback: enviar al servidor
-                enviarComandoAlServidor(texto)
-            }
-        }
-    }
+//    private fun procesarTexto(texto: String) {
+//        // PRIMERO: Intentar con ActionAnalyzer mejorado
+//        val intencion = CommandAnalyzer.clasificar(texto)
+//
+//        Log.d(TAG, "Intención detectada: $intencion")
+//
+//        when (intencion) {
+//            CommandAnalyzer.Intent.CALL_CONTACT -> {
+//                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
+//                hablar("Llamando a $contacto") {
+//                    ActionExecutor.callContact(context, contacto)
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                }
+//            }
+//
+//            CommandAnalyzer.Intent.SEND_MESSAGE -> {
+//                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
+//                hablar("Enviando mensaje a $contacto") {
+//                    ActionExecutor.sendWhatsAppMessage(context, contacto, "")
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                }
+//            }
+//
+//            CommandAnalyzer.Intent.SEND_WHATSAPP -> {
+//                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
+//                hablar("Enviando por WhatsApp a $contacto") {
+//                    ActionExecutor.sendWhatsAppMessage(context, contacto, "")
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                }
+//            }
+//
+//            CommandAnalyzer.Intent.SEND_TELEGRAM -> {
+//                val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
+//                hablar("Enviando por Telegram a $contacto") {
+//                    ActionExecutor.sendTelegramMessage(context, contacto, "")
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                }
+//            }
+//
+//            CommandAnalyzer.Intent.PLAY_MUSIC -> {
+//                val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
+//                ejecutarMusica(busqueda)
+//            }
+//
+//            CommandAnalyzer.Intent.OPEN_YOUTUBE -> {
+//                hablar("Abriendo YouTube") {
+//                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+//                        android.net.Uri.parse("https://www.youtube.com"))
+//                    intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+//                    context.startActivity(intent)
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                }
+//            }
+//
+//            CommandAnalyzer.Intent.GET_DIRECTIONS -> {
+//                val destino = CommandAnalyzer.detectarParametro(texto, intencion)
+//                ejecutarNavegacion(destino)
+//            }
+//
+//            CommandAnalyzer.Intent.OPEN_MAPS -> {
+//                hablar("Abriendo Google Maps") {
+//                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+//                        android.net.Uri.parse("https://maps.google.com"))
+//                    intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+//                    context.startActivity(intent)
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                }
+//            }
+//
+//            CommandAnalyzer.Intent.WEATHER -> {
+//                ejecutarClima()
+//            }
+//
+//            CommandAnalyzer.Intent.TIME -> {
+//                ejecutarComandoHora()
+//            }
+//
+//            CommandAnalyzer.Intent.SEARCH_WEB -> {
+//                val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
+//                ejecutarBusquedaWeb(busqueda)
+//            }
+//
+//            CommandAnalyzer.Intent.UNKNOWN -> {
+//                // Intentar con modo visual o servidor
+//                if (interceptarComandoVisual(texto)) {
+//                    isProcessing = false
+//                    if (sesionActiva) iniciarSRContinuo()
+//                    return
+//                }
+//
+//                if (esFraseDeSalida(texto)) {
+//                    terminarSesion()
+//                    return
+//                }
+//
+//                // Enviar al servidor
+//                enviarComandoAlServidor(texto)
+//            }
+//
+//            else -> {
+//                // Fallback: enviar al servidor
+//                enviarComandoAlServidor(texto)
+//            }
+//        }
+//    }
 
     private fun ejecutarComandoHora() {
         val cal = java.util.Calendar.getInstance()
@@ -475,77 +504,387 @@ class JarvisVoiceController(
     // API
     // ────────────────────────────────────────────────────────────────────────
 
-    private fun enviarComandoAlServidor(texto: String) {
-        scope.launch {
-            setState(JarvisState.THINKING)
-            ui.showText("Procesando comando...")
-
-            // Capturar pantalla
-            MyAccessibilityService.instance?.captureNow()
-            delay(200)
-
-            val snapshot = ScreenMemory.lastSnapshot
-
-            // UNIVERSAL: ENVIAR TODOS LOS ELEMENTOS SIN FILTRAR
-            val contextoDetallado = snapshot?.elements
-                ?.sortedByDescending { it.importance }
-                ?.take(100)  // Aumentar límite para más contexto
-                ?.map { it.toDto() } ?: emptyList()
-
-            Log.d(TAG, "📱 Elementos capturados: ${contextoDetallado.size}")
-            contextoDetallado.take(5).forEach { el ->
-                Log.d(TAG, "   • ${el.text} (clickable=${el.clickable}, type=${el.className})")
-            }
-            val notificacionesText = obtenerResumenNotificaciones()
-            val metadata = mapOf(
-                "packageName"     to (snapshot?.packageName ?: "unknown"),
-                "activityName"    to (snapshot?.activityName ?: "unknown"),
-                "totalElements"   to (snapshot?.totalElements ?: 0),
-                "clickableCount"  to (snapshot?.clickableElements ?: 0),
-                "editableCount"   to (snapshot?.editableElements ?: 0),
-                "timestamp"       to System.currentTimeMillis(),
-                //  SIN appContext específico - Es UNIVERSAL
-                "screenInfo"      to "Todos los elementos clickeables/editables/scrollables están en contexto_detallado"
-            )
-
-            try {
-                val response = actionApiService.predictActionEnriquecido(
-                    ActionRequestEnriquecido(
-                        texto = texto,
-                        contexto = emptyList(),
-                        contextoDetallado = contextoDetallado,
-                        metadata = metadata
-                    )
-                )
-
-                if (response.success) {
-                    ui.showText(response.response_text)
-//                    val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
-//                    if (esAccionTecnica && !response.payload.isNullOrEmpty()) {
+//    private fun enviarComandoAlServidor(texto: String) {
+//        scope.launch {
+//            setState(JarvisState.THINKING)
+//            ui.showText("Procesando comando...")
+//
+//            // Capturar pantalla
+//            MyAccessibilityService.instance?.captureNow()
+//            delay(200)
+//
+//            val snapshot = ScreenMemory.lastSnapshot
+//
+//            // UNIVERSAL: ENVIAR TODOS LOS ELEMENTOS SIN FILTRAR
+//            val contextoDetallado = snapshot?.elements
+//                ?.sortedByDescending { it.importance }
+//                ?.take(100)  // Aumentar límite para más contexto
+//                ?.map { it.toDto() } ?: emptyList()
+//
+//            Log.d(TAG, "📱 Elementos capturados: ${contextoDetallado.size}")
+//            contextoDetallado.take(5).forEach { el ->
+//                Log.d(TAG, "   • ${el.text} (clickable=${el.clickable}, type=${el.className})")
+//            }
+//            val notificacionesText = obtenerResumenNotificaciones()
+//            val metadata = mapOf(
+//                "packageName"     to (snapshot?.packageName ?: "unknown"),
+//                "activityName"    to (snapshot?.activityName ?: "unknown"),
+//                "totalElements"   to (snapshot?.totalElements ?: 0),
+//                "clickableCount"  to (snapshot?.clickableElements ?: 0),
+//                "editableCount"   to (snapshot?.editableElements ?: 0),
+//                "timestamp"       to System.currentTimeMillis(),
+//                //  SIN appContext específico - Es UNIVERSAL
+//                "screenInfo"      to "Todos los elementos clickeables/editables/scrollables están en contexto_detallado"
+//            )
+//
+//            try {
+//                val response = actionApiService.predictActionEnriquecido(
+//                    ActionRequestEnriquecido(
+//                        texto = texto,
+//                        contexto = emptyList(),
+//                        contextoDetallado = contextoDetallado,
+//                        metadata = metadata
+//                    )
+//                )
+//
+//                if (response.success) {
+//                    ui.showText(response.response_text)
+////                    val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
+////                    if (esAccionTecnica && !response.payload.isNullOrEmpty()) {
+////                        ejecutarAccionesTecnicas(response.payload, texto, response.action ?: "unknown")
+////                    }
+//                    if (!response.payload.isNullOrEmpty()) {
 //                        ejecutarAccionesTecnicas(response.payload, texto, response.action ?: "unknown")
 //                    }
+//                    hablar(response.response_text) {
+//                        isProcessing = false
+//                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                    }
+//                } else {
+//                    hablar("No pude procesar eso.") {
+//                        isProcessing = false
+//                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                    }
+//                }
+//            } catch (e: Exception) {
+//                Log.e(TAG, " Error: ${e.message}")
+//                hablar("Error de conexión.") {
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                }
+//            }
+//        }
+//    }
+private fun enviarComandoAlServidor(texto: String) {
+    scope.launch {
+        setState(JarvisState.THINKING)
+        ui.showText("Pensando...")
+
+        // Captura pantalla para dar contexto al modelo
+        MyAccessibilityService.instance?.captureNow()
+        delay(200)
+
+        val snapshot = ScreenMemory.lastSnapshot
+        val contextoDetallado = snapshot?.elements
+            ?.sortedByDescending { it.importance }
+            ?.take(100)
+            ?.map { it.toDto() } ?: emptyList()
+
+        val metadata = mapOf(
+            "packageName"   to (snapshot?.packageName ?: "unknown"),
+            "activityName"  to (snapshot?.activityName ?: "unknown"),
+            "totalElements" to (snapshot?.totalElements ?: 0)
+        )
+
+        try {
+            val response = actionApiService.predictActionEnriquecido(
+                ActionRequestEnriquecido(
+                    texto = texto,
+                    contexto = emptyList(),
+                    contextoDetallado = contextoDetallado,
+                    metadata = metadata
+                )
+            )
+
+            ui.showText(response.response_text)
+
+            when (response.mode) {
+
+                // ── Conversacion: solo hablar, nada mas ─────────────────────
+                "conversation" -> {
+                    hablar(response.response_text) {
+                        isProcessing = false
+                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                    }
+                }
+
+                // ── Salida de sesion ─────────────────────────────────────────
+                "exit" -> {
+                    terminarSesion()
+                }
+
+                // ── Accion: ejecutar payload y hablar confirmacion ────────────
+                // El modelo ya genero todo — solo ejecutamos y hablamos
+                "action" -> {
+                    // Ejecutar acciones primero (son rapidas, no bloquean)
                     if (!response.payload.isNullOrEmpty()) {
-                        ejecutarAccionesTecnicas(response.payload, texto, response.action ?: "unknown")
+                        ejecutarAccionesTecnicas(
+                            response.payload,
+                            texto,
+                            response.action ?: "action"
+                        )
+                    }
+                    // Hablar confirmacion
+                    hablar(response.response_text) {
+                        isProcessing = false
+                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                    }
+                }
+
+                // ── Fallback para cualquier modo desconocido ─────────────────
+                else -> {
+                    if (!response.payload.isNullOrEmpty()) {
+                        ejecutarAccionesTecnicas(
+                            response.payload,
+                            texto,
+                            response.action ?: response.mode
+                        )
                     }
                     hablar(response.response_text) {
                         isProcessing = false
                         if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
                     }
-                } else {
-                    hablar("No pude procesar eso.") {
-                        isProcessing = false
-                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
-                    }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, " Error: ${e.message}")
-                hablar("Error de conexión.") {
-                    isProcessing = false
-                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
-                }
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error servidor: ${e.message}")
+            hablar("Error de conexion.") {
+                isProcessing = false
+                if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
             }
         }
     }
+}
+//private fun enviarComandoAlServidor(texto: String) {
+//    scope.launch {
+//        setState(JarvisState.THINKING)
+//        ui.showText("Pensando...")
+//
+//        // captura de pantalla para dar contexto a Gemini
+//        MyAccessibilityService.instance?.captureNow()
+//        delay(200)
+//
+//        val snapshot = ScreenMemory.lastSnapshot
+//        val contextoDetallado = snapshot?.elements
+//            ?.sortedByDescending { it.importance }
+//            ?.take(100)
+//            ?.map { it.toDto() } ?: emptyList()
+//
+//        val metadata = mapOf(
+//            "packageName"   to (snapshot?.packageName ?: "unknown"),
+//            "activityName"  to (snapshot?.activityName ?: "unknown"),
+//            "totalElements" to (snapshot?.totalElements ?: 0)
+//        )
+//
+//        try {
+//            val response = actionApiService.predictActionEnriquecido(
+//                ActionRequestEnriquecido(
+//                    texto = texto,
+//                    contexto = emptyList(),
+//                    contextoDetallado = contextoDetallado,
+//                    metadata = metadata
+//                )
+//            )
+//
+//            ui.showText(response.response_text)
+//
+//            when (response.mode) {
+//
+//                // Conversacion pura: hablar y volver a escuchar
+//                "conversation" -> {
+//                    hablar(response.response_text) {
+//                        isProcessing = false
+//                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                    }
+//                }
+//
+//                // Terminar sesion
+//                "exit" -> {
+//                    terminarSesion()
+//                }
+//
+//                // Accion local: Gemini nos dice que tipo es via local_action_hint.
+//                // El LocalCommandRouter intenta ejecutarla. Si no puede, fallback a Gemini.
+//                "local_action" -> {
+//                    val localResult = LocalCommandRouter.tryResolveLocally(texto)
+//
+//                    if (localResult != null) {
+//                        // ejecutar localmente
+//                        manejarResultadoLocal(localResult, texto, response.response_text)
+//                    } else {
+//                        // el hint de Gemini dijo local pero el router no lo reconocio
+//                        // puede ocurrir con variantes de lenguaje no cubiertas en el router
+//                        // en ese caso pedimos el JSON a Gemini como fallback
+//                        Log.w(TAG, "local_action sin match en router, pidiendo JSON a Gemini")
+//                        pedirJsonDeAccion(texto, response.response_text,
+//                            contextoDetallado, metadata)
+//                    }
+//                }
+//
+//                // Accion remota: primero intenta el router local por si acaso
+//                // (Gemini puede clasificar como remote algo que el router si conoce)
+//                // Si no, pide el JSON a Gemini fase 2.
+//                "remote_action" -> {
+//                    val localResult = LocalCommandRouter.tryResolveLocally(texto)
+//
+//                    if (localResult != null) {
+//                        Log.d(TAG, "remote_action pero router local lo resolvio")
+//                        manejarResultadoLocal(localResult, texto, response.response_text)
+//                    } else {
+//                        // necesita JSON de Gemini
+//                        pedirJsonDeAccion(texto, response.response_text,
+//                            contextoDetallado, metadata)
+//                    }
+//                }
+//
+//                // Compatibilidad con el formato antiguo del servidor
+//                // (por si se usa el endpoint viejo durante la transicion)
+//                "action", "tap", "type_text", "scroll", "system" -> {
+//                    if (!response.payload.isNullOrEmpty()) {
+//                        ejecutarAccionesTecnicas(response.payload, texto,
+//                            response.action ?: response.mode)
+//                    }
+//                    hablar(response.response_text) {
+//                        isProcessing = false
+//                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                    }
+//                }
+//
+//                else -> {
+//                    // modo desconocido: tratar como conversacion
+//                    hablar(response.response_text) {
+//                        isProcessing = false
+//                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                    }
+//                }
+//            }
+//
+//        } catch (e: Exception) {
+//            Log.e(TAG, "Error Gemini fase 1: ${e.message}")
+//            hablar("Error de conexion.") {
+//                isProcessing = false
+//                if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//            }
+//        }
+//    }
+//
+//}
+//    private fun manejarResultadoLocal(
+//        result: LocalCommandRouter.RouteResult,
+//        textoOriginal: String,
+//        responseTextGemini: String
+//    ) {
+//        // tipos especiales que el controller maneja directamente
+//        when (result.actions.firstOrNull()?.tipo) {
+//            "session_exit" -> {
+//                terminarSesion()
+//                return
+//            }
+//
+//            "visual_mode_on" -> {
+//                activarModoVisual()
+//                isProcessing = false
+//                return
+//            }
+//
+//            "visual_mode_off" -> {
+//                desactivarModoVisual()
+//                isProcessing = false
+//                return
+//            }
+//
+//            "read_notifications" -> {
+//                val resumen = obtenerResumenNotificaciones()
+//                hablar(resumen) {
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                }
+//                return
+//            }
+//        }
+
+        // Usar la respuesta de Gemini si existe (suena mas natural),
+        // o la del router como fallback (mas mecanica pero siempre presente)
+//        val textoParaHablar = responseTextGemini.ifBlank { result.responseText }
+//
+//        if (textoParaHablar.isNotBlank()) {
+//            hablar(textoParaHablar) {
+//                isProcessing = false
+//                if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//            }
+//        } else {
+//            // el AccessibilityService habla solo (query_time, query_date, toggles)
+//            mainHandler.postDelayed({
+//                isProcessing = false
+//                if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//            }, 1500L)
+//        }
+//
+//        // enviar acciones al AccessibilityService
+//        ejecutarAccionesTecnicas(
+//            result.actions,
+//            textoOriginal,
+//            result.actions.firstOrNull()?.tipo ?: "local"
+//        )
+//    }
+//    private fun pedirJsonDeAccion(
+//        texto: String,
+//        responseTextYaHablado: String,
+//        contextoDetallado: List<com.example.myapplication.api.ElementoDetalladoDto>,
+//        metadata: Map<String, Any>
+//    ) {
+//        scope.launch {
+//            // hablar la respuesta de Gemini mientras se pide el JSON en paralelo
+//            if (responseTextYaHablado.isNotBlank()) {
+//                hablar(responseTextYaHablado) { /* no reiniciamos SR todavia */ }
+//            }
+//
+//            try {
+//                val actionResponse = actionApiService.pedirJsonAccion(
+//                    com.example.myapplication.api.ActionRequestEnriquecido(
+//                        texto = texto,
+//                        contexto = emptyList(),
+//                        contextoDetallado = contextoDetallado,
+//                        metadata = metadata
+//                    )
+//                )
+//
+//                if (actionResponse.payload.isNullOrEmpty()) {
+//                    Log.w(TAG, "Fase 2 devolvio payload vacio para: $texto")
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                    return@launch
+//                }
+//
+//                ejecutarAccionesTecnicas(
+//                    actionResponse.payload,
+//                    texto,
+//                    "remote_action"
+//                )
+//
+//            } catch (e: Exception) {
+//                Log.e(TAG, "Error Gemini fase 2: ${e.message}")
+//            } finally {
+//                // garantizar que siempre se libera isProcessing
+//                mainHandler.postDelayed({
+//                    isProcessing = false
+//                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+//                }, 1000L)
+//            }
+//        }
+//    }
+
     /**
      * Obtiene un resumen de las notificaciones activas del dispositivo.
      * Accede a NotificationMemory que ya está sincronizado con las notificaciones.
@@ -897,7 +1236,15 @@ class JarvisVoiceController(
                 }
             },
             onError = { error ->
-                Log.w(TAG, "️ SR error (se reinicia): $error")
+                Log.w(TAG, "️ SR error: $error")
+                if (sesionActiva && !isProcessing && !esperandoConfirmacion) {
+                    mainHandler.postDelayed({
+                        if (sesionActiva && !isProcessing && !esperandoConfirmacion) {
+                            Log.d(TAG, "Reiniciando SR tras error...")
+                            hybridTranscriber.reiniciarEscucha()
+                        }
+                    }, 800L)
+                }
             },
             onSpeechStarted = {
                 if (sesionActiva && !isProcessing) {
@@ -1100,7 +1447,12 @@ class JarvisVoiceController(
                 hacerVibrar(100)
                 hablar("Enviando.") {
                     isProcessing = false
-                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                    esperandoConfirmacion = false
+                    if (sesionActiva) {
+                        mainHandler.postDelayed({
+                            iniciarSRContinuo()
+                        }, 500L)
+                    }
                 }
             }
             esNegativo -> {
@@ -1111,7 +1463,9 @@ class JarvisVoiceController(
                 mainHandler.postDelayed({ hacerVibrar(50) }, 150L)
                 hablar("Cancelado.") {
                     isProcessing = false
-                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                    esperandoConfirmacion = false
+                    if (sesionActiva) mainHandler.postDelayed({iniciarSRContinuo()
+                    }, 500L)
                 }
             }
             else -> {

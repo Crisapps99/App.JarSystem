@@ -145,26 +145,17 @@ class MyAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val eventType = event?.eventType ?: return
-        val eventosClave = listOf(
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_SCROLLED,
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        )
-        if (eventType in eventosClave) {
-            snapshotJob?.cancel()
-            snapshotJob = serviceScope.launch {
-                delay(1000L)
-                if (rootInActiveWindow != null) {
-                    actualizarSnapDePantalla()
-                    com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
-                    com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
-                    Log.d(TAG, "📸 Snapshot actualizado")
-                    handler.post { diagnosticarScreenMemory() }
-                } else {
-                    Log.w(TAG, "⚠️ rootInActiveWindow es NULL")
-                }
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        snapshotJob?.cancel()
+        snapshotJob = serviceScope.launch {
+            delay(3000L)  // era 1000L
+            if (rootInActiveWindow != null) {
+                actualizarSnapDePantalla()
+                com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
+                com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
             }
         }
+
     }
 
     private fun diagnosticarScreenMemory() {
