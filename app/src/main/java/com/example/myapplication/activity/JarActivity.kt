@@ -74,7 +74,7 @@ class JarActivity : AppCompatActivity(), JarvisUi {
         super.onCreate(savedInstanceState)
         binding = ActivityJarBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
+        binding.jarvisOrb.visibility = View.GONE
         audioManager = com.example.myapplication.core.AudioManager(this)
 
         registerReceiver(
@@ -92,30 +92,35 @@ class JarActivity : AppCompatActivity(), JarvisUi {
     // ── TTS — redirige al controller (ElevenLabs o Android según TTS_MODE) ──
     private fun speak(text: String, utteranceId: String, onDone: (() -> Unit)? = null) {
         setOrbPulsing(true)
-        controller.hablarDesdeActivity(text) {
+        controller.hablar(text) {
             setOrbPulsing(false)
             onDone?.invoke()
         }
     }
 
     // ── Entrada del orbe ────────────────────────────────────
+//    private fun animateOrbEntrance() {
+//        binding.jarvisOrb.visibility = View.INVISIBLE
+//        binding.jarvisOrb.scaleX = 0f
+//        binding.jarvisOrb.scaleY = 0f
+//        binding.jarvisOrb.alpha  = 0f
+//
+//        binding.jarvisOrb.postDelayed({
+//            binding.jarvisOrb.visibility = View.VISIBLE
+//            binding.jarvisOrb.animate()
+//                .scaleX(1f).scaleY(1f).alpha(1f)
+//                .setDuration(1000)
+//                .setInterpolator(OvershootInterpolator(1.2f))
+//                .withEndAction { showIntroUI() }
+//                .start()
+//        }, 300)
+//    }
     private fun animateOrbEntrance() {
-        binding.jarvisOrb.visibility = View.INVISIBLE
-        binding.jarvisOrb.scaleX = 0f
-        binding.jarvisOrb.scaleY = 0f
-        binding.jarvisOrb.alpha  = 0f
-
-        binding.jarvisOrb.postDelayed({
-            binding.jarvisOrb.visibility = View.VISIBLE
-            binding.jarvisOrb.animate()
-                .scaleX(1f).scaleY(1f).alpha(1f)
-                .setDuration(1000)
-                .setInterpolator(OvershootInterpolator(1.2f))
-                .withEndAction { showIntroUI() }
-                .start()
-        }, 300)
+        // Puedes mostrar un fade in del texto o skip directamente
+        binding.titleWel.alpha = 1f
+        binding.statusText.alpha = 1f
+        showIntroUI()
     }
-
     // ── UI de introducción ───────────────────────────────────
     private fun showIntroUI() {
         binding.titleWel.animate().alpha(1f).setDuration(600).setStartDelay(0).start()
@@ -139,11 +144,22 @@ class JarActivity : AppCompatActivity(), JarvisUi {
     }
 
     // ── Presentación con TTS ─────────────────────────────────
+    // ── Presentación con TTS Modificada ───────────────────────────────
     private fun startPresentacion() {
         currentPhase = Phase.INTRO
         stopIdlePulse()
 
+        // Ocultamos el botón de comenzar y mostramos el de omitir
         binding.btnComenzar.animate().alpha(0f).setDuration(300).start()
+
+        binding.btnOmitir.visibility = View.VISIBLE
+        binding.btnOmitir.alpha = 0f
+        binding.btnOmitir.animate().alpha(1f).setDuration(300).start()
+
+        // Configuramos la acción del botón Omitir
+        binding.btnOmitir.setOnClickListener {
+            omitirPresentacion()
+        }
 
         setStatusLabel("HABLANDO", "#4DEEE9")
         animateTextChange(
@@ -156,6 +172,9 @@ class JarActivity : AppCompatActivity(), JarvisUi {
                     "Fui diseñado para ayudarte en todo momento, directamente desde tu teléfono.",
             "intro_1"
         ) {
+            // Verificación por si el usuario ya presionó omitir mientras hablaba la primera parte
+            if (currentPhase != Phase.INTRO) return@speak
+
             animateTextChange(
                 "Puedo ayudarte a hacer llamadas, leer Notificaciones, abrir aplicaciones y mucho más, " +
                         "todo con tu voz."
@@ -165,11 +184,33 @@ class JarActivity : AppCompatActivity(), JarvisUi {
                         "todo con tu voz.",
                 "intro_2"
             ) {
+                if (currentPhase != Phase.INTRO) return@speak
                 lifecycleScope.launch {
                     delay(400)
+                    // Si llega al final de forma natural, ocultamos omitir y vamos al wake word
+                    binding.btnOmitir.animate().alpha(0f).setDuration(300).withEndAction {
+                        binding.btnOmitir.visibility = View.GONE
+                    }.start()
                     startWakeWordPhase()
                 }
             }
+        }
+    }
+
+    // ── Función Nueva: Salto Directo a Hey Nexus ──────────────────────
+    // ── Función Nueva: Salto Directo a Hey Nexus (Corregido) ──────────────────────
+    private fun omitirPresentacion() {
+        if (currentPhase != Phase.INTRO) return
+    // 1. Detenemos el audio. Esto limpia el TTS y le avisa al VAD_MANAGER que apague el Early Input
+        controller.detenerAudio()
+
+        setOrbPulsing(false)
+        binding.btnOmitir.animate().alpha(0f).setDuration(200).withEndAction {
+            binding.btnOmitir.visibility = View.GONE
+        }.start()
+        lifecycleScope.launch {
+            delay(300) //
+            startWakeWordPhase()
         }
     }
 //
@@ -217,51 +258,60 @@ class JarActivity : AppCompatActivity(), JarvisUi {
         }
     }
 
-    // ── Efecto orbe que "sale" hacia overlay ─────────────────
-    private fun launchOrbToOverlay() {
-        window.setFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
-        val scaleUp = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleX", 1f, 1.4f),
-                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleY", 1f, 1.4f),
-                ObjectAnimator.ofFloat(binding.jarvisOrb, "alpha",  1f, 0.9f)
-            )
-            duration = 300
-            interpolator = AccelerateDecelerateInterpolator()
+//    // ── Efecto orbe que "sale" hacia overlay ─────────────────
+//    private fun launchOrbToOverlay() {
+//        window.setFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+//        val scaleUp = AnimatorSet().apply {
+//            playTogether(
+//                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleX", 1f, 1.4f),
+//                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleY", 1f, 1.4f),
+//                ObjectAnimator.ofFloat(binding.jarvisOrb, "alpha",  1f, 0.9f)
+//            )
+//            duration = 300
+//            interpolator = AccelerateDecelerateInterpolator()
+//        }
+//
+//        val launchUp = AnimatorSet().apply {
+//            playTogether(
+//                ObjectAnimator.ofFloat(binding.jarvisOrb, "translationY", 0f, -1000f),
+//                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleX", 1.4f, 0.3f),
+//                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleY", 1.4f, 0.3f),
+//                ObjectAnimator.ofFloat(binding.jarvisOrb, "alpha",  0.9f, 0f)
+//            )
+//            duration = 500
+//            interpolator = AccelerateInterpolator(2f)
+//        }
+//
+//        val fadeUI = AnimatorSet().apply {
+//            playTogether(
+//                ObjectAnimator.ofFloat(binding.cardTranscription, "alpha", 1f, 0f),
+//                ObjectAnimator.ofFloat(binding.titleWel,  "alpha", 1f, 0f),
+//                ObjectAnimator.ofFloat(binding.statusText,"alpha", 1f, 0f)
+//            )
+//            duration = 400
+//        }
+//
+//        AnimatorSet().apply {
+//            play(scaleUp).before(launchUp)
+//            play(fadeUI).with(launchUp)
+//            addListener(object : AnimatorListenerAdapter() {
+//                override fun onAnimationEnd(animation: Animator) {
+//                    startOverlayServiceAndFinish()
+//                }
+//            })
+//            start()
+//        }
+//    }
+private fun launchOrbToOverlay() {
+    // Animación de fade out de la actividad actual
+    binding.main.animate()
+        .alpha(0f)
+        .setDuration(400)
+        .withEndAction {
+            startOverlayServiceAndFinish()
         }
-
-        val launchUp = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(binding.jarvisOrb, "translationY", 0f, -1000f),
-                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleX", 1.4f, 0.3f),
-                ObjectAnimator.ofFloat(binding.jarvisOrb, "scaleY", 1.4f, 0.3f),
-                ObjectAnimator.ofFloat(binding.jarvisOrb, "alpha",  0.9f, 0f)
-            )
-            duration = 500
-            interpolator = AccelerateInterpolator(2f)
-        }
-
-        val fadeUI = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(binding.cardTranscription, "alpha", 1f, 0f),
-                ObjectAnimator.ofFloat(binding.titleWel,  "alpha", 1f, 0f),
-                ObjectAnimator.ofFloat(binding.statusText,"alpha", 1f, 0f)
-            )
-            duration = 400
-        }
-
-        AnimatorSet().apply {
-            play(scaleUp).before(launchUp)
-            play(fadeUI).with(launchUp)
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    startOverlayServiceAndFinish()
-                }
-            })
-            start()
-        }
-    }
-
+        .start()
+}
     private fun startOverlayServiceAndFinish() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
             val intent = Intent(this, JarvisOverlayService::class.java)
@@ -483,13 +533,18 @@ class JarActivity : AppCompatActivity(), JarvisUi {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(overlayReadyReceiver) }
+
+        // Apagamos el detector de la actividad pase lo que pase
+        wakeDetector?.stop()
+        wakeDetector = null
+
+        // Solo destruimos el controlador si la actividad muere de forma natural sin ir al servicio
         if (!hasDetectedWakeWord) {
-            wakeDetector?.stop()
-//            wakeDetector?.delete()
-//            wakeDetector.getInstance().clearFrameListeners()
+            controller.destroy()
         }
+
         audioVisualizer?.release()
-        controller.destroy()
+        audioVisualizer = null
         stopIdlePulse()
         stopListeningPulse()
         super.onDestroy()

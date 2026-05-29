@@ -1,78 +1,63 @@
 package com.example.myapplication.ui
 
+import android.animation.ValueAnimator
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
-//import androidx.core.content.ContextCompat
-import com.example.myapplication.R
-import kotlin.math.cos
-import kotlin.math.min
-import kotlin.math.sin
+import android.view.animation.LinearInterpolator
+import kotlin.math.*
 
 class JarvisOrbView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
-    private var rms = 0f
+    // --- Audio input ---
     private var smoothRms = 0f
+    private val smoothing = 0.15f
+
+    // --- Animación continua ---
     private var time = 0f
-    private var breathe = 0f
+    private var animator: ValueAnimator? = null
 
-    private val smoothing = 0.12f
-    private val breathingSpeed = 0.01f
-    private val waveFrequency = 0.02f
+    // --- Paints ---
+    private val paintBase    = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paintGrid    = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paintRibbon  = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paintGlow    = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paintCore    = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paintBorder  = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    private val paintGlow = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val paintWave = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val paintCore = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val paintHighlight = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    private var colorPrimary: Int = 0
-    private var colorSecondary: Int = 0
-    private var colorTertiary: Int = 0
-    private var colorAccent: Int = 0
+    // Colores Siri
+    private val pink    = Color.parseColor("#E040C8")
+    private val purple  = Color.parseColor("#7B4FE0")
+    private val blue    = Color.parseColor("#3A6FF7")
+    private val cyan    = Color.parseColor("#40D0F0")
+    private val white   = Color.parseColor("#FFFFFF")
 
     init {
         setLayerType(LAYER_TYPE_SOFTWARE, null)
-        updateThemeColors()
+        startLoop()
     }
 
-    private fun updateThemeColors() {
-        val isDarkMode = (context.resources.configuration.uiMode and
-                Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-
-        if (isDarkMode) {
-            colorPrimary = Color.parseColor("#4DEEE9")
-            colorSecondary = Color.parseColor("#1DE0A0")
-            colorTertiary = Color.parseColor("#7BD7F8")
-            colorAccent = Color.parseColor("#FF6B6B")
-        } else {
-            colorPrimary = Color.parseColor("#0095D4")
-            colorSecondary = Color.parseColor("#00C853")
-            colorTertiary = Color.parseColor("#2196F3")
-            colorAccent = Color.parseColor("#FF6B6B")
+    private fun startLoop() {
+        animator = ValueAnimator.ofFloat(0f, (2 * PI).toFloat()).apply {
+            duration = 4000
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+            interpolator = LinearInterpolator()
+            addUpdateListener {
+                time = it.animatedValue as Float
+                invalidate()
+            }
+            start()
         }
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration?) {
-        super.onConfigurationChanged(newConfig)
-        updateThemeColors()
-        invalidate()
     }
 
     fun updateRms(rmsDb: Float) {
-        if (rmsDb < 1.5f) {
-            rms = 0f
-            smoothRms += (0f - smoothRms) * smoothing
-            return
-        }
-
-        val normalized = (rmsDb / 12f).coerceIn(0f, 1f)
-        rms = normalized * 1.5f
-        smoothRms += (rms - smoothRms) * smoothing
+        val target = if (rmsDb < 1.5f) 0f else (rmsDb / 12f).coerceIn(0f, 1f)
+        smoothRms += (target - smoothRms) * smoothing
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -80,169 +65,211 @@ class JarvisOrbView @JvmOverloads constructor(
 
         val cx = width / 2f
         val cy = height / 2f
-        val baseRadius = min(width, height) * 0.25f
+        val radius = min(cx, cy) * 0.88f
+        val energy = smoothRms
 
-        time += waveFrequency + (smoothRms * 0.005f)
-        breathe += breathingSpeed + (smoothRms * 0.002f)
-
-        val breathing = sin(breathe.toDouble()).toFloat() * baseRadius * 0.08f
-        val energy = smoothRms * 0.5f
-
-        // CAPA 1: Aura exterior
-        drawOuterAura(canvas, cx, cy, baseRadius, breathing, energy)
-
-        // CAPA 2: Ondas Siri (3 capas)
-        drawSiriWaveLayers(canvas, cx, cy, baseRadius, breathing, energy)
-
-        // CAPA 3: Núcleo brillante
-        drawCoreGlow(canvas, cx, cy, baseRadius, breathing, energy)
-
-        // CAPA 4: Highlight
-        drawHighlightSpot(canvas, cx, cy, baseRadius)
-
-        postInvalidateOnAnimation()
+        drawSphereBase(canvas, cx, cy, radius)
+        drawGrid(canvas, cx, cy, radius, energy)
+        drawRibbons(canvas, cx, cy, radius, energy)
+        drawCoreGlow(canvas, cx, cy, radius, energy)
+        drawOuterBorder(canvas, cx, cy, radius)
     }
 
-    private fun drawOuterAura(
-        canvas: Canvas, cx: Float, cy: Float,
-        baseRadius: Float, breathing: Float, energy: Float
-    ) {
-        val auraRadius = baseRadius * 2.2f
-        val alpha = (30 + energy * 100).toInt().coerceAtMost(150)
-
-        paintGlow.shader = RadialGradient(
-            cx, cy, auraRadius,
+    // 1. Base esférica con gradiente oscuro azul/púrpura
+    private fun drawSphereBase(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        paintBase.shader = RadialGradient(
+            cx - radius * 0.2f, cy - radius * 0.2f, radius * 1.1f,
             intArrayOf(
-                Color.argb(alpha, Color.red(colorPrimary), Color.green(colorPrimary), Color.blue(colorPrimary)),
-                Color.argb(alpha / 3, Color.red(colorPrimary), Color.green(colorPrimary), Color.blue(colorPrimary)),
-                Color.TRANSPARENT
+                Color.parseColor("#2A1060"),
+                Color.parseColor("#0D0630"),
+                Color.parseColor("#060418")
             ),
-            floatArrayOf(0f, 0.4f, 1f),
+            floatArrayOf(0f, 0.55f, 1f),
             Shader.TileMode.CLAMP
         )
-        paintGlow.maskFilter = BlurMaskFilter(50f, BlurMaskFilter.Blur.NORMAL)
-        canvas.drawCircle(cx, cy, auraRadius * 0.9f, paintGlow)
-        paintGlow.maskFilter = null
+        canvas.drawCircle(cx, cy, radius, paintBase)
     }
 
-    private fun drawSiriWaveLayers(
-        canvas: Canvas, cx: Float, cy: Float,
-        baseRadius: Float, breathing: Float, energy: Float
-    ) {
-        paintWave.xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+    // 2. Rejilla esférica estilo Siri
+    private fun drawGrid(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
+        paintGrid.shader = null
+        paintGrid.style = Paint.Style.STROKE
+        paintGrid.strokeWidth = 0.7f
+        paintGrid.color = Color.argb(55, 100, 160, 255)
+        paintGrid.pathEffect = null
 
-        drawSingleWaveLayer(canvas, cx, cy, baseRadius * 1.25f + breathing, time * 1.2f,
-            colorPrimary, 0.65f, energy, 4)
-
-        drawSingleWaveLayer(canvas, cx, cy, baseRadius * 0.95f + breathing, -time * 1.5f,
-            colorSecondary, 0.75f, energy, 6)
-
-        drawSingleWaveLayer(canvas, cx, cy, baseRadius * 0.7f + breathing, time * 0.8f,
-            colorTertiary, 0.85f, energy, 8)
-
-        paintWave.xfermode = null
+        val lines = 10
+        // Líneas horizontales (latitud) proyectadas en esfera
+        for (i in 1 until lines) {
+            val lat = (i.toFloat() / lines) * PI.toFloat() // 0..PI
+            val y = cy - radius * cos(lat)
+            val r = radius * sin(lat)
+            if (r > 2f) canvas.drawOval(cx - r, y - r * 0.3f, cx + r, y + r * 0.3f, paintGrid)
+        }
+        // Líneas verticales (longitud)
+        val longs = 10
+        for (i in 0 until longs) {
+            val lon = (i.toFloat() / longs) * PI.toFloat()
+            val path = Path()
+            val steps = 60
+            for (s in 0..steps) {
+                val lat2 = (s.toFloat() / steps) * PI.toFloat()
+                val x = cx + radius * sin(lat2) * cos(lon)
+                val y = cy - radius * cos(lat2)
+                if (s == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            canvas.drawPath(path, paintGrid)
+        }
     }
 
-    private fun drawSingleWaveLayer(
-        canvas: Canvas, cx: Float, cy: Float,
-        radius: Float, timeOffset: Float,
-        color: Int, intensity: Float,
-        energy: Float, peakCount: Int
+    // 3. Cintas de luz fluidas (estilo Siri) — reactivas a energía
+    private fun drawRibbons(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
+        val boost = 1f + energy * 1.8f
+
+        // Cinta rosa/magenta
+        drawSingleRibbon(
+            canvas, cx, cy, radius,
+            colorA = pink, colorB = Color.parseColor("#FF80E0"),
+            phase = time, speed = 1.0f, warp = 2.8f * boost,
+            thickness = 18f + energy * 22f, alpha = (200 + energy * 55).toInt().coerceAtMost(255)
+        )
+
+        // Cinta azul/cyan
+        drawSingleRibbon(
+            canvas, cx, cy, radius,
+            colorA = blue, colorB = cyan,
+            phase = time + PI.toFloat() * 0.6f, speed = -0.7f, warp = 3.2f * boost,
+            thickness = 16f + energy * 18f, alpha = (180 + energy * 60).toInt().coerceAtMost(255)
+        )
+
+        // Cinta púrpura
+        drawSingleRibbon(
+            canvas, cx, cy, radius,
+            colorA = purple, colorB = Color.parseColor("#B06EFF"),
+            phase = time + PI.toFloat() * 1.2f, speed = 1.3f, warp = 2.5f * boost,
+            thickness = 14f + energy * 16f, alpha = (160 + energy * 70).toInt().coerceAtMost(240)
+        )
+
+        // Extra cuando hay energía: cinta blanca central
+        if (energy > 0.1f) {
+            drawSingleRibbon(
+                canvas, cx, cy, radius,
+                colorA = white, colorB = cyan,
+                phase = time * 1.5f, speed = -1.8f, warp = 4f * boost,
+                thickness = 8f + energy * 14f, alpha = (energy * 200).toInt().coerceAtMost(200)
+            )
+        }
+    }
+
+    private fun drawSingleRibbon(
+        canvas: Canvas, cx: Float, cy: Float, radius: Float,
+        colorA: Int, colorB: Int,
+        phase: Float, speed: Float, warp: Float,
+        thickness: Float, alpha: Int
     ) {
         val path = Path()
-        val points = 200
-        val energyBoost = energy * radius * 0.25f
-        val pi = Math.PI.toFloat()
+        val steps = 120
+        val clip = Path().apply { addCircle(cx, cy, radius * 0.98f, Path.Direction.CW) }
 
-        for (i in 0 until points) {
-            val angle = (i.toFloat() / points) * (2 * pi)
+        canvas.save()
+        canvas.clipPath(clip)
 
-            val wave1 = sin((angle * peakCount + timeOffset).toDouble()).toFloat() *
-                    (8f + energyBoost * 0.7f)
-            val wave2 = cos((angle * (peakCount + 2) - timeOffset * 0.5).toDouble()).toFloat() * 4f
-            val wave3 = sin((angle * 2 + timeOffset * 0.3).toDouble()).toFloat() *
-                    (5f + energyBoost * 0.5f)
+        for (i in 0..steps) {
+            val t = i.toFloat() / steps
+            val angle = t * 2 * PI.toFloat()
 
-            val offset = (wave1 + wave2 + wave3) * intensity
+            // Curva 3D proyectada — combina sin/cos para dar profundidad
+            val sinA = sin(angle * warp + phase * speed)
+            val cosA = cos(angle + phase * 0.4f)
 
-            val r = radius + offset
-            val x = cx + cos(angle.toDouble()).toFloat() * r
-            val y = cy + sin(angle.toDouble()).toFloat() * r
+            val x = cx + radius * cos(angle) * (0.75f + 0.18f * sinA)
+            val y = cy + radius * sin(angle) * (0.55f + 0.15f * cosA) * 0.7f +
+                    radius * sinA * 0.35f
 
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
-        path.close()
 
-        val alpha1 = (180 + energy * 70).toInt().coerceAtMost(255)
-        val alpha2 = (100 + energy * 50).toInt().coerceAtMost(200)
-
-        paintWave.shader = RadialGradient(
-            cx, cy, radius,
+        paintRibbon.shader = SweepGradient(
+            cx, cy,
             intArrayOf(
-                Color.argb(alpha1, Color.red(color), Color.green(color), Color.blue(color)),
-                Color.argb(alpha2, Color.red(color), Color.green(color), Color.blue(color)),
-                Color.TRANSPARENT
+                Color.argb(alpha, Color.red(colorA), Color.green(colorA), Color.blue(colorA)),
+                Color.argb(alpha / 2, Color.red(colorB), Color.green(colorB), Color.blue(colorB)),
+                Color.argb(alpha, Color.red(colorA), Color.green(colorA), Color.blue(colorA))
             ),
-            floatArrayOf(0f, 0.5f, 1f),
-            Shader.TileMode.CLAMP
+            floatArrayOf(0f, 0.5f, 1f)
         )
+        paintRibbon.style = Paint.Style.STROKE
+        paintRibbon.strokeWidth = thickness
+        paintRibbon.strokeCap = Paint.Cap.ROUND
+        paintRibbon.maskFilter = BlurMaskFilter(thickness * 0.6f, BlurMaskFilter.Blur.NORMAL)
 
-        canvas.drawPath(path, paintWave)
+        canvas.drawPath(path, paintRibbon)
+        canvas.restore()
+
+        paintRibbon.maskFilter = null
     }
 
-    private fun drawCoreGlow(
-        canvas: Canvas, cx: Float, cy: Float,
-        baseRadius: Float, breathing: Float, energy: Float
-    ) {
-        val coreRadius = baseRadius * 0.55f + (breathing * 0.5f)
-        val alpha = (210 + energy * 45).toInt().coerceAtMost(255)
+    // 4. Núcleo brillante blanco en el centro
+    private fun drawCoreGlow(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
+        val coreR = radius * (0.18f + energy * 0.12f)
+        val glowR = radius * (0.45f + energy * 0.2f)
 
+        // Halo exterior suave
+        paintGlow.shader = RadialGradient(
+            cx, cy, glowR,
+            intArrayOf(
+                Color.argb((80 + energy * 100).toInt().coerceAtMost(180), 255, 255, 255),
+                Color.argb(0, 200, 210, 255)
+            ),
+            floatArrayOf(0f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        paintGlow.maskFilter = BlurMaskFilter(glowR * 0.5f, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawCircle(cx, cy, glowR, paintGlow)
+        paintGlow.maskFilter = null
+
+        // Núcleo duro
         paintCore.shader = RadialGradient(
-            cx - coreRadius * 0.15f,
-            cy - coreRadius * 0.15f,
-            coreRadius,
-            intArrayOf(
-                Color.argb(alpha, 255, 255, 255),
-                Color.argb((alpha * 0.7).toInt(), 200, 240, 255),
-                Color.TRANSPARENT
-            ),
+            cx - coreR * 0.2f, cy - coreR * 0.2f, coreR,
+            intArrayOf(white, Color.parseColor("#C0E8FF"), Color.TRANSPARENT),
             floatArrayOf(0f, 0.5f, 1f),
             Shader.TileMode.CLAMP
         )
-        canvas.drawCircle(cx, cy, coreRadius, paintCore)
+        canvas.drawCircle(cx, cy, coreR, paintCore)
     }
 
-    private fun drawHighlightSpot(
-        canvas: Canvas, cx: Float, cy: Float,
-        baseRadius: Float
-    ) {
-        val highlightX = cx - baseRadius * 0.35f
-        val highlightY = cy - baseRadius * 0.35f
-        val highlightRadius = baseRadius * 0.3f
+    // 5. Borde exterior brillante con reflejo superior
+    private fun drawOuterBorder(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        // Borde principal
+        paintBorder.shader = null
+        paintBorder.style = Paint.Style.STROKE
+        paintBorder.strokeWidth = 2.5f
+        paintBorder.color = Color.argb(120, 160, 180, 255)
+        canvas.drawCircle(cx, cy, radius, paintBorder)
 
-        paintHighlight.shader = RadialGradient(
-            highlightX, highlightY, highlightRadius,
-            intArrayOf(
-                Color.argb(200, 255, 255, 255),
-                Color.argb(100, 255, 255, 255),
-                Color.TRANSPARENT
-            ),
-            floatArrayOf(0f, 0.5f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawCircle(highlightX, highlightY, highlightRadius * 0.8f, paintHighlight)
+        // Reflejo superior (arco blanco)
+        paintBorder.color = Color.argb(180, 255, 255, 255)
+        paintBorder.strokeWidth = 3f
+        paintBorder.maskFilter = BlurMaskFilter(4f, BlurMaskFilter.Blur.NORMAL)
+        val oval = RectF(cx - radius * 0.65f, cy - radius * 0.92f, cx + radius * 0.65f, cy - radius * 0.3f)
+        canvas.drawArc(oval, 200f, 140f, false, paintBorder)
+        paintBorder.maskFilter = null
     }
 
     fun reset() {
-        rms = 0f
         smoothRms = 0f
         time = 0f
-        breathe = 0f
     }
 
     fun setEnergyLevel(level: Float) {
-        rms = level.coerceIn(0f, 12f)
+        smoothRms = (level / 12f).coerceIn(0f, 1f)
     }
 
     fun getCurrentRms(): Float = smoothRms
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        animator?.cancel()
+        animator = null
+    }
 }

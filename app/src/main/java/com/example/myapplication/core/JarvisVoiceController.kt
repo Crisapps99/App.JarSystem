@@ -58,7 +58,7 @@ interface PorcupineController {
 }
 object ElevenLabsConfig {
     const val API_KEY          = "9dcae6842f3e53c4f885e4dcf30bf5635e8284c41df98d93f8b432b5f4383e90"
-    const val VOICE_ID         = "dQ0C8BEdKF2odmELvNee"
+    const val VOICE_ID         = "eqx5NtkvZtmylCCnpta7"
     const val MODEL_ID         = "eleven_multilingual_v2"
     const val STABILITY        = 0.5f
     const val SIMILARITY_BOOST = 0.75f
@@ -67,7 +67,7 @@ object ElevenLabsConfig {
 }
 
 enum class TtsMode { ANDROID, ELEVEN_LABS }
-private val TTS_MODE = TtsMode.ANDROID
+private val TTS_MODE = TtsMode.ELEVEN_LABS
 
 class JarvisVoiceController(
     private val context: Context,
@@ -78,6 +78,7 @@ class JarvisVoiceController(
     companion object {
         private const val TAG = "JARVIS_CTRL"
         private const val ACTION_EXECUTE = "JARVIS.EXECUTE_ACTIONS"
+        private const val ACTION_CANCEL = "JARVIS.CANCEL_ACTION"
     }
 
     // ── Componentes del sistema ──────────────────────────────────────────────
@@ -86,7 +87,7 @@ class JarvisVoiceController(
     private lateinit var tts: TextToSpeech
     private var ttsListo = false
     private val mainHandler = Handler(Looper.getMainLooper())
-
+    private var elMediaPlayer: MediaPlayer? = null
     // ── NUEVO: Motor de audio unificado ─────────────────────────────────────
     private lateinit var audioEngine: ContinuousAudioEngine
 
@@ -241,7 +242,17 @@ class JarvisVoiceController(
      * Se ejecuta en IO para no bloquear el hilo principal.
      */
     private fun procesarTexto(texto: String) {
-        // PRIMERO: Intentar con ActionAnalyzer mejorado
+        if (texto.lowercase().contains("youtube") &&
+            (texto.lowercase().contains("pon") || texto.lowercase().contains("reproduce"))) {
+            Log.d(TAG, "🎬 Comando de YouTube detectado: '$texto'")
+            ejecutarMusica(texto)
+            return
+        }
+        if (esComandoCancelacion(texto)) {
+            Log.d(TAG, "🛑 Comando de cancelación detectado: '$texto'")
+            cancelarAccionActual()
+            return
+        }
         val intencion = CommandAnalyzer.clasificar(texto)
 
         Log.d(TAG, "Intención detectada: $intencion")
@@ -368,41 +379,51 @@ class JarvisVoiceController(
         }
     }
     private fun ejecutarMusica(texto: String) {
-        val busqueda = texto.lowercase()
+        val esYoutube = texto.contains("youtube", ignoreCase = true)
+
+        var busqueda = texto.lowercase()
             .replace("reproduce", "").replace("pon la canción", "")
             .replace("pon música de", "").replace("pon a", "")
             .replace("en spotify", "").replace("en youtube", "")
-            .replace("pon", "").trim()
+            .replace("por youtube", "").replace("pon", "").trim()
 
-        val mensaje = "Reproduciendo $busqueda"
+        if (busqueda.isEmpty()) {
+            busqueda = texto
+        }
+
+        val mensaje = if (esYoutube) "Buscando $busqueda en YouTube" else "Reproduciendo $busqueda"
 
         hablar(mensaje) {
             try {
-                val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    putExtra(android.app.SearchManager.QUERY, busqueda)
-
-                    // ESTA LÍNEA ES LA CLAVE PARA QUE REPRODUZCA Y NO SOLO BUSQUE
-                    putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*")
-
-                    if (texto.contains("youtube", ignoreCase = true)) {
-                        // YouTube Music o YouTube principal procesan mejor este Action
+                if (esYoutube) {
+                    // ✅ Para YouTube: usar búsqueda con autoplay
+                    val encodedQuery = Uri.encode(busqueda)
+                    val intent = Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery&autoplay=1")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         setPackage("com.google.android.youtube")
-                    } else {
-                        // Paquete OFICIAL de Spotify
+                    }
+                    context.startActivity(intent)
+                    Log.d(TAG, "✅ YouTube: buscando '$busqueda'")
+                } else {
+                    // Para Spotify
+                    val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        putExtra(android.app.SearchManager.QUERY, busqueda)
+                        putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*")
                         setPackage("com.spotify.music")
                     }
+                    context.startActivity(intent)
+                    Log.d(TAG, "✅ Spotify: '$busqueda'")
                 }
-                context.startActivity(intent)
             } catch (e: Exception) {
                 Log.e(TAG, " Error al reproducir: ${e.message}")
-                // Fallback: Si falla, abrir búsqueda normal en YouTube
-                val fallbackYT = Intent(Intent.ACTION_SEARCH).apply {
-                    setPackage("com.google.android.youtube")
-                    putExtra("query", busqueda)
+                // Fallback: abrir navegador con búsqueda
+                val webIntent = Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://www.google.com/search?q=${Uri.encode(busqueda)}+${if (esYoutube) "youtube" else "música"}")).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                context.startActivity(fallbackYT)
+                context.startActivity(webIntent)
             }
 
             isProcessing = false
@@ -678,7 +699,7 @@ class JarvisVoiceController(
     private fun reproducirAudioElevenLabs(archivo: java.io.File, alTerminar: (() -> Unit)? = null) {
         iniciarAnimacionOrbeSimulada()
 
-        val mediaPlayer = MediaPlayer().apply {
+        elMediaPlayer = MediaPlayer().apply {
             setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -694,13 +715,14 @@ class JarvisVoiceController(
             sessionManager.setAllowEarlyInput(true)
         }, 50L)
 
-        mediaPlayer.setOnCompletionListener {
+        elMediaPlayer?.setOnCompletionListener {
             mainHandler.post {
                 ui.updateORB(0f)
                 ttsTerminoTimestamp = System.currentTimeMillis()
                 sessionManager.setAllowEarlyInput(false)
                 archivo.delete()
-                mediaPlayer.release()
+                elMediaPlayer?.release()
+                elMediaPlayer = null // Libera la referencia
                 alTerminar?.invoke()
                 if (sesionActiva) {
                     mainHandler.postDelayed({
@@ -709,22 +731,65 @@ class JarvisVoiceController(
                 }
             }
         }
-
-        mediaPlayer.setOnErrorListener { _, what, extra ->
-            Log.e(TAG, " MediaPlayer error: what=$what extra=$extra — fallback a Android TTS")
+        elMediaPlayer?.setOnErrorListener { _, what, extra ->
+            Log.e(TAG, " MediaPlayer error: what=$what extra=$extra")
             archivo.delete()
-            mediaPlayer.release()
-            hablarAndroid("", alTerminar) // solo ejecuta el callback
+            elMediaPlayer?.release()
+            elMediaPlayer = null
+            hablarAndroid("", alTerminar)
             true
         }
 
-        mediaPlayer.start()
+        elMediaPlayer?.start()
+    }
+
+    fun detenerAudio() {
+        mainHandler.post {
+            try {
+                // 1. Detener el TTS nativo de Android si está hablando
+                if (ttsListo && tts.isSpeaking) {
+                    Log.d(TAG, " Deteniendo Android TTS por petición del usuario.")
+                    tts.stop()
+                }
+
+                // 2. Detener el MediaPlayer de ElevenLabs si está activo
+                elMediaPlayer?.let { player ->
+                    if (player.isPlaying) {
+                        Log.d(TAG, " Deteniendo MediaPlayer de ElevenLabs por petición del usuario.")
+                        player.stop()
+                    }
+                    player.release()
+                    elMediaPlayer = null
+                }
+
+                // 3. Limpiar los efectos visuales del Orbe y actualizar el estado
+                ui.updateORB(0f)
+                sessionManager.setAllowEarlyInput(false)
+                setState(JarvisState.IDLE)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error al detener el audio: ${e.message}")
+            }
+        }
     }
     // ── Router TTS — cambia TTS_MODE arriba del archivo para alternar ────────
-    private fun hablar(texto: String, alTerminar: (() -> Unit)? = null) {
+    fun hablar(texto: String, alTerminar: (() -> Unit)? = null) {
+        // Si el texto está vacío o es un comando interno, no usar TTS
+        if (texto.isBlank() || texto.startsWith("JARVIS.")) {
+            alTerminar?.invoke()
+            return
+        }
+
         when (TTS_MODE) {
             TtsMode.ANDROID     -> hablarAndroid(texto, alTerminar)
-            TtsMode.ELEVEN_LABS -> hablarElevenLabs(texto, alTerminar)
+            TtsMode.ELEVEN_LABS -> {
+                // Para comandos de música/YouTube, usar TTS de Android (más rápido)
+                if (texto.contains("reproduciendo") || texto.contains("buscando")) {
+                    hablarAndroid(texto, alTerminar)
+                } else {
+                    hablarElevenLabs(texto, alTerminar)
+                }
+            }
         }
     }
     private fun hablarAndroid(texto: String, alTerminar: (() -> Unit)? = null) {
@@ -816,43 +881,6 @@ class JarvisVoiceController(
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // PORCUPINE — Integración con el motor unificado
-    // ────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Procesa frames para Porcupine cuando la sesión está inactiva.
-     *
-     * NOTA IMPORTANTE sobre la integración de Porcupine con ContinuousAudioEngine:
-     *
-     * En la versión anterior, Porcupine usaba VoiceProcessor (su propio AudioRecord).
-     * Ahora usamos nuestro ContinuousAudioEngine como fuente de audio única.
-     *
-     * Para que Porcupine funcione sin VoiceProcessor necesitas usar PorcupineManager
-     * en modo "manual" (sin VoiceProcessor) alimentándolo con nuestros frames.
-     *
-     * Opción A — Usar PorcupineManager con frames manuales:
-     *   El PorcupineManager estándar no expone process(frame) directamente.
-     *   Necesitas usar la clase Porcupine (no PorcupineManager) que sí tiene process().
-     *
-     * Opción B — Mantener VoiceProcessor de Porcupine SOLO para wake word:
-     *   Porcupine usa VoiceProcessor cuando la sesión está IDLE.
-     *   Cuando empieza la sesión, pausas Porcupine (como hacías antes).
-     *   La diferencia es que CobraVAD ya no existe → no hay conflicto.
-     *
-     * RECOMENDACIÓN: Usa la Opción B (más simple, menos cambios en tu código de Porcupine).
-     * El conflicto de audio que tenías era Cobra vs Porcupine, no Porcupine vs nada.
-     * Con Cobra eliminado, Porcupine puede seguir usando VoiceProcessor en IDLE.
-     *
-     * Si quieres implementar Opción A (un solo AudioRecord), cambia PorcupineManager
-     * por la clase Porcupine directa y llama porcupine.process(frame) aquí.
-     */
-    private fun procesarFrameParaPorcupine(frame: ShortArray) {
-        // Con la Opción B: Porcupine sigue usando su VoiceProcessor en IDLE
-        // Esta función queda vacía — Porcupine maneja sus propios frames
-        // Con la Opción A: descomenta y usa porcupine.process(frame)
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
     // GESTIÓN DE SESIÓN
     // ────────────────────────────────────────────────────────────────────────
 
@@ -887,6 +915,12 @@ class JarvisVoiceController(
                 if (!isProcessing && sesionActiva) {
                     Log.d(TAG, " SR resultado: \"$texto\"")
                     ui.showText(texto)
+                    if (esperandoConfirmacion) {
+                        Log.d(TAG, "📝 Procesando como respuesta a confirmación")
+                        procesarRespuestaConfirmacion(texto)
+                        return@iniciarSesionContinua
+                    }
+
                     isProcessing = true
                     setState(JarvisState.THINKING)
 
@@ -1036,6 +1070,7 @@ class JarvisVoiceController(
 
                 val pregunta = intent.getStringExtra("pregunta") ?: "¿Enviar el mensaje?"
                 val pkg = intent.getStringExtra("package") ?: ""
+                Log.d(TAG, "📡 BROADCAST RECIBIDO: PEDIR_CONFIRMACION - pregunta='$pregunta'")
                 if (pkg.isNotEmpty()) pendingMessagePackage = pkg
                 esperandoConfirmacion = true
                 isProcessing = true
@@ -1072,6 +1107,7 @@ class JarvisVoiceController(
      * Procesa la respuesta del usuario a una confirmación.
      * Llamado desde transcribirYProcesar() cuando esperandoConfirmacion == true.
      */
+
     private fun procesarRespuestaConfirmacion(texto: String) {
         val t = texto.lowercase().trim()
         val tiempoDesdeFinTTS = System.currentTimeMillis() - ttsTerminoTimestamp
@@ -1083,14 +1119,22 @@ class JarvisVoiceController(
 
         esperandoConfirmacion = false
         hacerVibrar(50)
-        val esAfirmativo = listOf(
-            "sí", "si", "claro", "dale", "ok", "okay", "okey", "envía",
-            "envia", "manda", "confirmo", "adelante", "yes", "va", "bueno", "hazlo", "procede", "venga"
-        ).any { t == it || t.startsWith("$it ") }
 
-        val esNegativo = listOf(
-            "no", "cancela", "cancel", "para", "detente", "no mandes", "mejor no", "no quiero", "olvídalo"
-        ).any { t == it || t.startsWith("$it ") }
+        // Palabras para afirmar (sí)
+        val afirmativos = listOf(
+            "sí", "si", "claro", "dale", "ok", "okay", "okey", "envía",
+            "envia", "manda", "confirmo", "adelante", "yes", "va", "bueno",
+            "hazlo", "procede", "venga", "simón", "sip", "salea"
+        )
+
+        // Palabras para negar (no)
+        val negativos = listOf(
+            "no", "cancela", "cancel", "para", "detente", "no mandes",
+            "mejor no", "no quiero", "olvídalo", "quita", "ni pensarlo"
+        )
+
+        val esAfirmativo = afirmativos.any { t == it || t.startsWith("$it ") }
+        val esNegativo = negativos.any { t == it || t.startsWith("$it ") }
 
         when {
             esAfirmativo -> {
@@ -1116,7 +1160,7 @@ class JarvisVoiceController(
             }
             else -> {
                 hacerVibrar(30)
-                hablar("No entendí. ¿Envío el mensaje? Di sí o no.") {
+                hablar("No entendí. ¿Envío el mensaje? Responde sí o no.") {
                     ttsTerminoTimestamp = System.currentTimeMillis()
                     esperandoConfirmacion = true
                     isProcessing = false
@@ -1129,7 +1173,6 @@ class JarvisVoiceController(
             }
         }
     }
-
     // ────────────────────────────────────────────────────────────────────────
     // MODO VISUAL (sin cambios en lógica)
     // ────────────────────────────────────────────────────────────────────────
@@ -1247,6 +1290,85 @@ class JarvisVoiceController(
                 actualizarOverlayVisual()
             }
         }
+    }
+    fun cancelarAccionActual() {
+        if (!sesionActiva) {
+            Log.d(TAG, "No hay sesión activa para cancelar")
+            return
+        }
+
+        Log.d(TAG, " CANCELANDO acción actual...")
+
+        // 1. Detener TTS si está hablando
+        detenerTTS()
+
+        // 2. Cancelar cualquier procesamiento pendiente
+        isProcessing = false
+        esperandoConfirmacion = false
+
+        // 3. Cancelar cualquier callback de confirmación pendiente
+        ActionExecutor.onConfirmacionPendiente = null
+
+        // 4. Detener el SpeechRecognizer y liberar recursos
+        hybridTranscriber.detenerSesion()
+
+        // 5. Limpiar overlay visual si está activo
+        if (modoVisualActivo) {
+            desactivarModoVisual()
+        }
+
+        numberedOverlay?.ocultar()
+
+
+        // 7. Notificar al usuario
+        val respuestasCancelacion = listOf(
+            "Acción cancelada.",
+            "Cancelado.",
+            "Entendido, cancelado.",
+            "Ok, cancelado."
+        )
+        val mensaje = respuestasCancelacion.random()
+
+        // Limpiar UI
+        ui.showText(mensaje)
+        ui.updateORB(0f)
+
+        // 8. Ir al inicio (home) después de cancelar
+        hablar(mensaje) {
+            // Ir al home
+            val intent = Intent(ACTION_EXECUTE).apply {
+                putExtra("actions_json", Gson().toJson(listOf(
+                    ActionDto(tipo = "global_action", params = mapOf("action" to "home"))
+                )))
+                setPackage(context.packageName)
+            }
+            context.sendBroadcast(intent)
+
+            // Terminar la sesión completamente y reiniciar Porcupine
+            stopListeningCompletamente()
+        }
+    }
+    fun esComandoCancelacion(texto: String): Boolean {
+        val t = texto.lowercase().trim().removeSuffix(".")
+
+        // Palabras de cancelación directa
+        val palabrasCancelacion = setOf(
+            "cancelar", "cancela", "cancelado", "cancele",
+            "detener", "deten", "para", "parar", "alto", "alta",
+            "olvídalo", "olvidalo", "deja", "dejalo", "quita",
+            "no quiero", "ya no", "mejor no", "me arrepenti"
+        )
+
+        if (t in palabrasCancelacion) return true
+        if (palabrasCancelacion.any { t.startsWith(it) }) return true
+
+        // Frases completas
+        val frasesCancelacion = listOf(
+            "ya no quiero", "no lo hagas", "detente", "para ya",
+            "cancelar acción", "cancela eso", "deja eso"
+        )
+
+        return frasesCancelacion.any { t.contains(it) }
     }
 
     private fun actualizarOverlayVisual() {

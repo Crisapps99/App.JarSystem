@@ -29,22 +29,12 @@ import com.example.myapplication.R
 import com.example.myapplication.service.MyAccessibilityService
 import com.ncorti.slidetoact.SlideToActView
 
-/**
- * LoginActivity MEJORADO - Interfaz profesional con secuencia de permisos
- *
- * MEJORAS:
- * ✅ Permisos secuenciales (uno por uno)
- * ✅ Barra de progreso visual
- * ✅ Explicaciones claras
- * ✅ Panel de ayuda interactivo
- * ✅ Colores: Azul (activo) vs Gris (inactivo), NO rojo
- * ✅ Detección automática cuando activa permisos
- * ✅ Botones siguiente/anterior habilitados según estado
- */
+
 class LoginActivity : AppCompatActivity() {
 
     private val OVERLAY_PERMISSION_CODE = 1000
     private val SETTINGS_CODE = 2000
+    private val CAMERA_PERMISSION_CODE = 1001
 
     // Permisos en orden secuencial
     private val permissionSequence = listOf(
@@ -92,7 +82,14 @@ class LoginActivity : AppCompatActivity() {
             permission = Manifest.permission.CALL_PHONE,
             description = "Para realizar llamadas por voz",
             explanation = "Este permiso es fundamental para que JarVoice pueda hacer llamadas telefónicas automáticamente."
-        )
+        ),
+        PermissionStep(
+            title = "CÁMARA",
+            emoji = "📷",
+            permission = Manifest.permission.CAMERA,
+            description = "Para tomar fotos y grabar videos",
+            explanation = "JarVoice necesita acceso a la cámara para tomar fotos, selfies y grabar videos cuando se lo pidas por voz."
+    )
     )
 
     // UI Components
@@ -231,7 +228,11 @@ class LoginActivity : AppCompatActivity() {
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(perm.permission),
-                    1000
+                    when (perm.permission) {
+                        Manifest.permission.CAMERA -> CAMERA_PERMISSION_CODE
+                        Manifest.permission.CALL_PHONE -> 1002
+                        else -> 1000
+                    }
                 )
             }
             perm.isOverlay -> {

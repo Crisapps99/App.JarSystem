@@ -1,135 +1,103 @@
 package com.example.myapplication.service
 
-//import ai.picovoice.porcupine.PorcupineException
-//import ai.picovoice.porcupine.PorcupineManager
-//import ai.picovoice.android.voiceprocessor.VoiceProcessor
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import android.view.*
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.example.myapplication.MainActivity
 import com.example.myapplication.R
 import com.example.myapplication.core.*
-import com.example.myapplication.ui.JarvisOrbView
+import com.example.myapplication.ui.ListeningBarView
 import kotlinx.coroutines.*
-import com.example.myapplication.core.VoskWakeWordDetector
 
 class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
-    // ── Overlay ──────────────────────────────────────────────────────────────
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
-    private var orbView: JarvisOrbView? = null
-    private var transcriptionText: TextView? = null
-    private var isOrbVisible = true
+    private var listeningBar: ListeningBarView? = null
+    private var tvListeningLabel: TextView? = null
+    private var tvTranscription: TextView? = null
+    private var containerOuter: LinearLayout? = null  // Añadir referencia al contenedor
 
-    // ── Controlador ──────────────────────────────────────────────────────────
     private lateinit var controller: JarvisVoiceController
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-//    // ── Porcupine (wake word) ─────────────────────────────────────────────────
-//    private var porcupineManager: PorcupineManager? = null
-//    private val ACCESS_KEY = "YMYKZrTBnmQeviXKwGY8rrXUiUlcHBC1ApCQwg6G99JrluupBCFbUg=="
-//    private val KEYWORD_FILE = "hey-nexus_es_android_v4_0_0.ppn"
-//    private val MODEL_FILE = "porcupine_params_es.pv"
-
-    // Estado simplificado de Porcupine
-    @Volatile private var porcupinePausado = false
-    private val porcupineLock = Any()
-//vosk
     private var wakeDetector: VoskWakeWordDetector? = null
-    // ── Estado general ────────────────────────────────────────────────────────
+    @Volatile private var wakeWordPaused = false
     private var currentJarvisState: JarvisState = JarvisState.IDLE
-    private var isSessionActive = true
-    private var isInitialized = false
+    private var isOverlayReady = false
 
     companion object {
-        private const val NOTIFICATION_ID = 1001
-        private const val CHANNEL_ID = "jarvis_overlay_channel"
         private const val TAG = "JARVIS_OVERLAY"
-//        private const val FRAME_LENGTH = 512
-//        private const val SAMPLE_RATE = 16000
+        private const val NOTIFICATION_ID = 1001
+        private const val CHANNEL_ID = "nexus_overlay"
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // LIFECYCLE
-    // ────────────────────────────────────────────────────────────────────────
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "Servicio creado")
+        Log.d(TAG, "🚀 Servicio creado")
         startForeground(NOTIFICATION_ID, createNotification())
-        serviceScope.launch {
-            delay(300)  // Da tiempo a que el sistema esté listo
-            initializeService()
-        }
-    }
 
-    private fun initializeService() {
-        if (isInitialized) return
-
-        Log.d(TAG, "Inicializando...")
         createOverlay()
 
-        controller = JarvisVoiceController(
-            context = this,
-            ui = this,
-            scope = serviceScope,
-            porcupineController = this
-        )
-        controller.init()
+        mainHandler.postDelayed({
+            controller = JarvisVoiceController(
+                context = this,
+                ui = this,
+                scope = serviceScope,
+                porcupineController = this
+            )
+            controller.init()
 
-        // Configura Porcupine para wake word
-        // IMPORTANTE: VoiceProcessor solo corre cuando Porcupine está activo (en IDLE)
-        // Cuando la sesión empieza, pausarPorcupine() detiene VoiceProcessor
-        setupPorcupine()
-
-        isInitialized = true
-        Log.d(TAG, "✅ Servicio inicializado")
+            setupWakeWordDetection()
+            showOverlay()
+            tvTranscription?.text = "Di 'Hey Nexus' para activarme"
+        }, 900)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    // Método para expandir el contenedor cuando hay texto largo - CORREGIDO
+    private fun expandContainerForText(text: String) {
+        val container = containerOuter
+        val textView = tvTranscription
 
-        // Detiene Porcupine y VoiceProcessor
-        synchronized(porcupineLock) {
-            try {
-                wakeDetector?.stop()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error limpiando Porcupine: ${e.message}")
-            }
+        textView?.post {
+            val lines = textView.lineCount
+            val newPadding = if (lines > 1) 24 else 12
+
+            container?.animate()?.setDuration(300)?.withStartAction {
+                container.setPadding(
+                    container.paddingLeft,
+                    newPadding,
+                    container.paddingRight,
+                    newPadding
+                )
+            }?.start()
+
+            container?.requestLayout()
+            overlayView?.requestLayout()
         }
-
-        if (::controller.isInitialized) controller.destroy()
-
-        overlayView?.let {
-            try { windowManager?.removeView(it) }
-            catch (e: Exception) { Log.e(TAG, "Error removiendo overlay: ${e.message}") }
-        }
-
-        serviceScope.cancel()
-        Log.d(TAG, "Servicio destruido")
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    // ────────────────────────────────────────────────────────────────────────
-    // PORCUPINE — Wake Word Detection
-    // ────────────────────────────────────────────────────────────────────────
-
-    private fun setupPorcupine() {
+    private fun setupWakeWordDetection() {
         try {
             wakeDetector = VoskWakeWordDetector(
                 context = this,
                 onWakeWordDetected = {
-                    if (isSessionActive) {
-                        serviceScope.launch(Dispatchers.Main) { onWakeWordDetected() }
+                    Log.d(TAG, "🎤 Wake word detectado!")
+                    serviceScope.launch(Dispatchers.Main) {
+                        onWakeWordDetected()
                     }
                 }
             )
@@ -137,95 +105,56 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             wakeDetector?.init(
                 onReady = {
                     wakeDetector?.start()
-                    porcupinePausado = false
-                    Log.i(TAG, "✅ Vosk listo — escuchando wake word")
+                    Log.i(TAG, "✅ Detector de voz listo")
                 },
                 onError = { msg ->
-                    Log.e(TAG, "❌ Error cargando Vosk: $msg")
+                    Log.e(TAG, "❌ Error: $msg")
                 }
             )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error Vosk: ${e.message}", e)
+            Log.e(TAG, "Error: ${e.message}")
         }
     }
 
     private fun onWakeWordDetected() {
-        Log.d(TAG, "🎙️ Wake word detectado")
+        pauseWakeWordDetection()
+        showOverlay()
 
-        // Pausa Porcupine inmediatamente para evitar falsos positivos durante la sesión
-        pausarPorcupine()
-
-        if (!isOrbVisible) showOverlay()
-
-        transcriptionText?.post {
-            transcriptionText?.text = "¡Te escucho!"
-            transcriptionText?.visibility = View.VISIBLE
-        }
+        tvListeningLabel?.text = "ESCUCHANDO"
+        tvListeningLabel?.setTextColor(Color.parseColor("#4DEEE9"))
+        tvTranscription?.text = "¡Te escucho!"
 
         serviceScope.launch {
             controller.startInteraction()
         }
     }
 
-    // ── PorcupineController interface ────────────────────────────────────────
-
-    override fun pausarPorcupine() {
-        // No lanzamos en serviceScope para evitar delay (se llama desde onWakeWordDetected)
-        synchronized(porcupineLock) {
-            if (porcupinePausado) return
-
-            try {
-                wakeDetector?.stop()
-                porcupinePausado = true
-                Log.d("JARVIS_PORCUPINE", "⏸️ Vosk pausado — VoiceProcessor detenido")
-            } catch (e: Exception) {
-                Log.e("JARVIS_PORCUPINE", "Error pausando: ${e.message}")
-            }
-        }
-    }
-
-    override fun reanudarPorcupine() {
-        serviceScope.launch {
-            synchronized(porcupineLock) {
-                if (!porcupinePausado) return@synchronized
-
-                try {
-                    wakeDetector?.start()
-                    porcupinePausado = false
-                    Log.d("JARVIS_PORCUPINE", "▶️ Vosk reanudado — VoiceProcessor activo")
-                } catch (e: Exception) {
-                    Log.e("JARVIS_PORCUPINE", "Error reanudando: ${e.message}")
-                }
-            }
-        }
-    }
-
-    override fun esPorcupinePausado(): Boolean = porcupinePausado
-
-    // ────────────────────────────────────────────────────────────────────────
-    // JarvisUi interface
-    // ────────────────────────────────────────────────────────────────────────
-
     override fun renderState(state: JarvisState) {
         currentJarvisState = state
-        orbView?.post {
+        mainHandler.post {
+            if (!isOverlayReady) return@post
+
             when (state) {
                 JarvisState.LISTENING -> {
-                    transcriptionText?.text = "Escuchando..."
-                    transcriptionText?.visibility = View.VISIBLE
+                    tvListeningLabel?.text = "ESCUCHANDO"
+                    tvListeningLabel?.setTextColor(Color.parseColor("#4DEEE9"))
+                    listeningBar?.animateWithEnergy(0.7f)
                 }
                 JarvisState.THINKING -> {
-                    transcriptionText?.text = "Procesando..."
-                    transcriptionText?.visibility = View.VISIBLE
+                    tvListeningLabel?.text = "PENSANDO"
+                    tvListeningLabel?.setTextColor(Color.parseColor("#7BD7F8"))
+                    listeningBar?.animateWithEnergy(0.4f)
                 }
                 JarvisState.SPEAKING -> {
-                    transcriptionText?.visibility = View.VISIBLE
+                    tvListeningLabel?.text = "HABLANDO"
+                    tvListeningLabel?.setTextColor(Color.parseColor("#1DE0A0"))
+                    listeningBar?.animateWithEnergy(0.6f)
                 }
                 JarvisState.IDLE -> {
-                    orbView?.reset()
-                    transcriptionText?.visibility = View.GONE
+                    tvListeningLabel?.text = "NEXUS"
+                    tvListeningLabel?.setTextColor(Color.WHITE)
+                    resumeWakeWordDetection()
                 }
-                else -> {}
             }
         }
     }
@@ -237,27 +166,62 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             endSession()
             return
         }
-        transcriptionText?.post {
-            transcriptionText?.text = text
-            transcriptionText?.visibility = View.VISIBLE
+
+        mainHandler.post {
+            if (!isOverlayReady) return@post
+
+            tvTranscription?.text = text
+            tvTranscription?.visibility = View.VISIBLE
+
+            // Expandir contenedor si el texto es largo
+            if (text.length > 30 || (text.contains(" ") && text.length > 20)) {
+                expandContainerForText(text)
+            }
+
+            // Auto-ocultar después de 5 segundos
+            if (currentJarvisState == JarvisState.IDLE) {
+                mainHandler.postDelayed({
+                    if (currentJarvisState == JarvisState.IDLE) {
+                        tvTranscription?.text = "Di 'Hey Nexus' para activarme"
+                        restoreContainerSize()
+                    }
+                }, 5000)
+            }
         }
+    }
+
+    // Restaurar tamaño original - CORREGIDO
+    private fun restoreContainerSize() {
+        val container = containerOuter
+        container?.animate()?.setDuration(300)?.withStartAction {
+            container.setPadding(
+                container.paddingLeft,
+                12,
+                container.paddingRight,
+                12
+            )
+        }?.start()
+    }
+
+    private fun endSession() {
+        stopSelf()
     }
 
     override fun updateORB(rms: Float) {
-        orbView?.updateRms(rms)
+        mainHandler.post {
+            if (!isOverlayReady) return@post
+
+            val energy = (rms / 15f).coerceIn(0f, 1f)
+            listeningBar?.updateProgress(energy)
+
+            if (currentJarvisState == JarvisState.LISTENING) {
+                listeningBar?.animateWithEnergy(energy)
+            }
+        }
     }
 
     override fun setOrbVisibility(visible: Boolean) {
-        serviceScope.launch(Dispatchers.Main) {
-            if (visible) {
-                overlayView?.visibility = View.VISIBLE
-                orbView?.visibility = View.VISIBLE
-                showOverlay()
-            } else {
-                orbView?.visibility = View.GONE
-                overlayView?.visibility = View.GONE
-            }
-        }
+        if (visible) showOverlay() else hideOverlay()
     }
 
     override fun onRecognizerReady() {
@@ -265,105 +229,128 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     }
 
     override fun getCurrentScreenText(): List<String> = ScreenMemory.lastSeenTexts
+    override fun showToast(text: String) { }
 
-    override fun showToast(text: String) {
-        // Implementa si necesitas toasts desde el servicio
+    override fun pausarPorcupine() {
+        wakeDetector?.stop()
+        wakeWordPaused = true
+        Log.d(TAG, "Wake word pausado")
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // OVERLAY UI
-    // ────────────────────────────────────────────────────────────────────────
+    override fun reanudarPorcupine() {
+        if (wakeWordPaused) {
+            wakeDetector?.start()
+            wakeWordPaused = false
+            Log.d(TAG, "Wake word reanudado")
+        }
+    }
 
+    override fun esPorcupinePausado(): Boolean = wakeWordPaused
+
+    private fun pauseWakeWordDetection() {
+        wakeDetector?.stop()
+        wakeWordPaused = true
+    }
+
+    private fun resumeWakeWordDetection() {
+        if (wakeWordPaused) {
+            wakeDetector?.start()
+            wakeWordPaused = false
+        }
+    }
+
+    // ─── UI ───────────────────────────────────────────────────
     private fun createOverlay() {
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_jarvis, null)
-        orbView = overlayView?.findViewById(R.id.overlayOrb)
-        transcriptionText = overlayView?.findViewById(R.id.overlayTranscription)
+        try {
+            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            overlayView = LayoutInflater.from(this).inflate(R.layout.view_bar, null)
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        )
-        params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            listeningBar = overlayView!!.findViewById(R.id.listeningBar)
+            tvListeningLabel = overlayView!!.findViewById(R.id.tvListeningLabel)
+            tvTranscription = overlayView!!.findViewById(R.id.tvTranscription)
+            containerOuter = overlayView!!.findViewById(R.id.containerOuter)
 
-        orbView?.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.animate().scaleX(1.1f).scaleY(1.1f).setDuration(100).start()
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
-                    controller.toggleMic()
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
-                    true
-                }
-                else -> false
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else
+                    WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            )
+            params.gravity = Gravity.BOTTOM
+
+            windowManager?.addView(overlayView, params)
+            overlayView?.visibility = View.GONE
+            isOverlayReady = true
+            Log.d(TAG, "✅ Overlay creado y listo")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error creando overlay: ${e.message}")
+            isOverlayReady = false
+        }
+    }
+
+    private fun showOverlay() {
+        if (!isOverlayReady) return
+
+        overlayView?.let {
+            if (it.visibility != View.VISIBLE) {
+                it.visibility = View.VISIBLE
+                it.alpha = 0f
+                it.animate().alpha(1f).setDuration(300).start()
+                Log.d(TAG, "Overlay mostrado")
             }
         }
-        try {
-            windowManager?.addView(overlayView, params)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error al crear overlay: ${e.message}")
+    }
+
+    private fun hideOverlay() {
+        if (!isOverlayReady) return
+
+        overlayView?.let {
+            it.animate().alpha(0f).setDuration(300).withEndAction {
+                it.visibility = View.GONE
+            }.start()
         }
     }
 
     private fun createNotification(): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "Jarvis Voice Assistant", NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "Nexus está escuchando" }
+                CHANNEL_ID,
+                "Nexus Assistant",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Nexus está activo"
+            }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
-        val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Nexus Activo")
-            .setContentText("Di 'Hey Nexus' para activar")
-            .setSmallIcon(R.drawable.ic_mic_vector)
-            .setContentIntent(pendingIntent)
+            .setContentText("Escuchando 'Hey Nexus'")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .build()
     }
 
-    private fun hideOverlay() {
-        overlayView?.animate()?.alpha(0f)?.scaleX(0.5f)?.scaleY(0.5f)?.setDuration(300)
-            ?.withEndAction {
-                overlayView?.visibility = View.GONE
-                transcriptionText?.visibility = View.GONE
-                isOrbVisible = false
-            }?.start()
-    }
-
-    private fun showOverlay() {
-        overlayView?.visibility = View.VISIBLE
-        overlayView?.alpha = 0f
-        overlayView?.scaleX = 0.5f
-        overlayView?.scaleY = 0.5f
-        overlayView?.animate()?.alpha(1f)?.scaleX(1f)?.scaleY(1f)?.setDuration(400)
-            ?.withEndAction { isOrbVisible = true }?.start()
-    }
-
-    private fun endSession() {
-        isSessionActive = false
-        transcriptionText?.text = "Hasta luego"
-        serviceScope.launch {
-            delay(1500)
-            stopSelf()
+    override fun onDestroy() {
+        super.onDestroy()
+        wakeDetector?.stop()
+        if (::controller.isInitialized) controller.destroy()
+        overlayView?.let {
+            try {
+                windowManager?.removeView(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removiendo overlay: ${e.message}")
+            }
         }
+        serviceScope.cancel()
+        Log.d(TAG, "Servicio destruido")
     }
+
+    override fun onBind(intent: Intent?): IBinder? = null
 }

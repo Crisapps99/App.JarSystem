@@ -24,6 +24,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.FLASHLIGHT" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -65,7 +67,15 @@
         android:theme="@style/Theme.NEXUS"
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
-
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <!-- ── ACTIVIDADES ──────────────────────────────────────────────── -->
         <activity
             android:name=".MainActivity"
@@ -84,8 +94,11 @@
             android:name=".activity.JarActivity"
             android:exported="true" />
 
+<!--        <activity-->
+<!--            android:name=".ui.JarvisOrbView"-->
+<!--            android:exported="false" />-->
         <activity
-            android:name=".ui.JarvisOrbView"
+            android:name=".ui.ListeningBarView"
             android:exported="false" />
 
         <!-- ── SERVICIOS ─────────────────────────────────────────────────── -->

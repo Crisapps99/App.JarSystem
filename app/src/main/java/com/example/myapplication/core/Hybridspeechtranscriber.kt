@@ -31,7 +31,8 @@ class HybridSpeechTranscriber(
     private var isListening = false
     private var speechStartTimestamp = 0L
     private var language = "es"
-
+    private var reinicioPendiente = false
+    private var onRmsCallback: ((Float) -> Unit)? = null
     fun init(): Boolean {
         return try {
             mainHandler.post {
@@ -80,29 +81,22 @@ class HybridSpeechTranscriber(
      * Esto debe llamarse desde JarvisVoiceController después del TTS.
      */
     fun reiniciarEscucha() {
-        if (!sesionActiva) {
-            Log.w(TAG, " Sesión no activa, no puedo reiniciar")
-            return
-        }
+        if (reinicioPendiente) return
+        reinicioPendiente = true
 
-        Log.d(TAG, " Reiniciando escucha")
-
-        //  CRÍTICO: Cancelar PRIMERO
         mainHandler.post {
-            if (isListening) {
-                Log.d(TAG, "   Cancelando SR activo...")
-                speechRecognizer?.cancel()
-                isListening = false
-            }
+            speechRecognizer?.cancel()
+            isListening = false
 
-            //  CRÍTICO: Esperar un poco ANTES de reiniciar
             mainHandler.postDelayed({
-                Log.d(TAG, "   Iniciando nuevo escucharUnaVez()...")
-                escucharUnaVez()
-            }, 200L)  // ← ESPERA IMPORTANTE (200ms es suficiente)
+                reinicioPendiente = false
+                if (sesionActiva) escucharUnaVez()
+            }, 400L)  // Aumentado de 200 a 400ms
         }
     }
-
+    fun setOnRmsCallback(callback: (Float) -> Unit) {
+        onRmsCallback = callback
+    }
     private fun escucharUnaVez() {
         if (!sesionActiva || speechRecognizer == null) {
             Log.w(TAG, " No puedo escuchar: sesionActiva=$sesionActiva, SR=${speechRecognizer != null}")
@@ -150,7 +144,11 @@ class HybridSpeechTranscriber(
                 onSpeechStartedCallback?.invoke()
             }
 
-            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onRmsChanged(rmsdB: Float) {
+                // Convertir dB (0 a 100) a escala 0-12 para el orbe
+                val normalized = (rmsdB / 100f).coerceIn(0f, 1f) * 12f
+                onRmsCallback?.invoke(normalized)
+            }
             override fun onBufferReceived(buffer: ByteArray?) {}
 
             override fun onEndOfSpeech() {

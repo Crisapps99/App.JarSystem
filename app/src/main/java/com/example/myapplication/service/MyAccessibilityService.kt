@@ -39,6 +39,7 @@ import android.bluetooth.BluetoothAdapter
 import android.net.wifi.WifiManager
 import android.hardware.camera2.CameraManager
 import android.os.Build
+import android.provider.Settings
 
 class MyAccessibilityService : AccessibilityService() {
 
@@ -134,12 +135,13 @@ class MyAccessibilityService : AccessibilityService() {
         }
     }
 
-    fun captureCurrentScreenNow() {
+    fun captureCurrentScreenNow(callback: ((ScreenSnapshot?) -> Unit)? = null) {
         serviceScope.launch(Dispatchers.Main) {
             actualizarSnapDePantalla(force = true)
-            com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
-            com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
-            Log.d(TAG, "📸 Captura forzada completada para Modo Visual")
+            delay(300)
+            val snapshot = lastSnapshot
+            com.example.myapplication.core.ScreenMemory.lastSnapshot = snapshot
+            callback?.invoke(snapshot)
         }
     }
 
@@ -188,7 +190,7 @@ class MyAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    // 🔴 LOGGING EXHAUSTIVO: ejecutarAcciones con debugging paso a paso
+
     private fun ejecutarAcciones(json: String) {
         Log.d(TAG, "╔═══════════════════════════════════════════════════════════")
         Log.d(TAG, "║ 🔄 EJECUTAR_ACCIONES - Inicio")
@@ -251,7 +253,7 @@ class MyAccessibilityService : AccessibilityService() {
 
             when (accion.tipo) {
 
-                // 🔴 CASE open_app CON LOGGING EXHAUSTIVO
+
                 "open_app" -> {
                     val pkg = accion.params?.get("package") as? String ?: ""
                     Log.d(TAG, "│ 📱 open_app")
@@ -280,7 +282,16 @@ class MyAccessibilityService : AccessibilityService() {
                         actualizarSnapDePantalla()
                     }, 2000L)
                 }
+                "set_alarm" -> {
+                    val hour = (accion.params?.get("hour") as? Number)?.toInt() ?: 7
+                    val minute = (accion.params?.get("minute") as? Number)?.toInt() ?: 0
+                    val label = accion.params?.get("label") as? String ?: ""
 
+                    Log.d(TAG, "│ ⏰ set_alarm: $hour:$minute '$label'")
+
+                    ActionExecutor.setAlarm(this@MyAccessibilityService, hour, minute, label)
+                    waitTime = 2000L
+                }
                 "android_intent" -> {
                     val intentAction = accion.action ?: accion.params?.get("action") as? String ?: "android.intent.action.VIEW"
                     val androidIntent = Intent(intentAction).apply {
@@ -588,40 +599,127 @@ class MyAccessibilityService : AccessibilityService() {
                         waitTime = 300L
                     }
                 }
-                "take_photo" -> {
-                    val modo = accion.params?.get("mode") as? String ?: "normal"  // normal, portrait, frontal
-                    Log.d(TAG, "│ 📸 take_photo: modo='$modo'")
+                "take_photo_auto" -> {
+                    val frontal = accion.params?.get("frontal") as? Boolean ?: false
+                    val portrait = accion.params?.get("portrait") as? Boolean ?: false
+
+                    Log.d(TAG, "│ 📸 take_photo_auto: frontal=$frontal, portrait=$portrait")
 
                     try {
-                        val intent = Intent("android.media.action.IMAGE_CAPTURE").apply {
+                        // Verificar permiso de cámara
+                        if (ContextCompat.checkSelfPermission(this@MyAccessibilityService, Manifest.permission.CAMERA)
+                            != PackageManager.PERMISSION_GRANTED) {
+
+                            Log.e(TAG, "│ ❌ Permiso de cámara no concedido")
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:$packageName")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            exitoAccion = false
+                            detalleError = "Permiso de cámara denegado"
+                            waitTime = 300L
+                            return@run
+                        }
+
+                        val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            when (modo) {
-                                "portrait" -> {
-                                    // Intentar modo retrato con parámetros extras
-                                    putExtra("portrait_mode", true)
-                                    Log.d(TAG, "│    Intentando modo retrato")
-                                }
-                                "frontal" -> {
-                                    // La app de cámara detectará si es frontal
-                                    putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
-                                    Log.d(TAG, "│    Intentando cámara frontal")
-                                }
+                            if (frontal) {
+                                putExtra("android.intent.extras.CAMERA_FACING", 1) // 1 = frontal
+                            }
+                            if (portrait) {
+                                putExtra("portrait_mode", true)
                             }
                         }
-                        startActivity(intent)
-                        Log.d(TAG, "│ ✅ Intent de foto enviado")
 
-                        // Notificar al usuario
-                        val intent_speak = Intent("JARVIS.SPEAK_TEXT").apply {
-                            putExtra("texto", "Abriendo cámara para tomar foto")
-                            setPackage(packageName)
+                        if (intent.resolveActivity(packageManager) != null) {
+                            startActivity(intent)
+                            Log.d(TAG, "│ ✅ Tomando foto" + if (frontal) " (selfie)" else "")
+                            exitoAccion = true
+                            waitTime = 2500L
+                        } else {
+                            Log.e(TAG, "│ ❌ No hay app de cámara")
+                            exitoAccion = false
+                            detalleError = "No hay app de cámara"
+                            waitTime = 300L
                         }
-                        sendBroadcast(intent_speak)
 
-                        exitoAccion = true
-                        waitTime = 2500L
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error tomando foto: ${e.message}")
+                        Log.e(TAG, "│ ❌ Error: ${e.message}")
+                        exitoAccion = false
+                        detalleError = "Error: ${e.message}"
+                        waitTime = 300L
+                    }
+                }
+                "take_photo" -> {
+                    val frontal = accion.params?.get("frontal") as? Boolean ?: false
+                    val portrait = accion.params?.get("portrait") as? Boolean ?: false
+
+                    Log.d(TAG, "│ 📸 take_photo: frontal=$frontal, portrait=$portrait")
+
+                    try {
+                        // Verificar permiso de cámara
+                        if (ContextCompat.checkSelfPermission(this@MyAccessibilityService, Manifest.permission.CAMERA)
+                            != PackageManager.PERMISSION_GRANTED) {
+
+                            Log.e(TAG, "│ ❌ Permiso de cámara no concedido - solicitando...")
+
+                            // Notificar al usuario
+                            val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
+                                putExtra("texto", "Necesito permiso de cámara. Ve a ajustes y actívalo.")
+                                setPackage(packageName)
+                            }
+                            sendBroadcast(speakIntent)
+
+                            // Abrir ajustes de la app
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:$packageName")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+
+                            exitoAccion = false
+                            detalleError = "Permiso de cámara denegado"
+                            waitTime = 300L
+                            return@run
+                        }
+
+                        // Crear intent para tomar foto
+                        val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+                            if (frontal) {
+                                // Intentar cámara frontal
+                                putExtra("android.intent.extras.CAMERA_FACING", 1) // 1 = frontal
+                            }
+                            if (portrait) {
+                                putExtra("portrait_mode", true)
+                            }
+                        }
+
+                        // Verificar que hay una app de cámara disponible
+                        if (intent.resolveActivity(packageManager) != null) {
+                            startActivity(intent)
+                            Log.d(TAG, "│ ✅ Intent de cámara enviado - tomando foto")
+
+                            // Notificar al usuario
+                            val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
+                                putExtra("texto", if (frontal) "Tomando selfie" else "Tomando foto")
+                                setPackage(packageName)
+                            }
+                            sendBroadcast(speakIntent)
+
+                            exitoAccion = true
+                            waitTime = 3000L
+                        } else {
+                            Log.e(TAG, "│ ❌ No hay app de cámara disponible")
+                            exitoAccion = false
+                            detalleError = "No hay app de cámara"
+                            waitTime = 300L
+                        }
+
+                    } catch (e: Exception) {
+                        Log.e(TAG, "│ ❌ Error tomando foto: ${e.message}", e)
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -652,18 +750,31 @@ class MyAccessibilityService : AccessibilityService() {
 
                 "play_music" -> {
                     val query = accion.params?.get("query") as? String ?: ""
-                    Log.d(TAG, "│ 🎵 play_music: '$query'")
-                    val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
-                        putExtra(android.app.SearchManager.QUERY, query)
-                        putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    val packageName = accion.params?.get("package") as? String ?: "com.spotify.music"
+
+                    Log.d(TAG, "│ 🎵 play_music: query='$query' pkg='$packageName'")
+
+                    if (query.isNotBlank()) {
+                        ActionExecutor.playMusic(this@MyAccessibilityService, query, packageName)
+                    } else {
+                        Log.w(TAG, "│ ⚠️ Query vacía, abriendo app por defecto")
+                        ActionExecutor.openApp(this@MyAccessibilityService, packageName)
                     }
-                    try { startActivity(intent) } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ play_music falló: ${e.message}")
-                    }
-                    waitTime = 1500L
+                    waitTime = 3000L  // Esperar más tiempo para que la app cargue y reproduzca
                 }
 
+                "play_video" -> {
+                    val query = accion.params?.get("query") as? String ?: ""
+
+                    Log.d(TAG, "│ 🎬 play_video: query='$query'")
+
+                    if (query.isNotBlank()) {
+                        ActionExecutor.playVideo(this@MyAccessibilityService, query)
+                    } else {
+                        ActionExecutor.openApp(this@MyAccessibilityService, "com.google.android.youtube")
+                    }
+                    waitTime = 3000L
+                }
                 "navigate_to" -> {
                     val destination = accion.params?.get("destination") as? String ?: ""
                     Log.d(TAG, "│ 🗺️ navigate_to: '$destination'")

@@ -21,7 +21,15 @@
         app:layout_constraintVertical_bias="0.28"
         app:layout_constraintBottom_toBottomOf="parent"
         android:layout_marginTop="0dp"/>
-
+    <Button
+        android:id="@+id/btnOmitir"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Omitir introducción"
+        android:textColor="#A0A0A0"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:visibility="gone"
+        tools:visibility="visible" />
     <!-- Nombre del asistente -->
     <TextView
         android:id="@+id/titleWel"
@@ -141,7 +149,7 @@
         android:layout_marginStart="24dp"
         android:layout_marginEnd="24dp"
         android:layout_marginBottom="16dp"
-        android:text="⏭️ Omitir"
+        android:text="⏭Omitir"
         android:textSize="14sp"
         android:textStyle="bold"
         android:textColor="#FFFFFF"
@@ -172,5 +180,6 @@
         app:text="Conocer a Nexus"
         app:text_size="15sp"
         app:slider_icon="@drawable/ic_mic_vector"/>
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -8,7 +8,7 @@ object CommandAnalyzer {
         // Comunicación
         SEND_MESSAGE, SEND_WHATSAPP, SEND_TELEGRAM, CALL_CONTACT, OPEN_EMAIL,
         // Multimedia
-        PLAY_MUSIC, PAUSE_MUSIC, NEXT_SONG, OPEN_YOUTUBE,
+        PLAY_MUSIC, PAUSE_MUSIC, NEXT_SONG, OPEN_YOUTUBE,PLAY_MUSIC_AUTO, PLAY_VIDEO_AUTO,
         // Navegación
         OPEN_MAPS, GET_DIRECTIONS,
         // Info
@@ -21,16 +21,26 @@ object CommandAnalyzer {
         val t = texto.lowercase().trim()
 
         return when {
-             //Música
+            // ✅ PRIORIDAD: Si menciona "youtube", es VIDEO, no música
+            t.contains("youtube") || (t.contains("video") && !t.contains("música")) -> {
+                Intent.PLAY_MUSIC  // Usamos PLAY_MUSIC pero cambiaremos la app a YouTube
+            }
+
+            // Música
             t.contains("reproduce") || t.contains("pon música") ||
                     t.contains("pon la canción") || t.contains("spotify") ||
                     t.contains("youtube music") -> Intent.PLAY_MUSIC
-
+            t.contains("spotify") && (t.contains("reproduce") || t.contains("pon")) -> {
+                Intent.PLAY_MUSIC
+            }
             t.contains("pausa") || t.contains("detén") -> Intent.PAUSE_MUSIC
             t.contains("siguiente") || t.contains("next") -> Intent.NEXT_SONG
 
             // Videos
-            t.contains("youtube") || t.contains("video") || t.contains("ver video") -> Intent.OPEN_YOUTUBE
+            // Reproducción en YouTube
+            (t.contains("youtube") && (t.contains("reproduce") || t.contains("pon") || t.contains("video"))) -> {
+                Intent.PLAY_MUSIC
+            }
 
             // Llamadas
             t.contains("llamar") || t.contains("telefonazo") || t.contains("call") -> Intent.CALL_CONTACT
@@ -67,14 +77,20 @@ object CommandAnalyzer {
 
     fun detectarParametro(texto: String, intento: Intent): String {
         return when (intento) {
-            Intent.SEND_MESSAGE, Intent.SEND_WHATSAPP, Intent.SEND_TELEGRAM, Intent.CALL_CONTACT -> {
-                extraerNombre(texto)
-            }
             Intent.PLAY_MUSIC -> {
-                texto.replace("reproduce", "").replace("pon música", "")
-                    .replace("pon la canción", "").replace("pon a", "")
-                    .replace("en spotify", "").replace("en youtube", "")
-                    .replace("pon", "").trim()
+                var query = texto
+                    .replace(Regex("(?i)reproduce|pon música|pon la canción|pon a|quiero escuchar|escucha"), "")
+                    .replace(Regex("(?i)en youtube|en spotify|en youtube music|en yt music|por youtube|por spotify"), "")
+                    .replace(Regex("(?i)pon|dale play|play"), "")
+                    .trim()
+
+                if (query.isEmpty()) {
+                    query = texto
+                        .replace(Regex("^(reproduce|pon|play|dale play)\\s+"), "")
+                        .trim()
+                }
+
+                query
             }
             Intent.GET_DIRECTIONS, Intent.SEARCH_WEB -> {
                 texto.replace("ruta a", "").replace("cómo llego a", "")
