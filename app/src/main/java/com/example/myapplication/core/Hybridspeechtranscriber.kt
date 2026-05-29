@@ -17,33 +17,53 @@ class HybridSpeechTranscriber(
 ) {
     companion object {
         private const val TAG = "HYBRID_SPEECH"
+
+        // Estados posibles del SR
+        private enum class SrState {
+            IDLE,           // Sin actividad
+            STARTING,       // Llamando a startListening()
+            LISTENING,      // Escuchando activamente
+            STOPPING,       // Cancelando/destruyendo
+            ERROR           // Estado de error, requiere reinicio completo
+        }
     }
 
     private var speechRecognizer: SpeechRecognizer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Callbacks externos
     private var onResultCallback: ((String) -> Unit)? = null
     private var onErrorCallback: ((String) -> Unit)? = null
     private var onSpeechStartedCallback: (() -> Unit)? = null
     private var onSpeechEndedCallback: (() -> Unit)? = null
-    private var reinicioEnCurso = false
-    private var sesionActiva = false
-    private var isListening = false
-    private var speechStartTimestamp = 0L
-    private var language = "es"
-    private var reinicioPendiente = false
     private var onRmsCallback: ((Float) -> Unit)? = null
-    fun init(): Boolean {
-        return try {
-            mainHandler.post {
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
-                Log.d(TAG, " Speech Recognizer inicializado en main thread")
-            }
-            true
+
+    // Estado interno
+    @Volatile
+    private var currentState = SrState.IDLE
+    @Volatile
+    private var sesionActiva = false
+    private var language = "es"
+
+    // Para reintentos controlados
+    private var reintentosConsecutivos = 0
+    private val MAX_REINTENTOS = 3
+
+    init{
+        initRecognizer()
+    }
+
+    private fun initRecognizer() {
+        try {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+            Log.d(TAG, "✅ SpeechRecognizer creado")
         } catch (e: Exception) {
-            Log.e(TAG, " Error inicializando: ${e.message}")
-            false
+            Log.e(TAG, "❌ Error creando SR: ${e.message}")
         }
+    }
+
+    fun init(): Boolean {
+        return speechRecognizer != null
     }
 
     fun iniciarSesionContinua(
@@ -59,198 +79,258 @@ class HybridSpeechTranscriber(
         onSpeechStartedCallback = onSpeechStarted
         onSpeechEndedCallback = onSpeechEnded
         sesionActiva = true
-        isListening = false
+        reintentosConsecutivos = 0
 
-        Log.d(TAG, " Sesión continua iniciada - llamando startListening")
-        mainHandler.post {
-            escucharUnaVez()
-        }
+        Log.d(TAG, "🚀 Iniciando sesión continua")
+        mainHandler.post { iniciarEscucha() }
     }
 
     fun detenerSesion() {
+        Log.d(TAG, "🛑 Deteniendo sesión")
         sesionActiva = false
-        mainHandler.post {
-            speechRecognizer?.cancel()
-            isListening = false
-            Log.d(TAG, "️ Sesión detenida")
-        }
-    }
-
-    /**
-     * Reinicia la escucha de forma explícita.
-     * Esto debe llamarse desde JarvisVoiceController después del TTS.
-     */
-    fun reiniciarEscucha() {
-        if (reinicioPendiente) return
-        reinicioPendiente = true
 
         mainHandler.post {
-            speechRecognizer?.cancel()
-            isListening = false
+            if (currentState != SrState.STOPPING && currentState != SrState.ERROR) {
+            when (currentState) {
+                SrState.LISTENING, SrState.STARTING -> {
+                    currentState = SrState.STOPPING
+                    try {
+                        speechRecognizer?.cancel()
+                        Log.d(TAG, "  Cancel llamado")
+                    } catch (e: Exception) {
+                        Log.e(TAG, " Error al cancelar: ${e.message}")
+                    }
+                }
+                else -> {
+                    Log.d(TAG, "  Estado $currentState, no necesita cancel")
+                }
+            }
+            } else {
+                Log.d(TAG, "  Ya en estado $currentState, omitiendo cancel")
+            }
 
+            // Forzar limpieza después de un delay
             mainHandler.postDelayed({
-                reinicioPendiente = false
-                if (sesionActiva) escucharUnaVez()
-            }, 400L)  // Aumentado de 200 a 400ms
+                if (currentState == SrState.STOPPING || currentState == SrState.ERROR) {
+                    currentState = SrState.IDLE
+                }
+                Log.d(TAG, "  Sesión detenida completamente")
+            }, 300)
         }
     }
-    fun setOnRmsCallback(callback: (Float) -> Unit) {
-        onRmsCallback = callback
-    }
-    private fun escucharUnaVez() {
-        if (!sesionActiva || speechRecognizer == null) {
-            Log.w(TAG, " No puedo escuchar: sesionActiva=$sesionActiva, SR=${speechRecognizer != null}")
+
+    fun reiniciarEscucha() {
+        if (!sesionActiva) {
+            Log.d(TAG, " reiniciarEscucha ignorado: sesión inactiva")
             return
         }
 
-        if (isListening) {
-            Log.d(TAG, " Ya escuchando, cancelo y reinicio")
-            return
-        }
+        Log.d(TAG, "🔄 Reiniciando escucha (estado actual: $currentState)")
 
-        escucharUnaVezInterno()
+        mainHandler.post {
+            when (currentState) {
+                SrState.LISTENING, SrState.STARTING -> {
+                    // Solo cancelamos si realmente está escuchando
+                    currentState = SrState.STOPPING
+                    try {
+                        speechRecognizer?.cancel()
+                        Log.d(TAG, "  Cancel enviado para reinicio")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "  Error en cancel para reinicio: ${e.message}")
+                    }
+
+                    // Esperamos a que el cancel termine antes de reiniciar
+                    mainHandler.postDelayed({
+                        if (sesionActiva && currentState == SrState.STOPPING) {
+                            iniciarEscucha()
+                        }
+                    }, 400)
+                }
+                SrState.IDLE, SrState.ERROR -> {
+                    // Directo a iniciar
+                    iniciarEscucha()
+                }
+                SrState.STOPPING -> {
+                    // Ya está deteniéndose, programamos reinicio después
+                    Log.d(TAG, "  Ya deteniendo, programando reinicio...")
+                    mainHandler.postDelayed({
+                        if (sesionActiva) iniciarEscucha()
+                    }, 500)
+                }
+            }
+        }
     }
 
-    private fun escucharUnaVezInterno() {
-        if (!sesionActiva || speechRecognizer == null) {
-            Log.w(TAG, " Sesión cancelada o SR null")
+    private fun iniciarEscucha() {
+        if (!sesionActiva) {
+            Log.d(TAG, " iniciarEscucha ignorado: sesión inactiva")
+            currentState = SrState.IDLE
             return
         }
+
+        if (currentState != SrState.IDLE && currentState != SrState.STOPPING && currentState != SrState.ERROR) {
+            Log.w(TAG, " iniciarEscucha ignorado: estado actual $currentState")
+            return
+        }
+
+        if (speechRecognizer == null) {
+            Log.e(TAG, " SpeechRecognizer es null, reintentando crear...")
+            initRecognizer()
+            if (speechRecognizer == null) {
+                onErrorCallback?.invoke("Error interno de reconocimiento")
+                return
+            }
+        }
+
+        currentState = SrState.STARTING
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, language)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
         }
 
-        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                isListening = true
-                val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-                am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, 0)
-
-                Log.d(TAG, " SR listo para escuchar")
-            }
-
-            override fun onBeginningOfSpeech() {
-                speechStartTimestamp = System.currentTimeMillis()
-                Log.d(TAG, " Habla detectada")
-                onSpeechStartedCallback?.invoke()
-            }
-
-            override fun onRmsChanged(rmsdB: Float) {
-                // Convertir dB (0 a 100) a escala 0-12 para el orbe
-                val normalized = (rmsdB / 100f).coerceIn(0f, 1f) * 12f
-                onRmsCallback?.invoke(normalized)
-            }
-            override fun onBufferReceived(buffer: ByteArray?) {}
-
-            override fun onEndOfSpeech() {
-                Log.d(TAG, "✋ Fin de habla — procesando...")
-                onSpeechEndedCallback?.invoke()
-            }
-
-            override fun onError(error: Int) {
-                isListening = false
-                val msg = errorMsg(error)
-                Log.e(TAG, "❌ SR error: $msg (código: $error)")
-
-                when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH,
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                        if (sesionActiva) {
-                            Log.d(TAG, " Reiniciando escucha (error: $msg)...")
-                            val duracion = System.currentTimeMillis() - speechStartTimestamp
-                            val esRuido = duracion < 1500L
-                            mainHandler.postDelayed({ escucharUnaVez() }, 300L)
-                            Log.d(TAG, " Reiniciando escucha (error: $msg)...")
-                        }
-                    }
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                        if (sesionActiva) {
-                            Log.d(TAG, " SR ocupado, esperando...")
-                            mainHandler.postDelayed({ escucharUnaVez() }, 800L)
-                        }
-                    }
-                    else -> {
-                        Log.e(TAG, "️ Error real: $msg")
-                        onErrorCallback?.invoke(msg)
-                        if (sesionActiva) {
-                            mainHandler.postDelayed({ escucharUnaVez() }, 600L)
-                        }
-                    }
-                }
-            }
-
-            override fun onResults(results: Bundle?) {
-                isListening = false
-                val matches = results
-                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-
-                if (!matches.isNullOrEmpty() && matches[0].isNotBlank()) {
-                    val texto = matches[0]
-                    Log.d(TAG, " SR resultado: \"$texto\"")
-                    onResultCallback?.invoke(texto)
-
-                    // El reinicio es controlado por JarvisVoiceController.hablar()
-                    // para evitar capturar el echo del TTS
-
-                } else {
-                    Log.w(TAG, "⚠ SR sin resultados — no reiniciamos aquí")
-                    // No reiniciar aquí tampoco
-                    // Espera a que JarvisVoiceController explícitamente reinicie
-                }
-            }
-
-            override fun onPartialResults(partialResults: Bundle?) {
-                val matches = partialResults
-                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty() && matches[0].isNotBlank()) {
-                    Log.d(TAG, " Parcial: \"${matches[0]}\"")
-                }
-            }
-
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
+        speechRecognizer?.setRecognitionListener(createRecognitionListener())
 
         try {
-            Log.d(TAG, " Llamando startListening()...")
-            // ── Silenciar el beep del sistema antes de iniciar SR ─────────
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_MUTE, 0)
-
             speechRecognizer?.startListening(intent)
-            Log.d(TAG, " startListening() ejecutado correctamente")
+            Log.d(TAG, "🎤 startListening() ejecutado")
         } catch (e: Exception) {
-            Log.e(TAG, " Error en startListening: ${e.message}", e)
-            isListening = false
-            if (sesionActiva) {
-                mainHandler.postDelayed({ escucharUnaVez() }, 500L)
+            Log.e(TAG, "❌ Error en startListening: ${e.message}", e)
+            currentState = SrState.ERROR
+            reintentosConsecutivos++
+
+            if (reintentosConsecutivos <= MAX_REINTENTOS && sesionActiva) {
+                Log.d(TAG, " Reintentando en 1s (${reintentosConsecutivos}/$MAX_REINTENTOS)")
+                mainHandler.postDelayed({ iniciarEscucha() }, 1000)
+            } else {
+                onErrorCallback?.invoke("Error fatal: ${e.message}")
             }
         }
     }
 
-    fun reanudarEscucha(language: String = "es") {
-        Log.w(TAG, "️ reanudarEscucha() deprecated - usa reiniciarEscucha()")
+    private fun createRecognitionListener() = object : RecognitionListener {
+        override fun onReadyForSpeech(params: Bundle?) {
+            if (currentState == SrState.STARTING || currentState == SrState.STOPPING) {
+                currentState = SrState.LISTENING
+            }
+            reintentosConsecutivos = 0  // Resetear reintentos en éxito
+            Log.d(TAG, "✅ SR listo para escuchar")
+        }
+
+        override fun onBeginningOfSpeech() {
+            Log.d(TAG, "🎙️ Habla detectada")
+            onSpeechStartedCallback?.invoke()
+        }
+
+        override fun onRmsChanged(rmsdB: Float) {
+            val normalized = (rmsdB / 100f).coerceIn(0f, 1f) * 12f
+            onRmsCallback?.invoke(normalized)
+        }
+
+        override fun onBufferReceived(buffer: ByteArray?) {}
+
+        override fun onEndOfSpeech() {
+            Log.d(TAG, "✋ Fin de habla")
+            onSpeechEndedCallback?.invoke()
+        }
+
+        override fun onError(error: Int) {
+            val msg = errorMsg(error)
+            Log.e(TAG, "❌ SR error: $msg (código: $error), estado=$currentState")
+
+            when (error) {
+                SpeechRecognizer.ERROR_NO_MATCH,
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                    if (sesionActiva && currentState != SrState.STOPPING) {
+                        currentState = SrState.IDLE
+                        Log.d(TAG, "  Reiniciando escucha silenciosamente...")
+                        mainHandler.postDelayed({ iniciarEscucha() }, 300)
+                    }
+                }
+
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                    if (sesionActiva) {
+                        currentState = SrState.IDLE
+                        Log.d(TAG, "  SR ocupado, esperando 800ms...")
+                        mainHandler.postDelayed({ iniciarEscucha() }, 800)
+                    }
+                }
+
+                SpeechRecognizer.ERROR_CLIENT -> {
+                    // Error grave - necesitamos recrear el SR
+                    Log.e(TAG, "  ERROR_CLIENT - Recreando SpeechRecognizer...")
+                    currentState = SrState.ERROR
+
+                    try {
+                        speechRecognizer?.destroy()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "  Error en destroy: ${e.message}")
+                    }
+
+                    speechRecognizer = null
+
+                    mainHandler.postDelayed({
+                        if (sesionActiva) {
+                            initRecognizer()
+                            iniciarEscucha()
+                        }
+                    }, 500)
+                }
+
+                else -> {
+                    onErrorCallback?.invoke(msg)
+                    if (sesionActiva && currentState != SrState.STOPPING) {
+                        currentState = SrState.IDLE
+                        mainHandler.postDelayed({ iniciarEscucha() }, 600)
+                    }
+                }
+            }
+        }
+
+        override fun onResults(results: Bundle?) {
+            if (currentState == SrState.STOPPING) {
+                Log.d(TAG, " onResults ignorado porque estamos deteniendo")
+                return
+            }
+
+            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+
+            if (!matches.isNullOrEmpty() && matches[0].isNotBlank()) {
+                val texto = matches[0]
+                Log.d(TAG, "📝 Resultado: \"$texto\"")
+
+                // Pausar temporalmente para evitar eco
+                currentState = SrState.IDLE
+                onResultCallback?.invoke(texto)
+                // NOTA: NO reiniciamos aquí - JarvisVoiceController lo hará después del TTS
+            } else {
+                Log.w(TAG, "⚠️ Sin resultados")
+                if (sesionActiva && currentState != SrState.STOPPING) {
+                    currentState = SrState.IDLE
+                    mainHandler.postDelayed({ iniciarEscucha() }, 300)
+                }
+            }
+        }
+
+        override fun onPartialResults(partialResults: Bundle?) {
+            val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            if (!matches.isNullOrEmpty() && matches[0].isNotBlank()) {
+                Log.d(TAG, "📝 Parcial: \"${matches[0]}\"")
+            }
+        }
+
+        override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
-    fun transcribeFromAudio(
-        audioData: ShortArray,
-        language: String = "es",
-        onResult: (String) -> Unit,
-        onError: (String) -> Unit
-    ) {
-        Log.w(TAG, " transcribeFromAudio() ignorado — usando SR continuo")
-        onError("Usar iniciarSesionContinua() en su lugar")
+    fun setOnRmsCallback(callback: (Float) -> Unit) {
+        onRmsCallback = callback
     }
-
-    fun stopListening() = detenerSesion()
 
     private fun errorMsg(error: Int) = when (error) {
         SpeechRecognizer.ERROR_AUDIO                  -> "Error de audio"
@@ -266,12 +346,24 @@ class HybridSpeechTranscriber(
     }
 
     fun destroy() {
+        Log.d(TAG, "💀 Destruyendo HybridSpeechTranscriber")
         sesionActiva = false
-        mainHandler.post {
+        currentState = SrState.STOPPING
+
+        mainHandler.removeCallbacksAndMessages(null)
+
+        try {
             speechRecognizer?.cancel()
             speechRecognizer?.destroy()
-            speechRecognizer = null
-            Log.d(TAG, " HybridSpeechTranscriber destruido")
+        } catch (e: Exception) {
+            Log.e(TAG, " Error en destroy: ${e.message}")
         }
+
+        speechRecognizer = null
+        onResultCallback = null
+        onErrorCallback = null
+        onSpeechStartedCallback = null
+        onSpeechEndedCallback = null
+        onRmsCallback = null
     }
 }

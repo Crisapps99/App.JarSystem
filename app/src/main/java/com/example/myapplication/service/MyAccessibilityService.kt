@@ -116,14 +116,16 @@ class MyAccessibilityService : AccessibilityService() {
     fun captureNow() {
         serviceScope.launch(Dispatchers.Main) {
             var root = rootInActiveWindow
+            var intentos = 0
 
-            if (root == null) {
-                delay(150)
+            while (root == null && intentos < 5) {
+                delay(200)
                 root = rootInActiveWindow
+                intentos++
             }
 
             if (root == null) {
-                Log.e(TAG, "❌ [FALLO CRÍTICO] No se puede obtener rootInActiveWindow tras reintento.")
+                Log.e(TAG, "❌ [FALLO CRÍTICO] No se puede obtener rootInActiveWindow tras $intentos reintentos.")
                 return@launch
             }
 
@@ -137,11 +139,37 @@ class MyAccessibilityService : AccessibilityService() {
 
     fun captureCurrentScreenNow(callback: ((ScreenSnapshot?) -> Unit)? = null) {
         serviceScope.launch(Dispatchers.Main) {
+            // Esperar a que la ventana esté lista
+            var root = rootInActiveWindow
+            var intentos = 0
+
+            // Reintentar hasta 5 veces con delays
+            while (root == null && intentos < 8) {
+                delay(2500)
+                root = rootInActiveWindow
+                intentos++
+                Log.d(TAG, "🔄 Reintentando captura... intento $intentos")
+            }
+
+            if (root == null) {
+                Log.e(TAG, "❌ No se pudo obtener rootInActiveWindow después de $intentos intentos")
+                callback?.invoke(null)
+                return@launch
+            }
+
+            Log.d(TAG, "📸 Captura manual iniciada sobre: ${root.packageName}")
             actualizarSnapDePantalla(force = true)
-            delay(300)
-            val snapshot = lastSnapshot
-            com.example.myapplication.core.ScreenMemory.lastSnapshot = snapshot
-            callback?.invoke(snapshot)
+            // Esperar a que se complete el escaneo
+            delay(500)
+
+            // Asegurar que el snapshot se guarde en ScreenMemory
+            if (lastSnapshot != null) {
+                com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
+                com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
+                com.example.myapplication.core.ScreenMemory.lastUpdateTimestamp = System.currentTimeMillis()
+            }
+            Log.d(TAG, "✅ Captura completada: ${lastSnapshot?.elements?.size ?: 0} elementos")
+            callback?.invoke(lastSnapshot)
         }
     }
 

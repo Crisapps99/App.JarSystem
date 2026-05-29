@@ -15,8 +15,9 @@
 
         <com.example.myapplication.ui.JarvisOrbView
             android:id="@+id/jarvisOrb"
-            android:layout_width="300dp"
-            android:layout_height="300dp"/>
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:layout_gravity="center" />
 
     </FrameLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -38,8 +38,9 @@ import kotlinx.coroutines.delay
 import android.os.Vibrator
 import android.os.VibrationEffect
 import android.os.Build
+import com.example.myapplication.model.ScreenElement
 import com.example.myapplication.service.JarvisNotificationListener
-//import com.example.myapplication.core.CommandAnalyzer
+
 enum class JarvisState { IDLE, LISTENING, THINKING, SPEAKING }
 
 interface JarvisUi {
@@ -50,6 +51,8 @@ interface JarvisUi {
     fun onRecognizerReady()
     fun updateORB(rms: Float)
     fun setOrbVisibility(visible: Boolean)
+    fun getDisplayedText(): String
+    fun showImages(urls: List<String>)
 }
 interface PorcupineController {
     fun pausarPorcupine()
@@ -67,7 +70,7 @@ object ElevenLabsConfig {
 }
 
 enum class TtsMode { ANDROID, ELEVEN_LABS }
-private val TTS_MODE = TtsMode.ELEVEN_LABS
+private val TTS_MODE = TtsMode.ANDROID
 
 class JarvisVoiceController(
     private val context: Context,
@@ -115,7 +118,8 @@ class JarvisVoiceController(
     private var confirmacionReceiver: BroadcastReceiver? = null
     private var orbHideReceiver: BroadcastReceiver? = null
     private var wakeWordReceiver: BroadcastReceiver? = null
-
+    var ultimoResultadoBusqueda: SearchResult? = null
+        private set
     // ── Ventana anti-eco para confirmaciones ────────────────────────────────
     private var ttsTerminoTimestamp = 0L
     private val ECO_WINDOW_MS = 500L
@@ -123,6 +127,8 @@ class JarvisVoiceController(
     private lateinit var hybridTranscriber: HybridSpeechTranscriber
     private var hybridListo = false
 
+    private var esperandoConfirmacionGoogle = false
+    private var busquedaPendienteGoogle = ""
     private var audioFocusRequest: android.media.AudioFocusRequest? = null
     private val audioManagerSystem by lazy {
         context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
@@ -242,10 +248,69 @@ class JarvisVoiceController(
      * Se ejecuta en IO para no bloquear el hilo principal.
      */
     private fun procesarTexto(texto: String) {
+        val textoLimpio = texto.lowercase().trim()
+        if (textoLimpio.contains("busca imágenes de") || textoLimpio.contains("muéstrame imágenes de") ||
+            textoLimpio.contains("buscar imágenes de") || textoLimpio.contains("busca fotos de")) {
+
+            val busqueda = textoLimpio
+                .replace("busca imágenes de", "")
+                .replace("muéstrame imágenes de", "")
+                .replace("buscar imágenes de", "")
+                .replace("busca fotos de", "")
+                .replace("fotos de", "")
+                .replace("imágenes de", "").trim()
+
+            if (busqueda.isNotBlank()) {
+                ejecutarBusquedaImagenes(busqueda)
+            } else {
+                hablar("¿Imágenes de qué te gustaría buscar?") {
+                    isProcessing = false
+                    if (sesionActiva) iniciarSRContinuo()
+                }
+            }
+            return
+        }
+        // INTERCEPTOR DE COMANDO: COPIAR TEXTO
+        if (textoLimpio.contains("copiar texto") || textoLimpio.contains("copia el texto") || textoLimpio.contains("copia texto")) {
+            val contenidoACopiar = ultimoResultadoBusqueda?.content ?: ui.getDisplayedText()
+            if (contenidoACopiar.isNotBlank()) {
+                ejecutarCopiarTextoLocal(contenidoACopiar)
+            } else {
+                hablar("No hay texto en pantalla para copiar.") {
+                    isProcessing = false
+                    if (sesionActiva) iniciarSRContinuo()
+                }
+            }
+            return
+        }
+        // INTERCEPTOR DE COMANDO: VER MÁS FUENTES / LINKS
+        if (textoLimpio.contains("ver más") || textoLimpio.contains("ver mas") || textoLimpio.contains("abrir enlaces")) {
+            val urls = ultimoResultadoBusqueda?.urls ?: emptyList()
+            if (urls.isNotEmpty()) {
+                ejecutarAbrirNavegadorLocal(urls.first())
+            } else {
+                hablar("No encontré enlaces disponibles de la última búsqueda.") {
+                    isProcessing = false
+                    if (sesionActiva) iniciarSRContinuo()
+                }
+            }
+            return
+        }
         if (texto.lowercase().contains("youtube") &&
             (texto.lowercase().contains("pon") || texto.lowercase().contains("reproduce"))) {
             Log.d(TAG, "🎬 Comando de YouTube detectado: '$texto'")
             ejecutarMusica(texto)
+            return
+        }
+        // Detectar comandos para cerrar búsqueda
+        if (texto.lowercase().contains("cerrar búsqueda") ||
+            texto.lowercase().contains("ocultar resultados") ||
+            texto.lowercase().contains("volver atrás")) {
+
+            hablar("Resultados ocultados") {
+                isProcessing = false
+                if (sesionActiva) iniciarSRContinuo()
+            }
             return
         }
         if (esComandoCancelacion(texto)) {
@@ -362,7 +427,111 @@ class JarvisVoiceController(
             }
         }
     }
+    private fun ejecutarBusquedaImagenes(query: String) {
+        ui.showText("🔍 Buscando imágenes de $query...")
+        setState(JarvisState.THINKING)
 
+        scope.launch {
+            try {
+                // 🌐 Hacemos la petición nativa a Tavily usando tus imports de OkHttp
+                val urlsImagenes = withContext(Dispatchers.IO) {
+                    val client = OkHttpClient.Builder()
+                        .connectTimeout(10, TimeUnit.SECONDS)
+                        .readTimeout(10, TimeUnit.SECONDS)
+                        .build()
+
+                    val mediaType = "application/json; charset=utf-8".toMediaType()
+
+                    // Construimos el JSON requiriendo explícitamente "include_images"
+                    val jsonBody = JSONObject().apply {
+                        put("api_key", "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") // 🔑 REEMPLAZA CON TU API KEY REAL DE TAVILY
+                        put("query", query)
+                        put("include_images", true)
+                        put("max_results", 6) // El carrusel aguanta bien hasta 6 imágenes
+                    }
+
+                    val request = Request.Builder()
+                        .url("https://api.tavily.com/search")
+                        .post(jsonBody.toString().toRequestBody(mediaType))
+                        .build()
+
+                    val response = client.newCall(request).execute()
+                    val listaUrls = mutableListOf<String>()
+
+                    if (response.isSuccessful) {
+                        val jsonResponse = JSONObject(response.body?.string() ?: "")
+                        // Tavily devuelve los links directos en un array JSON llamado "images"
+                        val imagesArray = jsonResponse.optJSONArray("images")
+                        if (imagesArray != null) {
+                            for (i in 0 until imagesArray.length()) {
+                                listaUrls.add(imagesArray.getString(i))
+                            }
+                        }
+                    }
+                    listaUrls
+                }
+
+                // 🎨 Volvemos al hilo principal para renderizar los resultados en el Orbe
+                withContext(Dispatchers.Main) {
+                    if (urlsImagenes.isNotEmpty()) {
+                        ultimoResultadoBusqueda = SearchResult(
+                            content = "Imágenes encontradas sobre $query",
+                            urls = urlsImagenes
+                        )
+                        ui.showImages(urlsImagenes)
+                        hablar("Aquí tienes las imágenes que encontré sobre $query.") {
+                            isProcessing = false
+                            if (sesionActiva) iniciarSRContinuo()
+                        }
+                    } else {
+                        val fallbackMsg = "No encontré imágenes multimedia sobre $query."
+                        ui.showText(fallbackMsg)
+                        hablar(fallbackMsg) {
+                            isProcessing = false
+                            if (sesionActiva) iniciarSRContinuo()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error en búsqueda visual: ${e.message}")
+                isProcessing = false
+                withContext(Dispatchers.Main) {
+                    ui.showText("Hubo un error de conexión al buscar imágenes.")
+                }
+            }
+        }
+    }
+    private fun ejecutarCopiarTextoLocal(texto: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clip = android.content.ClipData.newPlainText("Nexus", texto)
+        clipboard.setPrimaryClip(clip)
+        hablar("Texto copiado al portapapeles") {
+            isProcessing = false
+            if (sesionActiva) iniciarSRContinuo()
+        }
+    }
+    fun detenerSesionCompleta() {
+        stopListeningCompletamente()
+    }
+    private fun ejecutarAbrirNavegadorLocal(url: String) {
+        try {
+            val query = ultimoResultadoBusqueda?.query ?: ""
+            val destino = if (query.isNotBlank()) {
+                "https://www.google.com/search?q=${Uri.encode(query)}"
+            } else {
+                url
+            }
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(destino)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            hablar("Abriendo Google") {
+                isProcessing = false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al abrir navegador por voz: ${e.message}")
+        }
+    }
     private fun ejecutarComandoHora() {
         val cal = java.util.Calendar.getInstance()
         val hora = cal.get(java.util.Calendar.HOUR_OF_DAY)
@@ -457,17 +626,184 @@ class JarvisVoiceController(
             isProcessing = false
         }
     }
-    private fun ejecutarBusquedaWeb(texto: String) {
-        val busqueda = texto.lowercase()
-            .replace("busca en internet", "")
-            .replace("investiga", "")
-            .replace("busca", "").trim()
 
-        hablar("Buscando $busqueda en la web") {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$busqueda"))
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+
+    private fun ejecutarBusquedaWeb(texto: String) {
+        var busqueda = texto.lowercase()
+            .replace(Regex("(busca|buscar|investiga|qué es|que es|quien es|qué significa|que significa|dime sobre|hablame de|cuéntame de)"), "")
+            .replace(Regex("(en internet|en la web|en google|por favor)"), "")
+            .trim()
+
+        busqueda = busqueda.replace(Regex("^(el |la |los |las |un |una |unos |unas )"), "").trim()
+
+        if (busqueda.isEmpty()) {
+            hablar("¿Qué quieres que busque?") {
+                isProcessing = false
+                if (sesionActiva) iniciarSRContinuo()
+            }
+            return
+        }
+
+        ui.showText("🔍 Buscando: $busqueda")
+        setState(JarvisState.THINKING)
+
+        scope.launch {
+            try {
+                // Cambiado a searchAdvanced para obtener tanto texto como URLs asociadas
+                val resultado = TavilySearchService.searchAdvanced(busqueda)
+
+                if (resultado.content.isNotBlank() && resultado.content.length > 20) {
+                    // Guardamos el contexto estructurado en memoria
+                    ultimoResultadoBusqueda = resultado
+
+                    withContext(Dispatchers.Main) {
+                        ui.showText(resultado.content)
+                        if (resultado.imageUrls.isNotEmpty()) {
+                            ui.showImages(resultado.imageUrls)
+                        }
+                        hablar("Esto fue lo que encontré.") {
+                            isProcessing = false
+                            if (sesionActiva) {
+                                mainHandler.postDelayed({ iniciarSRContinuo() }, 500)
+                            }
+                        }
+                    }
+                } else {
+                    // Fallback a confirmación de Google existente en tu código...
+                    val mensaje = "No encontré información. ¿Quieres que busque en Google?"
+                    withContext(Dispatchers.Main) {
+                        ui.showText(mensaje)
+                        hablar(mensaje) {
+                            isProcessing = false
+                            if (sesionActiva) {
+                                mainHandler.postDelayed({
+                                    esperandoConfirmacionGoogle = true
+                                    busquedaPendienteGoogle = busqueda
+                                    iniciarSRContinuo()
+                                }, 500)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error en búsqueda Tavily Avanzada: ${e.message}")
+                isProcessing = false
+            }
+        }
+    }
+    // Función para dividir respuestas largas
+    private fun dividirRespuesta(respuesta: String): List<String> {
+        val partes = mutableListOf<String>()
+        var resto = respuesta
+
+        while (resto.length > 250) {
+            // Buscar un punto o espacio para cortar
+            var corte = resto.substring(0, 250).lastIndexOf('.')
+            if (corte < 50) corte = resto.substring(0, 250).lastIndexOf(' ')
+            if (corte < 50) corte = 250
+
+            partes.add(resto.substring(0, corte + 1))
+            resto = resto.substring(corte + 1).trim()
+        }
+        if (resto.isNotEmpty()) partes.add(resto)
+
+        return partes
+    }
+
+    // Función para hablar partes con pausas
+    private fun hablarPartes(partes: List<String>, index: Int = 0) {
+        if (index >= partes.size) {
             isProcessing = false
+            if (sesionActiva) iniciarSRContinuo()
+            return
+        }
+
+        hablar(partes[index]) {
+            if (index + 1 < partes.size) {
+                mainHandler.postDelayed({
+                    hablarPartes(partes, index + 1)
+                }, 1000)
+            } else {
+                isProcessing = false
+                if (sesionActiva) iniciarSRContinuo()
+            }
+        }
+    }
+    private suspend fun realizarBusquedaDuckDuckGo(query: String): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(10, TimeUnit.SECONDS)
+                    .build()
+
+                val url = "https://api.duckduckgo.com/?q=${Uri.encode(query)}&format=json&no_html=1&skip_disambig=1"
+
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "JarvisAssistant/1.0")
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val jsonString = response.body?.string()
+
+                if (response.isSuccessful && jsonString != null) {
+                    val json = JSONObject(jsonString)
+
+                    // Extraer respuesta directa
+                    val abstractText = json.optString("AbstractText", "")
+                    val answer = json.optString("Answer", "")
+                    val definition = json.optString("Definition", "")
+                    val heading = json.optString("Heading", "")
+
+                    // Construir respuesta amigable
+                    when {
+                        answer.isNotEmpty() -> {
+                            return@withContext answer
+                        }
+                        definition.isNotEmpty() -> {
+                            return@withContext "Según DuckDuckGo: $definition"
+                        }
+                        abstractText.isNotEmpty() -> {
+                            // Limitar a 500 caracteres para no ser muy largo
+                            val texto = if (abstractText.length > 500)
+                                abstractText.substring(0, 500) + "..."
+                            else abstractText
+                            return@withContext texto
+                        }
+                        heading.isNotEmpty() -> {
+                            val relatedTopics = json.optJSONArray("RelatedTopics")
+                            if (relatedTopics != null && relatedTopics.length() > 0) {
+                                val primerResultado = relatedTopics.getJSONObject(0)
+                                val texto = primerResultado.optString("Text", "")
+                                if (texto.isNotEmpty()) {
+                                    return@withContext "Sobre $heading: ${texto.take(400)}"
+                                }
+                            }
+                            return@withContext "Información sobre $heading. Puedes pedirme más detalles si lo deseas."
+                        }
+                        else -> {
+                            // Buscar en RelatedTopics
+                            val relatedTopics = json.optJSONArray("RelatedTopics")
+                            if (relatedTopics != null && relatedTopics.length() > 0) {
+                                for (i in 0 until minOf(3, relatedTopics.length())) {
+                                    val topic = relatedTopics.getJSONObject(i)
+                                    val text = topic.optString("Text", "")
+                                    if (text.isNotEmpty() && text.length > 20) {
+                                        return@withContext text.take(400)
+                                    }
+                                }
+                            }
+                            return@withContext "No encontré información detallada sobre '$query'. ¿Quieres que busque otra cosa?"
+                        }
+                    }
+                } else {
+                    return@withContext ""
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error en búsqueda DuckDuckGo: ${e.message}")
+                return@withContext ""
+            }
         }
     }
     private fun ejecutarClima() {
@@ -500,6 +836,21 @@ class JarvisVoiceController(
         scope.launch {
             setState(JarvisState.THINKING)
             ui.showText("Procesando comando...")
+            // Verificar si es una búsqueda web simple
+            val esBusquedaWeb = texto.lowercase().matches(Regex(".*(busca|buscar|investiga|qué es|quien es|que es).*"))
+
+            if (esBusquedaWeb && texto.length < 100) {
+                // Búsqueda local sin servidor
+                val busqueda = texto.lowercase()
+                    .replace("busca", "").replace("buscar", "")
+                    .replace("investiga", "").replace("qué es", "")
+                    .replace("que es", "").replace("quien es", "").trim()
+
+                if (busqueda.isNotBlank()) {
+                    ejecutarBusquedaWeb(busqueda)
+                    return@launch
+                }
+            }
 
             // Capturar pantalla
             MyAccessibilityService.instance?.captureNow()
@@ -817,7 +1168,6 @@ class JarvisVoiceController(
                 }, 50L)  // Pequeño delay para que TTS estabilice
             }
 
-            //  CAMBIO: Este método onDone() debe quedar así:
             override fun onDone(id: String?) {
                 Log.d(TAG, " TTS TERMINÓ")
                 mainHandler.post {
@@ -825,16 +1175,13 @@ class JarvisVoiceController(
                     ttsTerminoTimestamp = System.currentTimeMillis()
                     sessionManager.setAllowEarlyInput(false)
 
-                    //  Ejecutar callback
                     alTerminar?.invoke()
 
-                    //  NUEVO: Reiniciar SR explícitamente después de TTS
                     if (sesionActiva) {
-                        Log.d(TAG, " Esperando 800ms antes de reiniciar SR...")
+                        Log.d(TAG, " Esperando 600ms antes de reiniciar SR...")
                         mainHandler.postDelayed({
-                            Log.d(TAG, "SR reiniciado después de TTS")
                             hybridTranscriber.reiniciarEscucha()
-                        }, 800L)
+                        }, 600L)  // ← Reducido de 800 a 600ms
                     }
                 }
             }
@@ -1113,10 +1460,36 @@ class JarvisVoiceController(
         val tiempoDesdeFinTTS = System.currentTimeMillis() - ttsTerminoTimestamp
 
         if (tiempoDesdeFinTTS < ECO_WINDOW_MS) {
-            Log.d(TAG, " Eco ignorado (${tiempoDesdeFinTTS}ms)")
+            Log.d(TAG, "Eco ignorado (${tiempoDesdeFinTTS}ms)")
             return
         }
 
+        // ✅ Manejar confirmación de búsqueda en Google
+        if (esperandoConfirmacionGoogle) {
+            esperandoConfirmacionGoogle = false
+            val afirmativos = listOf("sí", "si", "claro", "dale", "ok", "okay", "si por favor", "vale", "busca")
+            val esAfirmativo = afirmativos.any { t == it || t.startsWith("$it ") }
+
+            if (esAfirmativo && busquedaPendienteGoogle.isNotBlank()) {
+                hablar("Abriendo Google para buscar $busquedaPendienteGoogle") {
+                    val intent = Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.google.com/search?q=${Uri.encode(busquedaPendienteGoogle)}"))
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                }
+                return
+            } else {
+                hablar("Ok, cancelado.") {
+                    isProcessing = false
+                    if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                }
+                return
+            }
+        }
+
+        // Resto del código original de confirmación...
         esperandoConfirmacion = false
         hacerVibrar(50)
 
@@ -1181,45 +1554,55 @@ class JarvisVoiceController(
         setState(JarvisState.THINKING)
         isProcessing = true
         mainHandler.post { ui.setOrbVisibility(false) }
+
         scope.launch {
-            Log.d(TAG, " [DEBUG VISUAL] Solicitando captura de pantalla inmediata...")
-            MyAccessibilityService.instance?.captureCurrentScreenNow()
-            delay(1200)  // Aumentamos un poco para apps pesadas como FB
+            Log.d(TAG, " [DEBUG VISUAL] Solicitando captura de pantalla...")
 
-            val snapshot = ScreenMemory.lastSnapshot
-            val elementos = snapshot?.elements ?: emptyList()
-
-            // --- BLOQUE DE LOGS PARA DEPURACIÓN ---
-            Log.d(TAG, " App activa: ${snapshot?.packageName}")
-            Log.d(TAG, "Elementos encontrados: ${elementos.size}")
-
-            elementos.take(10).forEachIndexed { index, el ->
-                Log.d(TAG, "   #$index -> Texto: [${el.text}] | Clase: ${el.className} | Clickable: ${el.isClickable}")
-            }
-            // --------------------------------------
+            // 🔥 Usar callback para asegurar que obtenemos el snapshot
+            var elementosCapturados: List<ScreenElement> = emptyList()
 
             withContext(Dispatchers.Main) {
-                if (elementos.isEmpty()) {
-                    // RETRY: intentar una segunda captura
-                    Log.w(TAG, "Primera captura vacía, reintentando...")
-                    MyAccessibilityService.instance?.captureNow()
+                MyAccessibilityService.instance?.captureCurrentScreenNow { snapshot ->
+                    elementosCapturados = snapshot?.elements ?: emptyList()
+                    Log.d(TAG, " Captura callback: ${elementosCapturados.size} elementos")
+                }
+            }
 
-                    delay(800)
-                    val retry = ScreenMemory.lastSnapshot?.elements ?: emptyList()
+            // Esperar a que la captura termine (máximo 3 segundos)
+            var intentos = 0
+            while (elementosCapturados.isEmpty() && intentos < 10) {
+                delay(300)
+                intentos++
+                Log.d(TAG, "  Esperando captura... intento $intentos/10")
+            }
 
-                    if (retry.isEmpty()) {
+            withContext(Dispatchers.Main) {
+                if (elementosCapturados.isEmpty()) {
+                    Log.e(TAG, "❌ No se pudo capturar la pantalla después de ${intentos} intentos")
+                    ui.setOrbVisibility(true)
+                    hablar("No pude ver la pantalla. ¿Puedes abrir la app primero?") {
+                        isProcessing = false
+                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                    }
+                } else {
+                    // Filtrar solo elementos interactivos con tamaño válido
+                    val interactivos = elementosCapturados.filter {
+                        (it.isClickable || it.isEditable || it.isScrollable) &&
+                                it.bounds.width() > 10 && it.bounds.height() > 10
+                    }
+
+                    Log.d(TAG, "📱 Elementos totales: ${elementosCapturados.size}")
+                    Log.d(TAG, "🖱️ Elementos interactivos: ${interactivos.size}")
+
+                    if (interactivos.isEmpty()) {
                         ui.setOrbVisibility(true)
-                        hablar("No detecté elementos en pantalla.") {
+                        hablar("No veo nada que pueda tocar en esta pantalla.") {
                             isProcessing = false
                             if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
                         }
-                        return@withContext
+                    } else {
+                        mostrarOverlayNumeros(interactivos)
                     }
-
-                    // Segunda captura exitosa
-                    mostrarOverlayNumeros(retry)
-                } else {
-                    mostrarOverlayNumeros(elementos)
                 }
             }
         }

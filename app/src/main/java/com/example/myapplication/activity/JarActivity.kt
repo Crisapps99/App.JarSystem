@@ -39,6 +39,7 @@ import com.ncorti.slidetoact.SlideToActView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.example.myapplication.core.VoskWakeWordDetector
+import com.example.myapplication.service.MyAccessibilityService
 
 class JarActivity : AppCompatActivity(), JarvisUi {
 
@@ -46,10 +47,6 @@ class JarActivity : AppCompatActivity(), JarvisUi {
     private lateinit var controller: JarvisVoiceController
     private val RECORD_AUDIO_PERMISSION_CODE = 200
     private var wakeDetector: VoskWakeWordDetector? = null
-//    private var porcupineManager: PorcupineManager? = null
-//    private val ACCESS_KEY  = "UcCqJXCaJhQNTLLrzyejwfeCHn++rwmH66RhWrMBJ4zxxLIVjvJ9mw=="
-//    private val keywordFile = "hey-nexus_es_android_v4_0_0.ppn"
-
     private var currentJarvisState: JarvisState = JarvisState.IDLE
     private var audioVisualizer: android.media.audiofx.Visualizer? = null
     private var hasDetectedWakeWord = false
@@ -325,7 +322,15 @@ private fun launchOrbToOverlay() {
         }
     }
 
-
+    // En JarActivity, cuando se activa el modo visual
+    private fun checkAccessibilityAndActivate() {
+        if (isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) {
+            controller.procesarComandoExterno("modo visual")
+        } else {
+            Toast.makeText(this, "Activa el servicio de accesibilidad en Ajustes > Accesibilidad", Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+    }
     private fun setupPorcupine() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
@@ -478,11 +483,15 @@ private fun launchOrbToOverlay() {
     override fun showText(text: String) {
         runOnUiThread { animateTextChange(text) }
     }
-
+    override fun getDisplayedText(): String =
+        binding.transcriptionTextView.text?.toString() ?: ""
     override fun showToast(text: String) {
         runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
     }
-
+    override fun showImages(urls: List<String>) {
+        // La actividad de presentación no necesita renderizar la galería,
+        // pero cumplimos con la interfaz obligatoria.
+    }
     // ── Cálculos de audio ────────────────────────────────────
     private fun calculateRMS(audioData: ShortArray): Float {
         var sum = 0.0
