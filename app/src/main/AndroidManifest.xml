@@ -97,9 +97,9 @@
 <!--        <activity-->
 <!--            android:name=".ui.JarvisOrbView"-->
 <!--            android:exported="false" />-->
-        <activity
-            android:name=".ui.ListeningBarView"
-            android:exported="false" />
+<!--        <activity-->
+<!--            android:name=".ui.ListeningBarView"-->
+<!--            android:exported="false" />-->
 
         <!-- ── SERVICIOS ─────────────────────────────────────────────────── -->
 

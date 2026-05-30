@@ -12,6 +12,7 @@ import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.ContentValues.TAG
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -51,13 +52,16 @@ class JarActivity : AppCompatActivity(), JarvisUi {
     private var audioVisualizer: android.media.audiofx.Visualizer? = null
     private var hasDetectedWakeWord = false
     private var isListeningForWakeWord = false
-
+    private var wakeWordDetectionActive = false
+    private var ttsEnProgreso = false
     private lateinit var audioManager: com.example.myapplication.core.AudioManager
-
+    private var voiceEngine: com.example.myapplication.core.ContinuousVoiceEngine? = null
+    private var wakeWordActivado = false
     // ── Fases de la presentación ─────────────────────────────
     private enum class Phase { INTRO, WAITING_WAKEWORD, DETECTED }
     private var currentPhase = Phase.INTRO
-
+    private lateinit var ttsLocal: android.speech.tts.TextToSpeech
+    private var ttsLocalListo = false
     private val overlayReadyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == "com.nexus.assistant.OVERLAY_READY") {
@@ -73,26 +77,36 @@ class JarActivity : AppCompatActivity(), JarvisUi {
         setContentView(binding.root)
         binding.jarvisOrb.visibility = View.GONE
         audioManager = com.example.myapplication.core.AudioManager(this)
-
+        ttsLocal = android.speech.tts.TextToSpeech(this) { status ->
+            ttsLocalListo = status == android.speech.tts.TextToSpeech.SUCCESS
+            if (ttsLocalListo) ttsLocal.setLanguage(java.util.Locale("es", "ES"))
+        }
         registerReceiver(
             overlayReadyReceiver,
             IntentFilter("com.nexus.assistant.OVERLAY_READY"),
             RECEIVER_NOT_EXPORTED
         )
 
-        controller = JarvisVoiceController(context = this, ui = this, scope = lifecycleScope)
-        controller.init()
+//        controller = JarvisVoiceController(context = this, ui = this, scope = lifecycleScope)
+//        controller.init()
 
         animateOrbEntrance()
     }
 
     // ── TTS — redirige al controller (ElevenLabs o Android según TTS_MODE) ──
     private fun speak(text: String, utteranceId: String, onDone: (() -> Unit)? = null) {
+        if (!ttsLocalListo) { onDone?.invoke(); return }
         setOrbPulsing(true)
-        controller.hablar(text) {
-            setOrbPulsing(false)
-            onDone?.invoke()
-        }
+        ttsLocal.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+            override fun onStart(id: String?) {}
+            override fun onDone(id: String?) {
+                runOnUiThread { setOrbPulsing(false); onDone?.invoke() }
+            }
+            override fun onError(id: String?) {
+                runOnUiThread { setOrbPulsing(false); onDone?.invoke() }
+            }
+        })
+        ttsLocal.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
     // ── Entrada del orbe ────────────────────────────────────
@@ -198,25 +212,62 @@ class JarActivity : AppCompatActivity(), JarvisUi {
     // ── Función Nueva: Salto Directo a Hey Nexus (Corregido) ──────────────────────
     private fun omitirPresentacion() {
         if (currentPhase != Phase.INTRO) return
-    // 1. Detenemos el audio. Esto limpia el TTS y le avisa al VAD_MANAGER que apague el Early Input
-        controller.detenerAudio()
 
+        // 1. Detener todo audio
+        ttsLocal.stop()
         setOrbPulsing(false)
+
+        // 2. Ocultar botón omitir
         binding.btnOmitir.animate().alpha(0f).setDuration(200).withEndAction {
             binding.btnOmitir.visibility = View.GONE
         }.start()
+
+        // 3. Iniciar fase de wake word PERO SIN ACTIVAR DETECTOR TODAVÍA
         lifecycleScope.launch {
-            delay(300) //
+            delay(300)
             startWakeWordPhase()
         }
     }
 //
+// ── NUEVA: Fase de wake word que espera a que termine el TTS ──
+private fun startWakeWordPhasePeroEsperarTTS() {
+    currentPhase = Phase.WAITING_WAKEWORD
+    wakeWordDetectionActive = false  // ← CRÍTICO: detector desactivado
+    ttsEnProgreso = true
+
+    setStatusLabel("ESCUCHANDO", "#4DEEE9")
+    animateTextChange("Para comenzar, di la palabra de activación:")
+
+    binding.instructionsText.text = "\"Hey Nexus\""
+    binding.instructionsText.textSize = 22f
+    binding.instructionsText.setTextColor(android.graphics.Color.parseColor("#4DEEE9"))
+    binding.instructionsText.visibility = View.VISIBLE
+
+    // Reproducir TTS y SOLO después de que termine activar el detector
+    speak("Para activarme, di: Hey Nexus", "wakeword_prompt") {
+        // ✅ TTS TERMINÓ - Ahora sí activamos el detector
+        ttsEnProgreso = false
+        activarDetectorWakeWord()
+    }
+}
+    // ── NUEVA: Activar detector de wake word de forma segura ──
+    private fun activarDetectorWakeWord() {
+        if (wakeWordDetectionActive) return
+        if (currentPhase != Phase.WAITING_WAKEWORD) return
+
+        wakeWordDetectionActive = true
+//        setupPorcupine()  // Esto inicia la escucha real
+        startListeningPulse()
+
+        Log.d(TAG, "✅ Detector wake word ACTIVADO después del TTS")
+    }
+
     // ── Fase de espera de wake word ──────────────────────────
     private fun startWakeWordPhase() {
         currentPhase = Phase.WAITING_WAKEWORD
 
         setStatusLabel("ESCUCHANDO", "#4DEEE9")
-        animateTextChange("Para comenzar, di la palabra de activación:")
+        animateTextChange("Di 'Hey Nexus' para comenzar")
 
         binding.instructionsText.text = "\"Hey Nexus\""
         binding.instructionsText.textSize = 22f
@@ -224,35 +275,70 @@ class JarActivity : AppCompatActivity(), JarvisUi {
         binding.instructionsText.visibility = View.VISIBLE
 
         speak("Para activarme, di: Hey Nexus", "wakeword_prompt") {
-            activatePorcupineListening()
+            iniciarDetectorWakeWord()
         }
-
         startListeningPulse()
     }
+    // AÑADIR función:
+    private fun iniciarDetectorWakeWord() {
+        if (wakeWordActivado) return
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) return
 
-    private fun activatePorcupineListening() {
-        setupPorcupine()
+        voiceEngine = com.example.myapplication.core.ContinuousVoiceEngine(
+            context = this,
+            onWakeWordDetected = {
+                runOnUiThread {
+                    if (!wakeWordActivado && currentPhase == Phase.WAITING_WAKEWORD) {
+                        wakeWordActivado = true
+                        onWakeWordDetected()
+                    }
+                }
+            },
+            onFinalResult = { /* JarActivity NO procesa comandos */ },
+            onPartialResult = {},
+            onRmsChanged = { rms -> runOnUiThread { binding.jarvisOrb.updateRms(rms) } }
+        )
     }
 
     // ── Wake word detectado ──────────────────────────────────
+    // REEMPLAZAR onWakeWordDetected():
     private fun onWakeWordDetected() {
-        if (hasDetectedWakeWord) return
-        hasDetectedWakeWord = true
-        currentPhase = Phase.DETECTED
-
         stopListeningPulse()
+        voiceEngine?.stop()   // apagar micrófono de esta activity
+        voiceEngine = null
+
         audioManager.playActionSuccess()
+        hacerVibrar(120)
 
         setStatusLabel("ACTIVADO", "#1DE0A0")
-        animateTextChange("¡Hey Nexus! Activando...")
-        binding.instructionsText.visibility = View.GONE
+        animateTextChange("¡Hey Nexus! Iniciando...")
+        binding.instructionsText.visibility = android.view.View.GONE
 
-        speak("Perfecto. Iniciando ahora.", "detected") {
+        // Corto TTS de confirmación → lanza overlay
+        speak("Listo.", "detected") {
             lifecycleScope.launch {
-                delay(300)
+                delay(200)
                 launchOrbToOverlay()
             }
         }
+    }
+
+    private fun hacerVibrar(ms: Long) {
+        try {
+            val v = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager)?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v?.vibrate(android.os.VibrationEffect.createOneShot(ms, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                v?.vibrate(ms)
+            }
+        } catch (e: Exception) { }
     }
 
 //    // ── Efecto orbe que "sale" hacia overlay ─────────────────
@@ -331,7 +417,7 @@ private fun launchOrbToOverlay() {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
     }
-    private fun setupPorcupine() {
+    private fun vPorcupine() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
@@ -476,7 +562,9 @@ private fun launchOrbToOverlay() {
             }
         }
     }
-
+    override fun hideOverlayFromTimeout() {
+        // No hace nada porque la activity no tiene overlay
+    }
     override fun getCurrentScreenText(): List<String> =
         com.example.myapplication.core.ScreenMemory.lastSeenTexts
 
@@ -546,16 +634,13 @@ private fun launchOrbToOverlay() {
         // Apagamos el detector de la actividad pase lo que pase
         wakeDetector?.stop()
         wakeDetector = null
-
-        // Solo destruimos el controlador si la actividad muere de forma natural sin ir al servicio
-        if (!hasDetectedWakeWord) {
-            controller.destroy()
-        }
-
+        voiceEngine?.stop()
+        voiceEngine = null
         audioVisualizer?.release()
         audioVisualizer = null
         stopIdlePulse()
         stopListeningPulse()
+        if (::ttsLocal.isInitialized && ttsLocalListo) ttsLocal.shutdown()
         super.onDestroy()
     }
 

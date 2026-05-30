@@ -41,8 +41,8 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     private lateinit var controller: JarvisVoiceController
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    private var wakeDetector: VoskWakeWordDetector? = null
+    private lateinit var voiceEngine: ContinuousVoiceEngine
+//    private var wakeDetector: VoskWakeWordDetector? = null
     @Volatile private var wakeWordPaused = false
     private var currentJarvisState: JarvisState = JarvisState.IDLE
     private var isOverlayReady = false
@@ -62,6 +62,28 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         createOverlay()
 
         mainHandler.postDelayed({
+            voiceEngine = ContinuousVoiceEngine(
+                context = this,
+                onWakeWordDetected = {
+                    Log.d(TAG, "🎤 Wake word detectado por ContinuousVoiceEngine!")
+                    serviceScope.launch(Dispatchers.Main) {
+                        onWakeWordDetected()
+                    }
+                },
+                onFinalResult = { texto ->
+                    Log.d(TAG, "Resultado final: $texto")
+                    // Aquí puedes manejar comandos directamente si quieres
+                },
+                onPartialResult = { parcial ->
+                    Log.v(TAG, "Parcial: $parcial")
+                },
+                onRmsChanged = { rms ->
+                    mainHandler.post { updateORB(rms) }
+                }
+            )
+
+            Log.d(TAG, "voiceEngine.isRunning: ${voiceEngine.isRunning()}")
+            Log.d(TAG, "voiceEngine.isReady: ${voiceEngine.isReady()}")
             controller = JarvisVoiceController(
                 context = this,
                 ui = this,
@@ -70,7 +92,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             )
             controller.init()
 
-            setupWakeWordDetection()
+//            setupWakeWordDetection()
             showOverlay()
             tvTranscription?.text = "Di 'Hey Nexus' para activarme"
         }, 900)
@@ -258,39 +280,48 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             Log.e(TAG, "Error abriendo navegador: ${e.message}")
         }
     }
-    private fun setupWakeWordDetection() {
-        try {
-            wakeDetector = VoskWakeWordDetector(
-                context = this,
-                onWakeWordDetected = {
-                    Log.d(TAG, "🎤 Wake word detectado!")
-                    serviceScope.launch(Dispatchers.Main) {
-                        onWakeWordDetected()
-                    }
-                }
-            )
-
-            wakeDetector?.init(
-                onReady = {
-                    wakeDetector?.start()
-                    Log.i(TAG, "✅ Detector de voz listo")
-                },
-                onError = { msg ->
-                    Log.e(TAG, "❌ Error: $msg")
-                }
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Error: ${e.message}")
-        }
-    }
+//    private fun setupWakeWordDetection() {
+//        try {
+//            wakeDetector = VoskWakeWordDetector(
+//                context = this,
+//                onWakeWordDetected = {
+//                    Log.d(TAG, "🎤 Wake word detectado!")
+//                    serviceScope.launch(Dispatchers.Main) {
+//                        onWakeWordDetected()
+//                    }
+//                }
+//            )
+//
+//            wakeDetector?.init(
+//                onReady = {
+//                    wakeDetector?.start()
+//                    Log.i(TAG, "✅ Detector de voz listo")
+//                },
+//                onError = { msg ->
+//                    Log.e(TAG, "❌ Error: $msg")
+//                }
+//            )
+//        } catch (e: Exception) {
+//            Log.e(TAG, "Error: ${e.message}")
+//        }
+//    }
 
     private fun onWakeWordDetected() {
-        pauseWakeWordDetection()
         showOverlay()
+        mainHandler.post {
+            restoreContainerSize()
+            removerContenedorImagenes()
+            removerSugerenciasAnteriores()
+            tvTranscription?.text = "¡Te escucho!"
+            tvListeningLabel?.text = "ESCUCHANDO"
+            tvListeningLabel?.setTextColor(Color.parseColor("#4DEEE9"))
+        }
 
-        tvListeningLabel?.text = "ESCUCHANDO"
-        tvListeningLabel?.setTextColor(Color.parseColor("#4DEEE9"))
-        tvTranscription?.text = "¡Te escucho!"
+        // Reiniciar cualquier sesión anterior
+        if (::controller.isInitialized) {
+            // Si hay una sesión activa, detenerla primero
+            controller.detenerSesionCompleta()
+        }
 
         serviceScope.launch {
             controller.startInteraction()
@@ -486,14 +517,14 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     override fun showToast(text: String) { }
     override fun getDisplayedText(): String = tvTranscription?.text?.toString() ?: ""
     override fun pausarPorcupine() {
-        wakeDetector?.stop()
+//        wakeDetector?.stop()
         wakeWordPaused = true
         Log.d(TAG, "Wake word pausado")
     }
 
     override fun reanudarPorcupine() {
         if (wakeWordPaused) {
-            wakeDetector?.start()
+//            wakeDetector?.start()
             wakeWordPaused = false
             Log.d(TAG, "Wake word reanudado")
         }
@@ -502,14 +533,18 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     override fun esPorcupinePausado(): Boolean = wakeWordPaused
 
     private fun pauseWakeWordDetection() {
-        wakeDetector?.stop()
+//        wakeDetector?.stop()
         wakeWordPaused = true
     }
 
     private fun resumeWakeWordDetection() {
-        if (wakeWordPaused) {
-            wakeDetector?.start()
+
+        if (wakeWordPaused && overlayView?.visibility != View.VISIBLE) {
+//            wakeDetector?.start()
             wakeWordPaused = false
+            Log.d(TAG, "Wake word reanudado")
+        } else if (overlayView?.visibility == View.VISIBLE) {
+            Log.d(TAG, "Wake word no reanudado - overlay visible")
         }
     }
 
@@ -563,10 +598,34 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
                 it.alpha = 0f
                 it.animate().alpha(1f).setDuration(300).start()
                 Log.d(TAG, "Overlay mostrado")
+            }else{
+                Log.d(TAG, "Overlay ya visible")
+                it.alpha = 1f
+
             }
         }
     }
+    // Añade esta función en JarvisOverlayService
+    override fun hideOverlayFromTimeout() {
+        mainHandler.post {
+            if (isOverlayReady && overlayView?.visibility == View.VISIBLE) {
+                Log.d(TAG, "Ocultando overlay por timeout - volviendo a wake word")
 
+                // Animación de fade out
+                overlayView?.animate()
+                    ?.alpha(0f)
+                    ?.setDuration(300)
+                    ?.withEndAction {
+                        overlayView?.visibility = View.GONE
+                        restoreContainerSize()
+                        removerContenedorImagenes()
+                        removerSugerenciasAnteriores()
+                        tvTranscription?.text = "Di 'Hey Nexus' para activarme"
+                    }
+                    ?.start()
+            }
+        }
+    }
     private fun hideOverlay() {
         if (!isOverlayReady) return
 
@@ -605,7 +664,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
     override fun onDestroy() {
         super.onDestroy()
-        wakeDetector?.stop()
+//        wakeDetector?.stop()
         if (::controller.isInitialized) controller.destroy()
         overlayView?.let {
             try {
