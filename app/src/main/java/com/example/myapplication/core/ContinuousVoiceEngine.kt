@@ -434,7 +434,10 @@ class ContinuousVoiceEngine(
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
                     if (srSesionActiva && srState != SrState.STOPPING) {
                         srState = SrState.IDLE
-                        mainHandler.postDelayed({ iniciarEscuchaSR() }, 300)
+                        val delay = if (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) 1500L else 500L
+                        mainHandler.postDelayed({
+                            if (srSesionActiva && srState == SrState.IDLE) iniciarEscuchaSR()
+                        }, delay)
                     }
                 }
                 SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {

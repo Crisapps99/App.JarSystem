@@ -1,94 +1,150 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#00000000">
-
+    <!--CONTENEDOR PRINCIPAL-->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
         android:paddingBottom="10dp">
-
+        <!--PANEL DE RESULTADOS-->
         <FrameLayout
             android:id="@+id/frameContainer"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:visibility="gone">
 
-            <com.example.myapplication.ui.ListeningBarView
-                android:id="@+id/containerOuter"
+            <LinearLayout
+                android:id="@+id/resultsPanelInner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:gravity="center_vertical"
-                android:layout_margin="12dp">
+                android:layout_marginBottom="2dp">
+                <!--    |carrusel imagenes-->
+                <HorizontalScrollView
+                    android:id="@+id/imagesScrollView"
+                    android:layout_width="match_parent"
+                    android:layout_height="180dp"
+                    android:visibility="gone"
+                    android:scrollbars="none"
+                    android:overScrollMode="never">
+
+                </HorizontalScrollView>
+                <!--                textoresutlados-->
+                <ScrollView
+                    android:id="@+id/scrollText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxHeight="300dp"
+                    android:scrollbars="none"
+                    android:overScrollMode="never"
+                    android:fadeScrollbars="false"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingTop="16dp"
+                    android:paddingBottom="2dp">
+
+                    <TextView
+                        android:id="@+id/tvTranscription"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textColor="#E8E8F0"
+                        android:textSize="14sp"
+                        android:lineSpacingExtra="4dp"
+                        android:maxLines="100" />
+                </ScrollView>
 
                 <LinearLayout
+                    android:id="@+id/chipsContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="14dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </FrameLayout>
 
-                    <com.example.myapplication.ui.JarvisOrbView
-                        android:id="@+id/jarvisOrb"
-                        android:layout_width="72dp"
-                        android:layout_height="72dp" />
+        <com.example.myapplication.ui.ListeningBarView
+            android:id="@+id/containerOuter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:minHeight="68dp">
 
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="12dp"
-                        android:orientation="vertical">
+            <com.example.myapplication.ui.JarvisOrbView
+                android:id="@+id/jarvisOrb"
+                android:layout_width="52dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="12dp" />
 
-                        <TextView
-                            android:id="@+id/tvListeningLabel"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="NEXUS"
-                            android:textColor="#1A1A2E"
-                            android:textSize="16sp"
-                            android:textStyle="bold"
-                            android:fontFamily="sans-serif-medium" />
+            <TextView
+                android:id="@+id/tvListeningLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="NEXUS"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.08"
+                android:gravity="center_vertical" />
 
-                        <ScrollView
-                            android:id="@+id/scrollText"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:maxHeight="300dp"
-                            android:overScrollMode="never"
-                            android:scrollbars="vertical"
-                            android:fadeScrollbars="true">
+            <FrameLayout
+                android:id="@+id/btnPauseContainer"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="6dp"
+                android:background="@android:color/transparent"
+                android:visibility="gone">
 
-                            <LinearLayout
-                                android:id="@+id/scrollContentLayout"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="vertical">
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_media_pause"
+                    android:alpha="0.85"
+                    app:tint="#FFFFFF" />
+            </FrameLayout>
+            <!--        botonmicrfono-->
+            <FrameLayout
+                android:id="@+id/btnMicContainer"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="6dp">
+                <!-- Ícono de micrófono normal (visible cuando NO está hablando TTS) -->
+                <ImageView
+                    android:id="@+id/ivMicIcon"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_btn_speak_now"
+                    android:alpha="0.75"
+                    app:tint="#AAAACC" />
 
-                                <TextView
-                                    android:id="@+id/tvTranscription"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:text=""
-                                    android:textColor="#444466"
-                                    android:textSize="14sp"
-                                    android:maxLines="100" />
+                    <!-- Ícono de ondas de voz TTS (visible solo cuando TTS está hablando) -->
+                    <com.example.myapplication.ui.VoiceWaveView
+                        android:id="@+id/voiceWaveView"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:layout_gravity="center"
+                        android:visibility="gone" />
 
-                            </LinearLayout>
-
-                        </ScrollView>
-
-                    </LinearLayout>
-
-                </LinearLayout>
+                </FrameLayout>
 
             </com.example.myapplication.ui.ListeningBarView>
-
-        </FrameLayout>
 
     </LinearLayout>
 

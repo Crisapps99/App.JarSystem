@@ -211,11 +211,9 @@ class JarvisVoiceController(
                 // Iniciar timeout después de que termine de hablar
                 mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
             },
-            onSrCycle = {
-                mainHandler.removeCallbacks(timeoutRunnable)
-                mainHandler.postDelayed(timeoutRunnable, 10_000L)
-                Log.d(TAG, "Timeout reseteado por ciclo SR")
-            }
+//            onSrCycle = {
+//                Log.d(TAG, "Timeout reseteado por ciclo SR")
+//            }
         )
         registrarReceivers()
         setState(JarvisState.IDLE)
