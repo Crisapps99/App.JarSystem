@@ -6,6 +6,7 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
+import com.example.myapplication.R
 import kotlin.math.*
 
 /**
@@ -48,8 +49,13 @@ class JarvisOrbView @JvmOverloads constructor(
     var speedRing6Wave2   = 2.5f
     var speedRing6Rotation = 0.8f
 
-    // 🆕 CONTROL DEL ORBE VIAJERO
+    // CONTROL DEL ORBE VIAJERO
     var speedTravelingOrb = 0.8f
+
+    var showLightCore = true
+    var showParticles = true
+    var showTravelingOrbs = true
+    var maxRings = 3  // cuántos rings dibujar (1-6)
 
     // --- Paints ---
     private val paintAmbient   = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -59,7 +65,11 @@ class JarvisOrbView @JvmOverloads constructor(
     private val paintParticle  = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintPrismCore = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintTravelGlow = Paint(Paint.ANTI_ALIAS_FLAG)
+    // Factor de energía para los anillos (reactivo al audio)
+    private fun getAudioReactiveFactor(): Float = 1.0f + energy * 1.5f
 
+    // Factor para el orbe (poco reactivo o nada)
+    private fun getOrbReactiveFactor(): Float = 1.0f + energy * 0.2f
     // Paint para estructurar las aristas internas del Rombo (Modo Neón Eléctrico)
     private val paintRhombusEdges = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -98,6 +108,15 @@ class JarvisOrbView @JvmOverloads constructor(
         setLayerType(LAYER_TYPE_SOFTWARE, null)
         paintRing1.strokeCap = Paint.Cap.ROUND
         paintRing2.strokeCap = Paint.Cap.ROUND
+        attrs?.let {
+            val a = context.obtainStyledAttributes(it, R.styleable.JarvisOrbView)
+            showLightCore = a.getBoolean(R.styleable.JarvisOrbView_showLightCore, true)
+            showParticles = a.getBoolean(R.styleable.JarvisOrbView_showParticles, true)
+            showTravelingOrbs = a.getBoolean(R.styleable.JarvisOrbView_showTravelingOrbs, true)
+            maxRings = a.getInt(R.styleable.JarvisOrbView_maxRings, 6)
+            showParticles = a.getBoolean(R.styleable.JarvisOrbView_showParticles, true)
+            a.recycle()
+        }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -217,11 +236,15 @@ class JarvisOrbView @JvmOverloads constructor(
         val cy = height / 2f
         val radius = min(cx, cy) * 0.50f
         val t = timeMs / 1000.0
-
+        val voiceAmplitude = 1.0f + (energy * 1.5f)
         val blobPhase = ((sin(t * speedGlobalMorph * 2 * PI / 8.0) + 1.0) / 2.0).toFloat()
         val inverseBlobPhase = 1f - blobPhase
         val pulseScale = 1f + 0.05f * sin(t * speedGlobalMorph * 2 * PI / 4.0).toFloat()
 
+        val audioReactive = 1f  // ondas fijas, sin expansión
+        val speedBoost = 1f + energy * 4f  // boost de velocidad según audio
+
+        val orbReactive = 1f + energy * 0.2f      // casi sin cambio
         val ring2Rot = (t / 30.0 * 360.0 * speedRing2Rotation).toFloat()
         val ring3Rot = (t / 20.0 * 360.0 * speedRing3Rotation).toFloat()
 
@@ -236,36 +259,49 @@ class JarvisOrbView @JvmOverloads constructor(
         // Ondas para anillos
         val r1Shift1 = (t * 2 * PI / 6.0 * speedRing1Wave1).toFloat()
         val r1Shift2 = (t * 2 * PI / 4.0 * speedRing1Wave2).toFloat()
-        val ring1Waves = listOf(Triple(4f, 0.04f, r1Shift1), Triple(7f, 0.02f, r1Shift2))
+        val ring1Waves = listOf(
+            Triple(4f, 0.018f * audioReactive, r1Shift1),
+            Triple(7f, 0.10f * audioReactive, r1Shift2)
+        )
 
         val r2Shift1 = (t * 2 * PI / 6.0 * speedRing2Wave1).toFloat()
         val r2Shift2 = (t * 2 * PI / 4.0 * speedRing2Wave2).toFloat()
-        val ring2Waves = listOf(Triple(4f, 0.04f, r2Shift1), Triple(7f, 0.02f, r2Shift2))
+        val ring2Waves = listOf(
+            Triple(4f, 0.18f * audioReactive, r2Shift1),
+            Triple(7f, 0.10f * audioReactive, r2Shift2)
+        )
 
         val r3Shift1 = (t * 2 * PI / 6.0 * speedRing3Wave1).toFloat()
         val r3Shift2 = (t * 2 * PI / 4.0 * speedRing3Wave2).toFloat()
-        val ring3Waves = listOf(Triple(4f, 0.04f, r3Shift1), Triple(7f, 0.02f, r3Shift2))
+        val ring3Waves = listOf(
+            Triple(4f, 0.04f * audioReactive, r3Shift1),
+            Triple(7f, 0.02f * audioReactive, r3Shift2))
 
         val r4Shift1 = (t * 2 * PI / 6.0 * speedRing4Wave1).toFloat()
         val r4Shift2 = (t * 2 * PI / 4.0 * speedRing4Wave2).toFloat()
-        val ring4Waves = listOf(Triple(5f, 0.035f, r4Shift1), Triple(8f, 0.018f, r4Shift2))
+        val ring4Waves = listOf(
+            Triple(5f, 0.035f * audioReactive, r4Shift1),
+            Triple(8f, 0.018f * audioReactive, r4Shift2))
 
         val r5Shift1 = (t * 2 * PI / 6.0 * speedRing5Wave1).toFloat()
         val r5Shift2 = (t * 2 * PI / 4.0 * speedRing5Wave2).toFloat()
-        val ring5Waves = listOf(Triple(4f, 0.045f, r5Shift1), Triple(6f, 0.022f, r5Shift2))
+        val ring5Waves = listOf(
+            Triple(4f, 0.045f * audioReactive, r5Shift1),
+            Triple(6f, 0.022f * audioReactive, r5Shift2))
 
         val r6Shift1 = (t * 2 * PI / 6.0 * speedRing6Wave1).toFloat()
         val r6Shift2 = (t * 2 * PI / 4.0 * speedRing6Wave2).toFloat()
-        val ring6Waves = listOf(Triple(6f, 0.03f, r6Shift1), Triple(9f, 0.015f, r6Shift2))
+        val ring6Waves = listOf(
+            Triple(6f, 0.03f * audioReactive, r6Shift1),
+            Triple(9f, 0.015f * audioReactive, r6Shift2))
 
         val allSegments = mutableListOf<RingSegment>()
-        allSegments += generate3DRingSegments(cx, cy, radius * 1.06f, inverseBlobPhase, ring1Waves, rotationX, rotationY, 0f, 3.5f * density, Color.argb(130, 255, 255, 255), false)
-        allSegments += generate3DRingSegments(cx, cy, radius * 1.12f, inverseBlobPhase, ring3Waves, rotationX + 25f, rotationY - 30f, -ring3Rot, 1f * density, Color.argb(45, 255, 255, 255), false)
-        allSegments += generate3DRingSegments(cx, cy, radius * 1.18f, inverseBlobPhase, ring2Waves, rotationX - 40f, rotationY + 20f, ring2Rot, 1.5f * density, Color.argb(130, 0, 218, 243), true)
-        allSegments += generate3DRingSegments(cx, cy, radius * 1.24f, inverseBlobPhase, ring4Waves, rotationX + 45f, rotationY + 45f, ring4Rot, 1.2f * density, Color.argb(90, 0, 218, 243), true)
-        allSegments += generate3DRingSegments(cx, cy, radius * 1.30f, inverseBlobPhase, ring5Waves, rotationX - 15f, rotationY - 60f, -ring5Rot, 1f * density, Color.argb(55, 255, 255, 255), false)
-        allSegments += generate3DRingSegments(cx, cy, radius * 1.36f, inverseBlobPhase, ring6Waves, rotationX + 60f, rotationY - 10f, ring6Rot, 1.5f * density, Color.argb(120, 0, 218, 243), true)
-
+        if (maxRings >= 1) allSegments += generate3DRingSegments(cx, cy, radius * 1.06f, inverseBlobPhase, ring1Waves, rotationX, rotationY, 0f, 1.2f * density, Color.argb(130, 0, 218, 243), true)
+        if (maxRings >= 2) allSegments += generate3DRingSegments(cx, cy, radius * 1.18f, inverseBlobPhase, ring2Waves, rotationX - 40f, rotationY + 20f, ring2Rot, 0.8f * density, Color.argb(130, 0, 218, 243), true)
+        if (maxRings >= 3) allSegments += generate3DRingSegments(cx, cy, radius * 1.30f, inverseBlobPhase, ring5Waves, rotationX - 15f, rotationY - 60f, -ring5Rot, 1f * density, Color.argb(130, 255, 255, 255), false)
+        if (maxRings >= 4) allSegments += generate3DRingSegments(cx, cy, radius * 1.12f, inverseBlobPhase, ring3Waves, rotationX + 25f, rotationY - 30f, -ring3Rot, 1f * density, Color.argb(45, 255, 255, 255), false)
+        if (maxRings >= 5) allSegments += generate3DRingSegments(cx, cy, radius * 1.24f, inverseBlobPhase, ring4Waves, rotationX + 45f, rotationY + 45f, ring4Rot, 1.2f * density, Color.argb(90, 0, 218, 243), true)
+        if (maxRings >= 6) allSegments += generate3DRingSegments(cx, cy, radius * 1.36f, inverseBlobPhase, ring6Waves, rotationX + 60f, rotationY - 10f, ring6Rot, 1.5f * density, Color.argb(120, 0, 218, 243), true)
         val backSegments = allSegments.filter { it.zMid < -2f }
         val frontSegments = allSegments.filter { it.zMid >= -2f }
 
@@ -280,26 +316,33 @@ class JarvisOrbView @JvmOverloads constructor(
         draw3DRingSegmentsList(canvas, backSegments, radius)
 
         // 2. NÚCLEO DE LUZ CENTRAL (Resplandor puro flotando sin máscara de fondo)
-        drawFloatingLightCore(canvas, cx, cy, radius, pulseScale, rotationX, rotationY)
+        if (showLightCore) drawFloatingLightCore(canvas, cx, cy, radius, pulseScale, rotationX, rotationY)
 
         // 3. Estructura transparente de líneas del Rombo 3D
         drawRhombus3DEdges(canvas, cx, cy, radius * pulseScale, rotationX, rotationY)
 
         // 4. Partículas cuánticas libres internas
-        draw3DParticles(canvas, cx, cy, radius, rotationX, rotationY)
+        if (showParticles) draw3DParticles(canvas, cx, cy, radius, rotationX, rotationY)
 
         // 5. Capas delanteras de los anillos periféricos
         draw3DRingSegmentsList(canvas, frontSegments, radius)
 
-        // Orbes viajeros (Fondo y Frente)
-        drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.18f, inverseBlobPhase, ring2Waves, rotationX - 40f, rotationY + 20f, ring2Rot, drawForegroundOnly = false, speed = 1.8f, orbColor = col00daf3, angleOffset = 0f)
-        drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.06f, inverseBlobPhase, ring1Waves, rotationX, rotationY, 0f, drawForegroundOnly = false, speed = 1.5f, orbColor = Color.WHITE, angleOffset = 3.14f)
-        drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.36f, inverseBlobPhase, ring6Waves, rotationX + 60f, rotationY - 10f, ring6Rot, drawForegroundOnly = false, speed = 1.5f, orbColor = Color.WHITE, angleOffset = 1.57f)
+        if (showTravelingOrbs) {
+            // Orbes viajeros (Fondo y Frente)
+            drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.18f, inverseBlobPhase, ring2Waves, rotationX - 40f, rotationY + 20f, ring2Rot, drawForegroundOnly = false, speed = 1.8f, orbColor = col00daf3, angleOffset = 0f)
+            drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.06f, inverseBlobPhase, ring1Waves, rotationX, rotationY, 0f, drawForegroundOnly = false, speed = 1.5f, orbColor = Color.WHITE, angleOffset = 3.14f)
+            drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.36f, inverseBlobPhase, ring6Waves, rotationX + 60f, rotationY - 10f, ring6Rot, drawForegroundOnly = false, speed = 1.5f, orbColor = Color.WHITE, angleOffset = 1.57f)
 
-        drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.18f, inverseBlobPhase, ring2Waves, rotationX - 40f, rotationY + 20f, ring2Rot, drawForegroundOnly = true, speed = 1.8f, orbColor = col00daf3, angleOffset = 0f)
-        drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.06f, inverseBlobPhase, ring1Waves, rotationX, rotationY, 0f, drawForegroundOnly = true, speed = 1.5f, orbColor = Color.WHITE, angleOffset = 3.14f)
-        drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.36f, inverseBlobPhase, ring6Waves, rotationX + 60f, rotationY - 10f, ring6Rot, drawForegroundOnly = true, speed = 1.5f, orbColor = Color.WHITE, angleOffset = 1.57f)
-    }
+            drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.18f, inverseBlobPhase, ring2Waves, rotationX - 40f, rotationY + 20f, ring2Rot, drawForegroundOnly = true, speed = 1.8f, orbColor = col00daf3, angleOffset = 0f)
+            drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.06f, inverseBlobPhase, ring1Waves, rotationX, rotationY, 0f, drawForegroundOnly = true, speed = 1.5f, orbColor = Color.WHITE, angleOffset = 3.14f)
+            drawTravelingOrbOnRing(canvas, cx, cy, radius * 1.36f, inverseBlobPhase, ring6Waves, rotationX + 60f, rotationY - 10f, ring6Rot, drawForegroundOnly = true, speed = 1.5f, orbColor = Color.WHITE, angleOffset = 1.57f)
+
+
+
+        }
+
+}
+
 
     /**
      * 📐 ENERGÍA FACETADA: Dibuja las aristas de luz del Rombo en perspectiva 3D libre
@@ -402,7 +445,7 @@ class JarvisOrbView @JvmOverloads constructor(
         val radX = Math.toRadians(rotX.toDouble()).toFloat()
         val radSpin = Math.toRadians(spinRotationDeg.toDouble()).toFloat()
 
-        val pulse = 1f + energy * 0.25f
+        val pulse = 1f + energy * 0.10f
         val rBase = baseRadius * pulse
 
         val rOrganicoBase = rBase * (1f + (0.12f * sin((3 * travelAngle).toDouble()).toFloat() + 0.08f * cos((2 * travelAngle).toDouble()).toFloat()))
@@ -479,7 +522,7 @@ class JarvisOrbView @JvmOverloads constructor(
         for (seg in segments) {
             val targetPaint = if (seg.isRing2) paintRing2 else paintRing1
             val depthNorm = (seg.zMid / referenceRadius).coerceIn(-1f, 1f)
-            val dynamicStrokeWidth = seg.baseStrokeWidth * (1.0f + depthNorm * 0.35f)
+            val dynamicStrokeWidth = seg.baseStrokeWidth * (1.0f + depthNorm * 0.35f) * (1f + energy * 2.5f)
 
             val baseAlpha = Color.alpha(seg.baseColor)
             val finalAlpha = (baseAlpha * seg.alphaFactor).toInt().coerceIn(0, 255)
@@ -540,7 +583,7 @@ class JarvisOrbView @JvmOverloads constructor(
 
     fun updateRms(rmsDb: Float) {
         val target = if (rmsDb < 1.5f) 0f else (rmsDb / 12f).coerceIn(0f, 1f)
-        energy += (target - energy) * 0.12f
+        energy += (target - energy) * 0.5f
         invalidate()
     }
 

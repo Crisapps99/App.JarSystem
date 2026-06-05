@@ -23,19 +23,19 @@ class ListeningBarView @JvmOverloads constructor(
 
     // Fondo oscuro del cajón
     private val darkBoxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#1C1C1E")
+        color = Color.parseColor("#131618")
         style = Paint.Style.FILL
     }
 
     // Colores del glow (más sutiles sobre fondo oscuro)
     private val gradientColors = intArrayOf(
-        Color.parseColor("#4285F4"),
-        Color.parseColor("#9C27B0"),
-        Color.parseColor("#EA4335"),
-        Color.parseColor("#FF6D00"),
-        Color.parseColor("#FBBC05"),
-        Color.parseColor("#34A853"),
-        Color.parseColor("#4285F4")
+        Color.parseColor("#2979FF"),  // azul eléctrico
+        Color.parseColor("#D500F9"),  // violeta neón
+        Color.parseColor("#FF1744"),  // rojo vivo
+        Color.parseColor("#FF6D00"),  // naranja
+        Color.parseColor("#FFD600"),  // amarillo
+        Color.parseColor("#00E676"),  // verde neón
+        Color.parseColor("#2979FF")
     )
 
     private val glowPaintOuter = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -107,8 +107,8 @@ class ListeningBarView @JvmOverloads constructor(
         glowPaintOuter.apply {
             shader = shaderOuter
             maskFilter = BlurMaskFilter(blurOuter, BlurMaskFilter.Blur.NORMAL)
-            strokeWidth = (8f + energy * 14f) * density
-            alpha = (70 + (energy * 100) + (12 * sin(wavePhase))).toInt().coerceIn(0, 255)
+            strokeWidth = (12f + energy * 18f) * density
+            alpha = (160 + (energy * 90) + (12 * sin(wavePhase))).toInt().coerceIn(0, 255)
         }
         canvas.drawRoundRect(rectBox, cornerRadius, cornerRadius, glowPaintOuter)
 
@@ -117,8 +117,8 @@ class ListeningBarView @JvmOverloads constructor(
         glowPaintInner.apply {
             shader = shaderInner
             maskFilter = BlurMaskFilter(blurInner, BlurMaskFilter.Blur.NORMAL)
-            strokeWidth = (4f + energy * 6f) * density
-            alpha = (130 + (energy * 80)).toInt().coerceIn(0, 255)
+            strokeWidth = (6f + energy * 10f) * density
+            alpha = (200 + (energy * 55)).toInt().coerceIn(0, 255)
         }
         canvas.drawRoundRect(rectBox, cornerRadius, cornerRadius, glowPaintInner)
 

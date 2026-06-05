@@ -127,17 +127,34 @@ class JarActivity : AppCompatActivity(), JarvisUi {
     // ── TTS — redirige al controller (ElevenLabs o Android según TTS_MODE) ──
     private fun speak(text: String, utteranceId: String, onDone: (() -> Unit)? = null) {
         if (!ttsLocalListo) { onDone?.invoke(); return }
-        setOrbPulsing(true)
+        startTtsPulse()
         ttsLocal.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
             override fun onStart(id: String?) {}
             override fun onDone(id: String?) {
-                runOnUiThread { setOrbPulsing(false); onDone?.invoke() }
+                runOnUiThread { stopTtsPulse(); onDone?.invoke() }
             }
             override fun onError(id: String?) {
-                runOnUiThread { setOrbPulsing(false); onDone?.invoke() }
+                runOnUiThread { stopTtsPulse(); onDone?.invoke() }
             }
         })
         ttsLocal.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+    }
+    private var ttsPulseAnimator: ValueAnimator? = null
+
+    private fun startTtsPulse() {
+        stopIdlePulse()
+        stopListeningPulse()
+        ttsPulseAnimator?.cancel()
+        ttsPulseAnimator = null
+        // El Visualizer(0) captura el audio del TTS en tiempo real
+    }
+
+    private fun stopTtsPulse() {
+        ttsPulseAnimator?.cancel()
+        ttsPulseAnimator = null
+        binding.jarvisOrb.updateRms(0f)
+        if (currentPhase == Phase.WAITING_WAKEWORD) startListeningPulse()
+        else startIdlePulse()
     }
 
     // ── Entrada del orbe ────────────────────────────────────
@@ -307,8 +324,9 @@ private fun startWakeWordPhasePeroEsperarTTS() {
 
         speak("Para activarme, di: Hey Nexus", "wakeword_prompt") {
             iniciarDetectorWakeWord()
+            startListeningPulse()
         }
-        startListeningPulse()
+
     }
     // AÑADIR función:
     private fun iniciarDetectorWakeWord() {
@@ -427,7 +445,9 @@ private fun launchOrbToOverlay() {
         .start()
 }
     private fun startOverlayServiceAndFinish() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+        val canDraw = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+        Log.d(TAG, "canDrawOverlays=$canDraw")
+        if (canDraw) {
             val intent = Intent(this, JarvisOverlayService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
             else startService(intent)
@@ -435,7 +455,8 @@ private fun launchOrbToOverlay() {
         sendBroadcast(Intent("com.nexus.assistant.WAKE_WORD_DETECTED"))
         lifecycleScope.launch {
             delay(200)
-            finish()
+            // Limpiar todo el backstack y cerrar la app — el overlay flota encima
+            finishAffinity()
         }
     }
 
@@ -624,7 +645,7 @@ private fun launchOrbToOverlay() {
             val s = (b.toInt() and 0xFF) - 128
             sum += (s * s).toDouble()
         }
-        return (Math.sqrt(sum / wave.size).toFloat() / 5f).coerceIn(0f, 15f)
+        return (Math.sqrt(sum / wave.size).toFloat() / 2f).coerceIn(0f, 15f)
     }
 
     // ── Visualizer ───────────────────────────────────────────
@@ -634,7 +655,7 @@ private fun launchOrbToOverlay() {
                 captureSize = android.media.audiofx.Visualizer.getCaptureSizeRange()[1]
                 setDataCaptureListener(object : android.media.audiofx.Visualizer.OnDataCaptureListener {
                     override fun onWaveFormDataCapture(v: android.media.audiofx.Visualizer?, wave: ByteArray?, rate: Int) {
-                        if (currentJarvisState == JarvisState.SPEAKING && wave != null) {
+                        if (wave != null)  {
                             runOnUiThread { binding.jarvisOrb.updateRms(calculateEnergy(wave)) }
                         }
                     }

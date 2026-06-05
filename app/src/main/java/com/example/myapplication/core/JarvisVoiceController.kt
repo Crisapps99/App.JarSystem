@@ -965,8 +965,8 @@ class JarvisVoiceController(
             setState(JarvisState.THINKING)
             ui.showText("Procesando comando...")
             // Verificar si es una búsqueda web simple
-            val esBusquedaWeb = texto.lowercase()
-                .matches(Regex(".*(busca|buscar|investiga|qué es|quien es|que es).*"))
+//            val esBusquedaWeb = texto.lowercase()
+//                .matches(Regex(".*(busca|buscar|investiga|qué es|quien es|que es).*"))
 
 //            if (esBusquedaWeb && texto.length < 100) {
 //                // Búsqueda local sin servidor
@@ -1018,23 +1018,49 @@ class JarvisVoiceController(
                         metadata = metadata
                     )
                 )
+                // ── LOGS DE DIAGNÓSTICO ──────────────────────────────
+                Log.d(TAG, "════════════════════════════════════════")
+                Log.d(TAG, "📡 RESPUESTA SERVIDOR:")
+                Log.d(TAG, "   success=${response.success}")
+                Log.d(TAG, "   mode='${response.mode}'")
+                Log.d(TAG, "   action='${response.action}'")
+                Log.d(TAG, "   response_text='${response.response_text}'")
+                Log.d(TAG, "   payload size=${response.payload?.size ?: 0}")
+                response.payload?.forEachIndexed { i, p ->
+                    Log.d(TAG, "   payload[$i]: tipo='${p.tipo}' params=${p.params}")
+                }
+                Log.d(TAG, "════════════════════════════════════════")
+// ────────────────────────────────────────────────────
                 if (response.success) {
                     when (response.mode) {
                         "SEARCH_RESULT" -> {
                             val payload = response.payload?.firstOrNull()
                             if (payload != null && payload.tipo == "show_search_result") {
                                 val params = payload.params
-                                val textoCompleto = params?.get("texto_completo") as? String ?: ""
-                                val fuentes = (params?.get("fuentes") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-                                val imagenes = (params?.get("imagenes") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+
+                                val textoCompleto = (params?.get("html") as? String)
+                                    ?: (params?.get("answer") as? String)
+                                    ?: response.response_text
+
+                                val fuentes = (params?.get("sources") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                                val imagenes = (params?.get("images") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
                                 val preguntas = (params?.get("preguntas") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+
+                                // Guardar para comandos posteriores (copiar texto, etc.)
+                                ultimoResultadoBusqueda = SearchResult(
+                                    content = textoCompleto,
+                                    urls = fuentes,
+                                    imageUrls = imagenes,
+                                    query = (params?.get("query") as? String) ?: texto
+                                )
+
                                 ui.showSearchResult(textoCompleto, fuentes, imagenes, preguntas)
-                                hablar(response.response_text) {
+                                hablar(response.response_text) {   // respuesta corta para TTS
                                     isProcessing = false
                                     if (sesionActiva) iniciarSRContinuo()
                                 }
                             } else {
-                                // Fallback si el payload no es el esperado
+                                // Fallback
                                 ui.showText(response.response_text)
                                 hablar(response.response_text) {
                                     isProcessing = false

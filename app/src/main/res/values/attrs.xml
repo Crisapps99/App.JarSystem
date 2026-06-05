@@ -16,4 +16,11 @@
     <attr name="colorPermissionRow" format="color" />
     <attr name="colorButtonOuter" format="color" />
     <attr name="colorButtonInner" format="color" />
+
+    <declare-styleable name="JarvisOrbView">
+        <attr name="showLightCore" format="boolean" />
+        <attr name="showParticles" format="boolean" />
+        <attr name="showTravelingOrbs" format="boolean" />
+        <attr name="maxRings" format="integer" />
+    </declare-styleable>
 </resources>

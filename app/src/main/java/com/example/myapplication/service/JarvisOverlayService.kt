@@ -111,6 +111,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             tvTranscription?.text = "Di 'Hey Nexus' para activarme"
         }, 900)
     }
+//tama;o del panel
 
     override fun onDestroy() {
         super.onDestroy()
@@ -185,7 +186,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 else WindowManager.LayoutParams.TYPE_PHONE,
@@ -196,9 +197,9 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             )
             params.gravity = Gravity.BOTTOM
 
-            overlayView?.setOnTouchListener { _, event ->
-                if (event.action == MotionEvent.ACTION_OUTSIDE) { hideOverlay(); true } else false
-            }
+//            overlayView?.setOnTouchListener { _, event ->
+//                if (event.action == MotionEvent.ACTION_OUTSIDE) { hideOverlay(); true } else false
+//            }
 
             windowManager?.addView(overlayView, params)
             overlayView?.visibility = View.GONE
@@ -237,7 +238,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
         // Empieza invisible y desplazado hacia abajo
         panel.alpha = 0f
-        panel.translationY = 80f
+        panel.translationY = 0f
         panel.visibility = View.VISIBLE
 
         panel.animate()
