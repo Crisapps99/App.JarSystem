@@ -1,5 +1,6 @@
 package com.example.myapplication.service
 
+import android.animation.ValueAnimator
 import android.app.*
 import android.content.Context
 import android.content.Intent
@@ -16,6 +17,7 @@ import android.view.*
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.example.myapplication.R
@@ -56,7 +58,11 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     private var currentJarvisState: JarvisState = JarvisState.IDLE
     private var isOverlayReady = false
     private var ultimoResultadoBusqueda: SearchResult? = null
-
+    private var typewriterHandler: Handler? = null
+    private var currentCharIndex = 0
+    private var fullPlainText = ""
+    private var isTyping = false
+    private var currentHtmlText = ""
     companion object {
         private const val TAG = "JARVIS_OVERLAY"
         private const val NOTIFICATION_ID = 1001
@@ -72,7 +78,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         private const val COLOR_BLUE       = "#7BD7F8"
         private const val COLOR_GREEN      = "#1DE0A0"
     }
-
+    private inline fun <reified T : View> findViewById(id: Int): T? = overlayView?.findViewById(id)
     // ────────────────────────────────────────────────────────────────────────
     // LIFECYCLE
     // ────────────────────────────────────────────────────────────────────────
@@ -226,13 +232,20 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     // ────────────────────────────────────────────────────────────────────────
 
     private fun mostrarPanelResultados() {
-        frameContainer?.let { panel ->
-            if (panel.visibility != View.VISIBLE) {
-                panel.visibility = View.VISIBLE
-                panel.alpha = 0f
-                panel.animate().alpha(1f).setDuration(260).start()
-            }
-        }
+        val panel = frameContainer ?: return
+        if (panel.visibility == View.VISIBLE) return
+
+        // Empieza invisible y desplazado hacia abajo
+        panel.alpha = 0f
+        panel.translationY = 80f
+        panel.visibility = View.VISIBLE
+
+        panel.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(350)
+            .setInterpolator(android.view.animation.DecelerateInterpolator(2f))
+            .start()
     }
 
     private fun ocultarPanelResultados() {
@@ -506,6 +519,114 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         }
         if (::controller.isInitialized) controller.detenerSesionCompleta()
         serviceScope.launch { controller.startInteraction() }
+    }
+    override fun showSearchResult(
+        textoCompleto: String,
+        fuentes: List<String>,
+        imagenes: List<String>,
+        preguntas: List<String>
+    ) {
+        mainHandler.post {
+            if (!isOverlayReady) return@post
+
+            // Cancelar typewriter anterior si hubiera
+            typewriterHandler?.removeCallbacksAndMessages(null)
+            isTyping = false
+
+            // Limpiar contenido previo antes de mostrar
+            limpiarContenidoPanel()
+            tvTranscription?.text = ""
+            tvTranscription?.visibility = View.VISIBLE
+
+            // Mostrar panel (animación slide desde abajo)
+            mostrarPanelResultados()
+
+            // Imágenes con fade-in
+            if (imagenes.isNotEmpty()) {
+                showImages(imagenes)
+                imagesScrollView?.alpha = 0f
+                imagesScrollView?.animate()?.alpha(1f)?.setDuration(400)?.start()
+            }
+
+            // Chips de fuentes
+            if (fuentes.isNotEmpty()) {
+                mostrarChipsFuentes(fuentes)
+            }
+
+            // Extraer texto plano del HTML
+            fullPlainText = android.text.Html.fromHtml(
+                textoCompleto,
+                android.text.Html.FROM_HTML_MODE_LEGACY
+            ).toString().trim()
+            currentHtmlText = textoCompleto
+            currentCharIndex = 0
+            isTyping = true
+
+            // Typewriter: cada carácter va creciendo el TextView,
+            // animateLayoutChanges en el XML hace que el panel suba solo
+            typewriterHandler = Handler(Looper.getMainLooper())
+            val runnable = object : Runnable {
+                override fun run() {
+                    if (!isTyping) return
+                    if (currentCharIndex < fullPlainText.length) {
+                        currentCharIndex = minOf(currentCharIndex + 2, fullPlainText.length)
+                        tvTranscription?.text = fullPlainText.substring(0, currentCharIndex)
+                        typewriterHandler?.postDelayed(this, 18)
+                    } else {
+                        // Aplicar formato HTML completo al terminar
+                        tvTranscription?.text = android.text.Html.fromHtml(
+                            currentHtmlText,
+                            android.text.Html.FROM_HTML_MODE_LEGACY
+                        )
+                        isTyping = false
+                    }
+                }
+            }
+            typewriterHandler?.postDelayed(runnable, 150) // pequeño delay tras la animación del panel
+        }
+    }
+
+    private fun mostrarChipsFuentes(fuentes: List<String>) {
+        val chips = chipsContainer ?: return
+        chips.removeAllViews()
+        val density = resources.displayMetrics.density
+
+        fuentes.forEach { url ->
+            val chip = TextView(this).apply {
+                text = "🔗 Fuente"
+                textSize = 12f
+                setTextColor(Color.parseColor("#CCCCEE"))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 14f * density
+                    setColor(Color.parseColor(COLOR_CHIP_BG))
+                    setStroke((1 * density).toInt(), Color.parseColor(COLOR_CHIP_BORDER))
+                }
+                setPadding(
+                    (12 * density).toInt(), (6 * density).toInt(),
+                    (12 * density).toInt(), (6 * density).toInt()
+                )
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = (8 * density).toInt() }
+
+                setOnClickListener {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        })
+                    } catch (e: Exception) { Log.e(TAG, "Error abriendo fuente: ${e.message}") }
+                }
+            }
+            chips.addView(chip)
+        }
+        chips.visibility = View.VISIBLE
+    }
+
+    private fun mostrarPreguntasSugeridas(preguntas: List<String>) {
+        // Similar a los chips, pero con acción de enviar la pregunta como nuevo comando
+        // Puedes reutilizar el mismo código que en inyectarChipsDeSugerencia
     }
 
     fun mostrarResultadoBusquedaCompleto(resultado: SearchResult) {

@@ -21,6 +21,8 @@
     <color name="accent_cyan_light_dark">#5EFFFF</color>
     <color name="accent_red_dark">#E53935</color>
 
+    <color name="tertiary_dark">#00daf3</color>
+
     <!-- Orbe -->
     <color name="orb_glow_dark">#4DEEE9</color>
     <color name="orb_core_dark">#2DD4BF</color>

@@ -54,6 +54,7 @@ interface JarvisUi {
     fun getDisplayedText(): String
     fun showImages(urls: List<String>)
     fun hideOverlayFromTimeout()
+    fun showSearchResult(textoCompleto: String, fuentes: List<String>, imagenes: List<String>, preguntas: List<String>)
 }
 interface PorcupineController {
     fun pausarPorcupine()
@@ -487,10 +488,10 @@ class JarvisVoiceController(
                 ejecutarComandoHora()
             }
 
-            CommandAnalyzer.Intent.SEARCH_WEB -> {
-                val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
-                ejecutarBusquedaWeb(busqueda)
-            }
+//            CommandAnalyzer.Intent.SEARCH_WEB -> {
+//                val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
+//                ejecutarBusquedaWeb(busqueda)
+//            }
 
             CommandAnalyzer.Intent.UNKNOWN -> {
                 // Intentar con modo visual o servidor
@@ -967,18 +968,18 @@ class JarvisVoiceController(
             val esBusquedaWeb = texto.lowercase()
                 .matches(Regex(".*(busca|buscar|investiga|qué es|quien es|que es).*"))
 
-            if (esBusquedaWeb && texto.length < 100) {
-                // Búsqueda local sin servidor
-                val busqueda = texto.lowercase()
-                    .replace("busca", "").replace("buscar", "")
-                    .replace("investiga", "").replace("qué es", "")
-                    .replace("que es", "").replace("quien es", "").trim()
-
-                if (busqueda.isNotBlank()) {
-                    ejecutarBusquedaWeb(busqueda)
-                    return@launch
-                }
-            }
+//            if (esBusquedaWeb && texto.length < 100) {
+//                // Búsqueda local sin servidor
+//                val busqueda = texto.lowercase()
+//                    .replace("busca", "").replace("buscar", "")
+//                    .replace("investiga", "").replace("qué es", "")
+//                    .replace("que es", "").replace("quien es", "").trim()
+//
+//                if (busqueda.isNotBlank()) {
+//                    ejecutarBusquedaWeb(busqueda)
+//                    return@launch
+//                }
+//            }
 
             // Capturar pantalla
             MyAccessibilityService.instance?.captureNow()
@@ -1017,29 +1018,51 @@ class JarvisVoiceController(
                         metadata = metadata
                     )
                 )
-
                 if (response.success) {
-                    ui.showText(response.response_text)
-//                    val esAccionTecnica = response.mode == "COMMAND" || response.mode == "DYNAMIC_ACTION"
-//                    if (esAccionTecnica && !response.payload.isNullOrEmpty()) {
-//                        ejecutarAccionesTecnicas(response.payload, texto, response.action ?: "unknown")
-//                    }
-                    if (!response.payload.isNullOrEmpty()) {
-                        ejecutarAccionesTecnicas(
-                            response.payload,
-                            texto,
-                            response.action ?: "unknown"
-                        )
-                    }
-                    hablar(response.response_text) {
-                        isProcessing = false
-//                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+                    when (response.mode) {
+                        "SEARCH_RESULT" -> {
+                            val payload = response.payload?.firstOrNull()
+                            if (payload != null && payload.tipo == "show_search_result") {
+                                val params = payload.params
+                                val textoCompleto = params?.get("texto_completo") as? String ?: ""
+                                val fuentes = (params?.get("fuentes") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                                val imagenes = (params?.get("imagenes") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                                val preguntas = (params?.get("preguntas") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                                ui.showSearchResult(textoCompleto, fuentes, imagenes, preguntas)
+                                hablar(response.response_text) {
+                                    isProcessing = false
+                                    if (sesionActiva) iniciarSRContinuo()
+                                }
+                            } else {
+                                // Fallback si el payload no es el esperado
+                                ui.showText(response.response_text)
+                                hablar(response.response_text) {
+                                    isProcessing = false
+                                    if (sesionActiva) iniciarSRContinuo()
+                                }
+                            }
+                        }
+                        "COMMAND", "DYNAMIC_ACTION" -> {
+                            // Tu lógica actual para comandos (ejecutarAccionesTecnicas, etc.)
+                            if (!response.payload.isNullOrEmpty()) {
+                                ejecutarAccionesTecnicas(response.payload, texto, response.action ?: "unknown")
+                            }
+                            hablar(response.response_text) {
+                                isProcessing = false
+                                if (sesionActiva) iniciarSRContinuo()
+                            }
+                        }
+                        else -> {
+                            // Conversacional o cualquier otro
+                            ui.showText(response.response_text)
+                            hablar(response.response_text) {
+                                isProcessing = false
+                                if (sesionActiva) iniciarSRContinuo()
+                            }
+                        }
                     }
                 } else {
-                    hablar("No pude procesar eso.") {
-                        isProcessing = false
-//                        if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
-                    }
+                    hablar("No pude procesar eso.")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, " Error: ${e.message}")

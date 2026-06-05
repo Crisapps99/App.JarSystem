@@ -6,21 +6,10 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5"
+    android:background="?android:attr/windowBackground"
     tools:context=".activity.JarActivity">
 
-    <!-- Orbe principal — más grande, centrado en el tercio superior -->
-    <com.example.myapplication.ui.JarvisOrbView
-        android:id="@+id/jarvisOrb"
-        android:layout_width="300dp"
-        android:layout_height="300dp"
-        android:visibility="invisible"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintVertical_bias="0.28"
-        app:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginTop="0dp"/>
+    <!-- Botón Omitir en la esquina superior derecha -->
     <Button
         android:id="@+id/btnOmitir"
         android:layout_width="wrap_content"
@@ -29,41 +18,26 @@
         android:textColor="#A0A0A0"
         style="@style/Widget.MaterialComponents.Button.TextButton"
         android:visibility="gone"
-        tools:visibility="visible" />
-    <!-- Nombre del asistente -->
-    <TextView
-        android:id="@+id/titleWel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="N E X U S"
-        android:textSize="28sp"
-        android:textStyle="bold"
-        android:textColor="#1A1A1A"
-        android:fontFamily="@font/googlesans"
-        android:letterSpacing="0.25"
-        android:alpha="0"
-        app:layout_constraintTop_toBottomOf="@id/jarvisOrb"
+        tools:visibility="visible"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"/>
+
+    <!-- Orbe principal centrado debajo del botón Omitir y arriba de la tarjeta -->
+    <com.example.myapplication.ui.JarvisOrbView
+        android:id="@+id/jarvisOrb"
+        android:layout_width="390dp"
+        android:layout_height="390dp"
+        android:visibility="invisible"
+        app:layout_constraintTop_toBottomOf="@id/btnOmitir"
+        app:layout_constraintBottom_toTopOf="@id/cardTranscription"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="12dp"/>
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"/>
 
-    <!-- Estado / subtítulo dinámico -->
-    <TextView
-        android:id="@+id/statusText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Asistente personal"
-        android:textSize="13sp"
-        android:textColor="#666666"
-        android:fontFamily="@font/googlesans"
-        android:letterSpacing="0.08"
-        android:alpha="0"
-        app:layout_constraintTop_toBottomOf="@id/titleWel"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="6dp"/>
-
-    <!-- Card de transcripción / presentación — profesional -->
+    <!-- Tarjeta de presentación/transcripción -->
     <androidx.cardview.widget.CardView
         android:id="@+id/cardTranscription"
         android:layout_width="0dp"
@@ -72,7 +46,7 @@
         android:layout_marginEnd="24dp"
         android:alpha="0"
         app:cardCornerRadius="20dp"
-        app:cardBackgroundColor="#FFFFFF"
+        app:cardBackgroundColor="#1E2022"
         app:cardElevation="4dp"
         app:layout_constraintBottom_toTopOf="@id/btnComenzar"
         app:layout_constraintStart_toStartOf="parent"
@@ -85,7 +59,6 @@
             android:orientation="vertical"
             android:padding="20dp">
 
-            <!-- Indicador de estado (punto pulsante + label) -->
             <LinearLayout
                 android:id="@+id/statusIndicatorRow"
                 android:layout_width="wrap_content"
@@ -98,7 +71,7 @@
                     android:id="@+id/statusDot"
                     android:layout_width="8dp"
                     android:layout_height="8dp"
-                    android:background="#0095D4"
+                    android:background="@color/primary_dark"
                     android:layout_marginEnd="8dp"/>
 
                 <TextView
@@ -107,32 +80,30 @@
                     android:layout_height="wrap_content"
                     android:text="NEXUS"
                     android:textSize="10sp"
-                    android:textColor="#0095D4"
+                    android:textColor="@color/primary_dark"
                     android:fontFamily="@font/googlesans"
                     android:textStyle="bold"
                     android:letterSpacing="0.15"/>
             </LinearLayout>
 
-            <!-- Texto principal transcrito / presentación -->
             <TextView
                 android:id="@+id/transcriptionTextView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text=""
                 android:textSize="15sp"
-                android:textColor="#1A1A1A"
+                android:textColor="#FFFFFF"
                 android:fontFamily="@font/googlesans"
                 android:lineSpacingMultiplier="1.5"
                 android:minLines="2"/>
 
-            <!-- Instrucción secundaria -->
             <TextView
                 android:id="@+id/instructionsText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text=""
                 android:textSize="13sp"
-                android:textColor="#666666"
+                android:textColor="#A0A0A0"
                 android:fontFamily="@font/googlesans"
                 android:layout_marginTop="8dp"
                 android:lineSpacingMultiplier="1.4"
@@ -141,7 +112,7 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- BOTÓN SKIP - Omitir todo y ir a activación -->
+    <!-- Botón Skip Oculto -->
     <Button
         android:id="@+id/btnSkip"
         android:layout_width="0dp"
@@ -161,11 +132,11 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Botón inicial "Conocer a Nexus" -->
+    <!-- Componente Deslizable -->
     <com.ncorti.slidetoact.SlideToActView
         android:id="@+id/btnComenzar"
         android:layout_width="0dp"
-        android:layout_height="68dp"
+        android:layout_height="60dp"
         android:layout_marginStart="24dp"
         android:layout_marginEnd="24dp"
         android:layout_marginBottom="48dp"
@@ -173,13 +144,14 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:area_margin="6dp"
-        app:outer_color="#4D0095D4"
-        app:inner_color="#0095D4"
-        app:border_radius="35dp"
-        app:text="Conocer a Nexus"
-        app:text_size="15sp"
-        app:slider_icon="@drawable/ic_mic_vector"/>
-
+        app:area_margin="8dp"
+        app:outer_color="#1E2022"
+        app:inner_color="@color/primary_dark"
+        app:border_radius="30dp"
+        app:text="Desliza para comenzar"
+        app:text_color="@color/primary_dark"
+        app:text_size="16sp"
+        app:slider_icon="@drawable/ic_mic_vector"
+        app:slider_icon_color="#FFFFFF" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

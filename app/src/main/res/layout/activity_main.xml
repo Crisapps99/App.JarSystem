@@ -6,33 +6,21 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5"
+    android:background="?android:attr/windowBackground"
     tools:context=".MainActivity">
 
-    <!-- Orbe central (reemplaza al Lottie) -->
-    <androidx.cardview.widget.CardView
-        android:id="@+id/orbContainer"
-        android:layout_width="280dp"
-        android:layout_height="280dp"
-        app:cardCornerRadius="190dp"
-        app:cardElevation="0dp"
-        app:cardBackgroundColor="@android:color/transparent"
+    <com.example.myapplication.ui.JarvisOrbView
+        android:id="@+id/orbView"
+        android:layout_width="390dp"
+        android:layout_height="390dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toTopOf="@id/textView"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintVertical_chainStyle="packed"
         android:layout_marginBottom="22dp"
-        android:layout_marginTop="150dp">
+        android:layout_marginTop="110dp" />
 
-        <com.example.myapplication.ui.JarvisOrbView
-            android:id="@+id/orbView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
-    </androidx.cardview.widget.CardView>
-
-    <!-- Título principal -->
     <TextView
         android:id="@+id/textView"
         android:layout_width="wrap_content"
@@ -41,14 +29,12 @@
         android:textSize="42sp"
         android:textStyle="bold"
         android:fontFamily="@font/googlesans"
-        android:textColor="#1A1A1A"
+        android:textColor="?attr/colorPrimary"
         android:letterSpacing="0.05"
-        app:layout_constraintTop_toBottomOf="@id/orbContainer"
-        app:layout_constraintBottom_toTopOf="@id/textViewSub"
+        app:layout_constraintTop_toBottomOf="@id/orbView"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Subtítulo -->
     <TextView
         android:id="@+id/textViewSub"
         android:layout_width="wrap_content"
@@ -56,15 +42,11 @@
         android:text="Tu asistente de voz inteligente"
         android:textSize="16sp"
         android:fontFamily="@font/googlesans"
-        android:textColor="#666666"
+        android:textColor="?android:attr/textColorSecondary"
         android:layout_marginTop="8dp"
         app:layout_constraintTop_toBottomOf="@id/textView"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-       CONTENEDOR INFERIOR (Fixed - siempre visible)
-       ═══════════════════════════════════════════════════════════════ -->
 
     <LinearLayout
         android:id="@+id/bottomContainer"
@@ -72,7 +54,6 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
-        android:background="@android:color/white"
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
         android:paddingTop="16dp"
@@ -81,33 +62,19 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-
-        <!-- BOTÓN SLIDE TO ACT -->
         <com.ncorti.slidetoact.SlideToActView
             android:id="@+id/Ingresobutton"
             android:layout_width="match_parent"
             android:layout_height="60dp"
             app:area_margin="8dp"
-            app:outer_color="#E8F0FE"
-            app:inner_color="#0095D4"
+            app:outer_color="#1E2022"
+            app:inner_color="@color/primary_dark"
             app:border_radius="30dp"
             app:text="Desliza para comenzar"
             app:text_size="16sp"
-            app:text_color="#0095D4"
+            app:text_color="@color/primary_dark"
             app:slider_icon="@drawable/ic_mic_vector"
             app:slider_icon_color="#FFFFFF" />
-
-        <!-- NOTA IMPORTANTE -->
-        <TextView
-            android:id="@+id/disclaimerText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="🔒 Tu privacidad es importante. No compartimos datos."
-            android:textSize="11sp"
-            android:fontFamily="@font/googlesans"
-            android:textColor="#BBBBBB"
-            android:gravity="center"
-            android:layout_marginTop="12dp" />
 
     </LinearLayout>
 

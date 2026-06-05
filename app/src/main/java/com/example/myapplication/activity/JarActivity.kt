@@ -75,7 +75,7 @@ class JarActivity : AppCompatActivity(), JarvisUi {
         super.onCreate(savedInstanceState)
         binding = ActivityJarBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        binding.jarvisOrb.visibility = View.GONE
+        binding.jarvisOrb.visibility = View.VISIBLE
         audioManager = com.example.myapplication.core.AudioManager(this)
         ttsLocal = android.speech.tts.TextToSpeech(this) { status ->
             ttsLocalListo = status == android.speech.tts.TextToSpeech.SUCCESS
@@ -86,13 +86,44 @@ class JarActivity : AppCompatActivity(), JarvisUi {
             IntentFilter("com.nexus.assistant.OVERLAY_READY"),
             RECEIVER_NOT_EXPORTED
         )
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // 1. Detener motores de audio y TTS para que no sigan sonando en segundo plano
+                try {
+                    ttsLocal.stop()
+                    voiceEngine?.stop()
+                    voiceEngine = null
+                    stopIdlePulse()
+                    stopListeningPulse()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error al limpiar componentes en el retroceso: ${e.message}")
+                }
 
-//        controller = JarvisVoiceController(context = this, ui = this, scope = lifecycleScope)
-//        controller.init()
-
+                // 2. Transición visual suave hacia atrás
+                binding.root.animate()
+                    .alpha(0f)
+                    .setDuration(300)
+                    .withEndAction {
+                        // Finaliza esta actividad y vuelve de forma natural a MainActivity
+                        finish()
+                        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+                    }
+                    .start()
+            }
+        })
         animateOrbEntrance()
     }
-
+    override fun showSearchResult(textoCompleto: String, fuentes: List<String>, imagenes: List<String>, preguntas: List<String>) {
+        // En la Activity de presentación no necesitamos mostrar búsquedas completas,
+        // pero podemos al menos mostrar el texto principal.
+        runOnUiThread {
+            animateTextChange(textoCompleto.take(200)) // o simplemente showText(textoCompleto)
+            // Si quieres, también puedes mostrar un toast indicando que hay fuentes/imágenes
+            if (fuentes.isNotEmpty()) {
+                Toast.makeText(this, "Se encontraron ${fuentes.size} fuentes", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     // ── TTS — redirige al controller (ElevenLabs o Android según TTS_MODE) ──
     private fun speak(text: String, utteranceId: String, onDone: (() -> Unit)? = null) {
         if (!ttsLocalListo) { onDone?.invoke(); return }
@@ -128,14 +159,14 @@ class JarActivity : AppCompatActivity(), JarvisUi {
 //    }
     private fun animateOrbEntrance() {
         // Puedes mostrar un fade in del texto o skip directamente
-        binding.titleWel.alpha = 1f
-        binding.statusText.alpha = 1f
+        //binding.titleWel.alpha = 1f
+        //binding.statusText.alpha = 1f
         showIntroUI()
     }
     // ── UI de introducción ───────────────────────────────────
     private fun showIntroUI() {
-        binding.titleWel.animate().alpha(1f).setDuration(600).setStartDelay(0).start()
-        binding.statusText.animate().alpha(1f).setDuration(600).setStartDelay(200).start()
+       // binding.titleWel.animate().alpha(1f).setDuration(600).setStartDelay(0).start()
+        //binding.statusText.animate().alpha(1f).setDuration(600).setStartDelay(200).start()
 
         binding.transcriptionTextView.text =
             "Hola, soy Nexus. Tu asistente personal para el móvil.\n" +

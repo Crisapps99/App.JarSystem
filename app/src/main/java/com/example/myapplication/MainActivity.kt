@@ -133,7 +133,7 @@ class MainActivity : AppCompatActivity() {
                     // Sin animación de sistema — la nuestra ya hizo el trabajo visual
                     startActivity(intent)
                     overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
-                    finish()
+
                 }, duration)
             }
         }

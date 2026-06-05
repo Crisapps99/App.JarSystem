@@ -25,6 +25,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
+                android:animateLayoutChanges="true"
                 android:layout_marginBottom="2dp">
                 <!--    |carrusel imagenes-->
                 <HorizontalScrollView
@@ -41,7 +42,6 @@
                     android:id="@+id/scrollText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:maxHeight="300dp"
                     android:scrollbars="none"
                     android:overScrollMode="never"
                     android:fadeScrollbars="false"
