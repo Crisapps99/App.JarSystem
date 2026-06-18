@@ -49,4 +49,8 @@
         <item name="android:windowBackground">@color/background_dark</item>
 
     </style>
+    <style name="SliderTextAppearance" parent="TextAppearance.AppCompat">
+        <item name="android:textSize">20sp</item>
+        <item name="android:textColor">@android:color/white</item>
+    </style>
 </resources>

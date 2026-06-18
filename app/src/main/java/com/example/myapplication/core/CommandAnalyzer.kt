@@ -19,6 +19,13 @@ object CommandAnalyzer {
 
     fun clasificar(texto: String): Intent {
         val t = texto.lowercase().trim()
+        if (Regex("""a qué hora (cierra|abre|empieza|termina|sale|llega|tiene|habrá|será|fue|inicia|finaliza|empiezan|terminan|cierran|abren|salen|llegan|tienen|habrán|serán|fueron|inician|finalizan)""").containsMatchIn(t)) {
+            return Intent.SEARCH_WEB
+        }
+
+        if (Regex("""(qué hora es|hora actual|hora exacta|hora del día|hora en punto|qué hora tienes|hora)""").containsMatchIn(t)) {
+            return Intent.TIME
+        }
 
         return when {
             // ✅ PRIORIDAD: Si menciona "youtube", es VIDEO, no música

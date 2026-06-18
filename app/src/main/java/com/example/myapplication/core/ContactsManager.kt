@@ -1,29 +1,44 @@
-// ARCHIVO: app/src/main/java/com/example/myapplication/core/ContactsManager.kt
+// app/src/main/java/com/example/myapplication/core/ContactsManager.kt
 package com.example.myapplication.core
 
 import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.ContactsContract
 import android.util.Log
+import java.text.Normalizer
 
 object ContactsManager {
 
     data class Contact(
         val name: String,
         val phoneNumber: String,
-        val normalizedName: String = name.lowercase().trim()
+        val normalizedName: String = name.normalizeForMatching()
     )
 
     private var cachedContacts: List<Contact> = emptyList()
     private var lastLoadTime: Long = 0
     private const val CACHE_DURATION = 60_000L // 1 minuto
 
-    /**
-     * Carga todos los contactos con número de teléfono.
-     * Usa caché de 1 minuto para no consultar el ContentResolver en cada llamada.
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // NORMALIZACIÓN (elimina tildes, emojis, caracteres especiales)
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun String.normalizeForMatching(): String {
+        // 1. Descomponer caracteres acentuados (é → e + ́)
+        val decomposed = Normalizer.normalize(this, Normalizer.Form.NFD)
+        // 2. Eliminar marcas diacríticas (tildes, diéresis, etc.)
+        val noDiacritics = decomposed.replace(Regex("\\p{M}"), "")
+        // 3. Eliminar emojis y cualquier carácter que no sea letra, número o espacio
+        val noEmojis = noDiacritics.replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+        // 4. Minúsculas y trim
+        return noEmojis.trim().lowercase()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CARGA DE CONTACTOS (con caché)
+    // ─────────────────────────────────────────────────────────────────────────
     fun loadContacts(context: Context): List<Contact> {
         val now = System.currentTimeMillis()
         if (cachedContacts.isNotEmpty() && (now - lastLoadTime) < CACHE_DURATION) {
@@ -61,26 +76,25 @@ object ContactsManager {
         return contacts
     }
 
-    /**
-     * Busca el contacto más parecido al nombre dado por el usuario.
-     * Usa coincidencia exacta primero, luego parcial, luego fuzzy.
-     * Retorna null si no encuentra nada con >50% similitud.
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // BÚSQUEDA ROBUSTA (ignora emojis, tildes, mayúsculas)
+    // ─────────────────────────────────────────────────────────────────────────
     fun findContact(context: Context, nameBuscado: String): Contact? {
         val contacts = loadContacts(context)
-        val query = nameBuscado.lowercase().trim()
+        val query = nameBuscado.normalizeForMatching()
 
-        // 1. Coincidencia exacta
+        // 1. Coincidencia exacta (normalizada)
         contacts.find { it.normalizedName == query }?.let { return it }
 
-        // 2. Contiene el nombre
-        contacts.find { it.normalizedName.contains(query) || query.contains(it.normalizedName) }
-            ?.let { return it }
+        // 2. Contiene el nombre (en cualquiera de los dos sentidos)
+        contacts.find { contact ->
+            contact.normalizedName.contains(query) || query.contains(contact.normalizedName)
+        }?.let { return it }
 
-        // 3. Fuzzy matching — Levenshtein
+        // 3. Fuzzy matching (Levenshtein) con umbral >0.5
         return contacts
             .map { contact ->
-                val similarity = calcularSimilitud(query, contact.normalizedName)
+                val similarity = calculateSimilarity(query, contact.normalizedName)
                 contact to similarity
             }
             .filter { it.second > 0.5 }
@@ -88,20 +102,52 @@ object ContactsManager {
             ?.first
     }
 
-    /**
-     * Retorna todos los contactos como texto para enviar como contexto al servidor.
-     * Solo envía los primeros 100 para no sobrecargar el prompt.
-     */
-    fun toContextText(context: Context): String {
-        val contacts = loadContacts(context)
-        if (contacts.isEmpty()) return "Sin contactos disponibles."
-        return contacts.take(100).joinToString(", ") { it.name }
+    // ─────────────────────────────────────────────────────────────────────────
+    // CREAR NUEVO CONTACTO (opcional, se puede activar por voz)
+    // ─────────────────────────────────────────────────────────────────────────
+    fun createContact(context: Context, name: String, phoneNumber: String): Boolean {
+        return try {
+            val values = ContentValues().apply {
+                // Cambiamos put(key, null) por putNull(key) para evitar ambigüedad
+                putNull(ContactsContract.RawContacts.ACCOUNT_TYPE)
+                putNull(ContactsContract.RawContacts.ACCOUNT_NAME)
+            }
+            val rawContactUri = context.contentResolver.insert(
+                ContactsContract.RawContacts.CONTENT_URI, values
+            )
+            val rawContactId = rawContactUri?.lastPathSegment?.toLong()
+            if (rawContactId == null) return false
+
+            // Insertar nombre
+            val nameValues = ContentValues().apply {
+                put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+                put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+                put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+            }
+            context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, nameValues)
+
+            // Insertar teléfono
+            val phoneValues = ContentValues().apply {
+                put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+                put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                // Aseguramos que phoneNumber se trate como String
+                put(ContactsContract.CommonDataKinds.Phone.NUMBER, phoneNumber as String)
+                put(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+            }
+            context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValues)
+
+            cachedContacts = emptyList()
+            Log.d("JARVIS_CONTACTS", "✅ Contacto creado: $name → $phoneNumber")
+            true
+        } catch (e: Exception) {
+            Log.e("JARVIS_CONTACTS", "❌ Error creando contacto: ${e.message}")
+            false
+        }
     }
 
-    /**
-     * Inicia una llamada telefónica.
-     * Para el 911 u otros números de emergencia no necesita contacto.
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // LLAMADAS (con permiso CALL_PHONE)
+    // ─────────────────────────────────────────────────────────────────────────
     fun makeCall(context: Context, phoneNumber: String) {
         val intent = Intent(Intent.ACTION_CALL).apply {
             data = Uri.parse("tel:$phoneNumber")
@@ -111,10 +157,6 @@ object ContactsManager {
         Log.d("JARVIS_CALL", "📞 Llamando a $phoneNumber")
     }
 
-    /**
-     * Abre el marcador con el número ya escrito (sin llamar automáticamente).
-     * Útil si no tienes permiso CALL_PHONE.
-     */
     fun dialNumber(context: Context, phoneNumber: String) {
         val intent = Intent(Intent.ACTION_DIAL).apply {
             data = Uri.parse("tel:$phoneNumber")
@@ -123,7 +165,16 @@ object ContactsManager {
         context.startActivity(intent)
     }
 
-    private fun calcularSimilitud(s1: String, s2: String): Double {
+    // ─────────────────────────────────────────────────────────────────────────
+    // UTILIDADES
+    // ─────────────────────────────────────────────────────────────────────────
+    fun toContextText(context: Context): String {
+        val contacts = loadContacts(context)
+        if (contacts.isEmpty()) return "Sin contactos disponibles."
+        return contacts.take(100).joinToString(", ") { it.name }
+    }
+
+    private fun calculateSimilarity(s1: String, s2: String): Double {
         val longer  = if (s1.length > s2.length) s1 else s2
         val shorter = if (s1.length > s2.length) s2 else s1
         if (longer.isEmpty()) return 1.0

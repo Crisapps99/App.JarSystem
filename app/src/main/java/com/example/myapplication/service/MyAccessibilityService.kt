@@ -56,6 +56,7 @@ class MyAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var ultimoTextoEscrito: String = ""
 
+
     companion object {
         var instance: MyAccessibilityService? = null
         private const val TAG = "JARVIS_ACCESSIBILITY"
@@ -67,8 +68,9 @@ class MyAccessibilityService : AccessibilityService() {
 
         // FIX CRÍTICO: Registra el BroadcastReceiver aquí
         try {
-            val filter = IntentFilter(ACTION_EXECUTE)
-            val context: Context = this@MyAccessibilityService
+            val filter = IntentFilter(ACTION_EXECUTE).apply{
+                addAction("JARVIS.YOUTUBE_AUTOCLICK")
+            }
             registerReceiver(actionsReceiver, filter, RECEIVER_NOT_EXPORTED)
             Log.i(TAG, "✅ BroadcastReceiver registrado para: $ACTION_EXECUTE")
         } catch (e: Exception) {
@@ -196,7 +198,62 @@ class MyAccessibilityService : AccessibilityService() {
             }
         }
     }
+    private fun intentarReproducirPrimerVideo(root: AccessibilityNodeInfo) {
+        Log.d(TAG, "🔍 Buscando primer video para reproducir...")
 
+        // Lista de IDs comunes de contenedores de video en YouTube
+        val idsVideo = listOf(
+            "com.google.android.youtube:id/thumbnail",
+            "com.google.android.youtube:id/video_info_view",
+            "com.google.android.youtube:id/dismissible"
+        )
+
+        for (id in idsVideo) {
+            val nodos = root.findAccessibilityNodeInfosByViewId(id)
+            if (nodos.isNotEmpty()) {
+                val primerVideo = nodos[0]
+                if (hacerClicEnNodoOAncestros(primerVideo)) {
+                    Log.d(TAG, "✅ Reproducción iniciada mediante ID: $id")
+                    return
+                }
+            }
+        }
+
+        // Fallback: buscar por descripción larga (típico de miniaturas de YouTube)
+        fun buscarPorDescripcion(nodo: AccessibilityNodeInfo?): Boolean {
+            if (nodo == null) return false
+
+            // Los videos suelen tener descripciones de más de 40 caracteres (título + canal + vistas)
+            val desc = nodo.contentDescription?.toString() ?: ""
+            if (nodo.isClickable && desc.length > 40) {
+                nodo.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                return true
+            }
+
+            for (i in 0 until nodo.childCount) {
+                if (buscarPorDescripcion(nodo.getChild(i))) return true
+            }
+            return false
+        }
+
+        if (buscarPorDescripcion(root)) {
+            Log.d(TAG, "✅ Reproducción iniciada por descripción")
+        } else {
+            Log.w(TAG, "❌ No se encontró un video clickable")
+        }
+    }
+
+    // Función auxiliar para asegurar el click
+    private fun hacerClicEnNodoOAncestros(nodo: AccessibilityNodeInfo?): Boolean {
+        var temp = nodo
+        while (temp != null) {
+            if (temp.isClickable) {
+                return temp.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            }
+            temp = temp.parent
+        }
+        return false
+    }
     private fun diagnosticarScreenMemory() {
         val memoria = com.example.myapplication.core.ScreenMemory.lastSnapshot
 
@@ -793,15 +850,13 @@ class MyAccessibilityService : AccessibilityService() {
 
                 "play_video" -> {
                     val query = accion.params?.get("query") as? String ?: ""
-
                     Log.d(TAG, "│ 🎬 play_video: query='$query'")
-
                     if (query.isNotBlank()) {
                         ActionExecutor.playVideo(this@MyAccessibilityService, query)
                     } else {
                         ActionExecutor.openApp(this@MyAccessibilityService, "com.google.android.youtube")
                     }
-                    waitTime = 3000L
+                    waitTime = 2000L
                 }
                 "navigate_to" -> {
                     val destination = accion.params?.get("destination") as? String ?: ""
@@ -1081,22 +1136,29 @@ class MyAccessibilityService : AccessibilityService() {
                 "write_and_confirm" -> {
                     val mensaje = accion.params?.get("message") as? String ?: ""
                     Log.d(TAG, "│ ✏️ write_and_confirm: '$mensaje'")
-                    if (mensaje.isBlank()) {
-                        Log.w(TAG, "│ ⚠️ Mensaje vacío")
-                        exitoAccion = false
-                    } else {
+
+                    // Aumentamos el delay antes de escribir para asegurar que el chat cambió
+                    handler.postDelayed({
                         escribirEnChatActual(mensaje)
-                        currentActions = null
-                        return
-                    }
+                    }, 800) // 800ms de espera para el cambio de UI
+
+                    currentActions = null
+                    return
                 }
 
                 "send_whatsapp" -> {
                     val contact = accion.params?.get("contact") as? String ?: ""
                     val message = accion.params?.get("message") as? String ?: ""
-                    Log.d(TAG, "│ 💬 send_whatsapp → '$contact': '$message'")
-                    ActionExecutor.sendWhatsAppMessage(this@MyAccessibilityService, contact, message)
-                    waitTime = 4000L
+                    Log.d(TAG, "│  send_whatsapp → '$contact': '$message'")
+
+                    // En lugar de ejecutar directamente, mostramos el preview en el overlay
+                    val intent = Intent("JARVIS.SHOW_WHATSAPP_PREVIEW").apply {
+                        putExtra("contact", contact)
+                        putExtra("message", message)
+                        setPackage(packageName)
+                    }
+                    sendBroadcast(intent)
+                    waitTime = 500L   // tiempo para que el overlay reaccione
                 }
 
                 "send_sms" -> {
@@ -1324,7 +1386,23 @@ class MyAccessibilityService : AccessibilityService() {
                     }
                     waitTime = 1000L
                 }
-
+                "open_url" -> {
+                    val url = accion.params?.get("url") as? String ?: ""
+                    Log.d(TAG, "│ open_url: '$url'")
+                    if (url.isNotBlank()) {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        waitTime = 1500L   // tiempo para que se abra Maps
+                        exitoAccion = true
+                    } else {
+                        Log.e(TAG, "│ ❌ URL vacía")
+                        exitoAccion = false
+                        detalleError = "URL vacía"
+                        waitTime = 300L
+                    }
+                }
                 "unlock_screen" -> {
                     Log.d(TAG, "│ 🔓 unlock_screen")
                     performGlobalAction(GLOBAL_ACTION_KEYCODE_HEADSETHOOK)

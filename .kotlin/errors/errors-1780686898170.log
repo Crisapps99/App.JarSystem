@@ -1,0 +1,248 @@
+kotlin version: 2.0.21
+error message: org.jetbrains.kotlin.backend.common.BackendException: Backend Internal error: Exception during IR lowering
+File being compiled: A:/Documentos/Tesis/App.JarSystem/app/src/main/java/com/example/myapplication/MainActivity.kt
+The root cause java.lang.RuntimeException was thrown at: org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate(FunctionCodegen.kt:47)
+	at org.jetbrains.kotlin.backend.common.CodegenUtil.reportBackendException(CodegenUtil.kt:253)
+	at org.jetbrains.kotlin.backend.common.CodegenUtil.reportBackendException$default(CodegenUtil.kt:236)
+	at org.jetbrains.kotlin.backend.common.phaser.PerformByIrFilePhase.invokeSequential(performByIrFile.kt:65)
+	at org.jetbrains.kotlin.backend.common.phaser.PerformByIrFilePhase.invoke(performByIrFile.kt:52)
+	at org.jetbrains.kotlin.backend.common.phaser.PerformByIrFilePhase.invoke(performByIrFile.kt:38)
+	at org.jetbrains.kotlin.backend.common.phaser.NamedCompilerPhase.phaseBody(CompilerPhase.kt:166)
+	at org.jetbrains.kotlin.backend.common.phaser.AbstractNamedCompilerPhase.invoke(CompilerPhase.kt:113)
+	at org.jetbrains.kotlin.backend.common.phaser.CompositePhase.invoke(PhaseBuilders.kt:27)
+	at org.jetbrains.kotlin.backend.common.phaser.CompositePhase.invoke(PhaseBuilders.kt:14)
+	at org.jetbrains.kotlin.backend.common.phaser.NamedCompilerPhase.phaseBody(CompilerPhase.kt:166)
+	at org.jetbrains.kotlin.backend.common.phaser.AbstractNamedCompilerPhase.invoke(CompilerPhase.kt:113)
+	at org.jetbrains.kotlin.backend.common.phaser.CompilerPhaseKt.invokeToplevel(CompilerPhase.kt:62)
+	at org.jetbrains.kotlin.backend.jvm.JvmIrCodegenFactory.invokeCodegen(JvmIrCodegenFactory.kt:371)
+	at org.jetbrains.kotlin.codegen.CodegenFactory.generateModule(CodegenFactory.kt:47)
+	at org.jetbrains.kotlin.backend.jvm.JvmIrCodegenFactory.generateModuleInFrontendIRMode(JvmIrCodegenFactory.kt:433)
+	at org.jetbrains.kotlin.cli.jvm.compiler.pipeline.JvmCompilerPipelineKt.generateCodeFromIr(jvmCompilerPipeline.kt:246)
+	at org.jetbrains.kotlin.cli.jvm.compiler.pipeline.JvmCompilerPipelineKt.compileModulesUsingFrontendIrAndLightTree(jvmCompilerPipeline.kt:142)
+	at org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecute(K2JVMCompiler.kt:148)
+	at org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecute(K2JVMCompiler.kt:43)
+	at org.jetbrains.kotlin.cli.common.CLICompiler.execImpl(CLICompiler.kt:103)
+	at org.jetbrains.kotlin.cli.common.CLICompiler.execImpl(CLICompiler.kt:49)
+	at org.jetbrains.kotlin.cli.common.CLITool.exec(CLITool.kt:101)
+	at org.jetbrains.kotlin.incremental.IncrementalJvmCompilerRunner.runCompiler(IncrementalJvmCompilerRunner.kt:464)
+	at org.jetbrains.kotlin.incremental.IncrementalJvmCompilerRunner.runCompiler(IncrementalJvmCompilerRunner.kt:73)
+	at org.jetbrains.kotlin.incremental.IncrementalCompilerRunner.doCompile(IncrementalCompilerRunner.kt:506)
+	at org.jetbrains.kotlin.incremental.IncrementalCompilerRunner.compileImpl(IncrementalCompilerRunner.kt:423)
+	at org.jetbrains.kotlin.incremental.IncrementalCompilerRunner.tryCompileIncrementally$lambda$9$compile(IncrementalCompilerRunner.kt:249)
+	at org.jetbrains.kotlin.incremental.IncrementalCompilerRunner.tryCompileIncrementally(IncrementalCompilerRunner.kt:267)
+	at org.jetbrains.kotlin.incremental.IncrementalCompilerRunner.compile(IncrementalCompilerRunner.kt:120)
+	at org.jetbrains.kotlin.daemon.CompileServiceImplBase.execIncrementalCompiler(CompileServiceImpl.kt:675)
+	at org.jetbrains.kotlin.daemon.CompileServiceImplBase.access$execIncrementalCompiler(CompileServiceImpl.kt:92)
+	at org.jetbrains.kotlin.daemon.CompileServiceImpl.compile(CompileServiceImpl.kt:1660)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+	at java.rmi/sun.rmi.server.UnicastServerRef.dispatch(Unknown Source)
+	at java.rmi/sun.rmi.transport.Transport$1.run(Unknown Source)
+	at java.rmi/sun.rmi.transport.Transport$1.run(Unknown Source)
+	at java.base/java.security.AccessController.doPrivileged(Unknown Source)
+	at java.rmi/sun.rmi.transport.Transport.serviceCall(Unknown Source)
+	at java.rmi/sun.rmi.transport.tcp.TCPTransport.handleMessages(Unknown Source)
+	at java.rmi/sun.rmi.transport.tcp.TCPTransport$ConnectionHandler.run0(Unknown Source)
+	at java.rmi/sun.rmi.transport.tcp.TCPTransport$ConnectionHandler.lambda$run$0(Unknown Source)
+	at java.base/java.security.AccessController.doPrivileged(Unknown Source)
+	at java.rmi/sun.rmi.transport.tcp.TCPTransport$ConnectionHandler.run(Unknown Source)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+	at java.base/java.lang.Thread.run(Unknown Source)
+Caused by: java.lang.RuntimeException: Exception while generating code for:
+FUN LOCAL_FUNCTION_FOR_LAMBDA name:MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11 visibility:private modality:FINAL <> ($isTransitioning$delegate:androidx.compose.runtime.MutableState<kotlin.Boolean>, $context:android.content.Context, ctx:android.content.Context) returnType:com.ncorti.slidetoact.SlideToActView
+  VALUE_PARAMETER BOUND_VALUE_PARAMETER name:$isTransitioning$delegate index:0 type:androidx.compose.runtime.MutableState<kotlin.Boolean>
+  VALUE_PARAMETER BOUND_VALUE_PARAMETER name:$context index:1 type:android.content.Context
+  VALUE_PARAMETER name:ctx index:2 type:android.content.Context
+  BLOCK_BODY
+    RETURN type=kotlin.Nothing from='private final fun MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11 ($isTransitioning$delegate: androidx.compose.runtime.MutableState<kotlin.Boolean>, $context: android.content.Context, ctx: android.content.Context): com.ncorti.slidetoact.SlideToActView declared in com.example.myapplication.MainActivityKt'
+      CALL 'public final fun apply <T> (block: @[ExtensionFunctionType] kotlin.Function1<T of kotlin.StandardKt.apply, kotlin.Unit>): T of kotlin.StandardKt.apply [inline] declared in kotlin.StandardKt' type=com.ncorti.slidetoact.SlideToActView origin=null
+        <T>: com.ncorti.slidetoact.SlideToActView
+        $receiver: CONSTRUCTOR_CALL 'public constructor <init> (context: android.content.Context, xmlAttrs: android.util.AttributeSet?, defStyleAttr: kotlin.Int, $mask0: kotlin.Int, $marker: kotlin.jvm.internal.DefaultConstructorMarker?) declared in com.ncorti.slidetoact.SlideToActView' type=com.ncorti.slidetoact.SlideToActView origin=DEFAULT_DISPATCH_CALL
+          context: GET_VAR 'ctx: android.content.Context declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11' type=android.content.Context origin=null
+          xmlAttrs: COMPOSITE type=android.util.AttributeSet? origin=DEFAULT_VALUE
+            CONST Null type=android.util.AttributeSet? value=null
+          defStyleAttr: COMPOSITE type=kotlin.Int origin=DEFAULT_VALUE
+            CONST Int type=kotlin.Int value=0
+          $mask0: CONST Int type=kotlin.Int value=6
+          $marker: CONST Null type=kotlin.jvm.internal.DefaultConstructorMarker? value=null
+        block: BLOCK type=@[ExtensionFunctionType] kotlin.Function1<com.ncorti.slidetoact.SlideToActView, kotlin.Unit> origin=LAMBDA
+          COMPOSITE type=kotlin.Unit origin=null
+          FUNCTION_REFERENCE 'private final fun MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10 ($isTransitioning$delegate: androidx.compose.runtime.MutableState<kotlin.Boolean>, $context: android.content.Context): kotlin.Unit declared in com.example.myapplication.MainActivityKt' type=@[ExtensionFunctionType] kotlin.Function1<com.ncorti.slidetoact.SlideToActView, kotlin.Unit> origin=INLINE_LAMBDA reflectionTarget=null
+            $isTransitioning$delegate: GET_VAR '$isTransitioning$delegate: androidx.compose.runtime.MutableState<kotlin.Boolean> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11' type=androidx.compose.runtime.MutableState<kotlin.Boolean> origin=null
+            $context: GET_VAR '$context: android.content.Context declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11' type=android.content.Context origin=null
+
+	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate(FunctionCodegen.kt:47)
+	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate$default(FunctionCodegen.kt:40)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ClassCodegen.generateMethodNode(ClassCodegen.kt:406)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ClassCodegen.generateMethod(ClassCodegen.kt:423)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ClassCodegen.generate(ClassCodegen.kt:168)
+	at org.jetbrains.kotlin.backend.jvm.FileCodegen.lower(JvmPhases.kt:39)
+	at org.jetbrains.kotlin.backend.common.phaser.PhaseFactoriesKt.createFilePhase$lambda$4(PhaseFactories.kt:71)
+	at org.jetbrains.kotlin.backend.common.phaser.PhaseBuildersKt$createSimpleNamedCompilerPhase$1.phaseBody(PhaseBuilders.kt:69)
+	at org.jetbrains.kotlin.backend.common.phaser.SimpleNamedCompilerPhase.phaseBody(CompilerPhase.kt:226)
+	at org.jetbrains.kotlin.backend.common.phaser.AbstractNamedCompilerPhase.invoke(CompilerPhase.kt:113)
+	at org.jetbrains.kotlin.backend.common.phaser.PerformByIrFilePhase.invokeSequential(performByIrFile.kt:62)
+	... 44 more
+Caused by: java.lang.RuntimeException: Exception while generating code for:
+FUN INLINE_LAMBDA name:MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10 visibility:private modality:FINAL <> ($receiver:com.ncorti.slidetoact.SlideToActView, $isTransitioning$delegate:androidx.compose.runtime.MutableState<kotlin.Boolean>, $context:android.content.Context) returnType:kotlin.Unit
+  $receiver: VALUE_PARAMETER name:$this$apply type:com.ncorti.slidetoact.SlideToActView
+  VALUE_PARAMETER BOUND_VALUE_PARAMETER name:$isTransitioning$delegate index:0 type:androidx.compose.runtime.MutableState<kotlin.Boolean>
+  VALUE_PARAMETER BOUND_VALUE_PARAMETER name:$context index:1 type:android.content.Context
+  BLOCK_BODY
+    VAR name:$i$a$-apply-MainActivityKt$MainComposeScreen$2$2$1$1$1 type:kotlin.Int [val]
+      CONST Int type=kotlin.Int value=0
+    CALL 'public final fun <set-text> (value: kotlin.CharSequence): kotlin.Unit declared in com.ncorti.slidetoact.SlideToActView' type=kotlin.Unit origin=EQ
+      $this: GET_VAR '$this$apply: com.ncorti.slidetoact.SlideToActView declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10' type=com.ncorti.slidetoact.SlideToActView origin=null
+      value: CONST String type=kotlin.String value="Activar Nexus"
+    SET_FIELD 'FIELD IR_EXTERNAL_JAVA_DECLARATION_STUB name:textSize type:kotlin.Int visibility:public [final,static] declared in android.R.attr' type=kotlin.Unit superQualifierSymbol=android.R.attr origin=EQ
+      value: CONST Int type=kotlin.Int value=16
+    CALL 'public final fun <set-textColor> (value: kotlin.Int): kotlin.Unit declared in com.ncorti.slidetoact.SlideToActView' type=kotlin.Unit origin=EQ
+      $this: GET_VAR '$this$apply: com.ncorti.slidetoact.SlideToActView declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10' type=com.ncorti.slidetoact.SlideToActView origin=null
+      value: CONST Int type=kotlin.Int value=-1
+    CALL 'public final fun <set-outerColor> (value: kotlin.Int): kotlin.Unit declared in com.ncorti.slidetoact.SlideToActView' type=kotlin.Unit origin=EQ
+      $this: GET_VAR '$this$apply: com.ncorti.slidetoact.SlideToActView declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10' type=com.ncorti.slidetoact.SlideToActView origin=null
+      value: CALL 'public open fun parseColor (p0: @[FlexibleNullability] kotlin.String?): kotlin.Int declared in android.graphics.Color' type=kotlin.Int origin=null
+        p0: CONST String type=kotlin.String value="#121420"
+    CALL 'public final fun <set-innerColor> (value: kotlin.Int): kotlin.Unit declared in com.ncorti.slidetoact.SlideToActView' type=kotlin.Unit origin=EQ
+      $this: GET_VAR '$this$apply: com.ncorti.slidetoact.SlideToActView declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10' type=com.ncorti.slidetoact.SlideToActView origin=null
+      value: CALL 'public open fun parseColor (p0: @[FlexibleNullability] kotlin.String?): kotlin.Int declared in android.graphics.Color' type=kotlin.Int origin=null
+        p0: CONST String type=kotlin.String value="#00DAF3"
+    CALL 'public final fun <set-sliderIcon> (value: kotlin.Int): kotlin.Unit declared in com.ncorti.slidetoact.SlideToActView' type=kotlin.Unit origin=EQ
+      $this: GET_VAR '$this$apply: com.ncorti.slidetoact.SlideToActView declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10' type=com.ncorti.slidetoact.SlideToActView origin=null
+      value: GET_FIELD 'FIELD IR_EXTERNAL_JAVA_DECLARATION_STUB name:ic_mic_vector type:kotlin.Int visibility:public [static] declared in com.example.myapplication.R.drawable' type=kotlin.Int superQualifierSymbol=com.example.myapplication.R.drawable origin=null
+    CALL 'public final fun <set-onSlideCompleteListener> (value: com.ncorti.slidetoact.SlideToActView.OnSlideCompleteListener?): kotlin.Unit declared in com.ncorti.slidetoact.SlideToActView' type=kotlin.Unit origin=EQ
+      $this: GET_VAR '$this$apply: com.ncorti.slidetoact.SlideToActView declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10' type=com.ncorti.slidetoact.SlideToActView origin=null
+      value: BLOCK type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=OBJECT_LITERAL
+        CLASS CLASS name:<no name provided> modality:FINAL visibility:local superTypes:[com.ncorti.slidetoact.SlideToActView.OnSlideCompleteListener]
+          $this: VALUE_PARAMETER INSTANCE_RECEIVER name:<this> type:com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>
+          CONSTRUCTOR visibility:public/*package*/ <> ($this_apply:com.ncorti.slidetoact.SlideToActView, $isTransitioning$delegate:androidx.compose.runtime.MutableState<kotlin.Boolean>, $context:android.content.Context) returnType:com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> [primary]
+            VALUE_PARAMETER BOUND_RECEIVER_PARAMETER name:$this_apply index:0 type:com.ncorti.slidetoact.SlideToActView
+            VALUE_PARAMETER BOUND_VALUE_PARAMETER name:$isTransitioning$delegate index:1 type:androidx.compose.runtime.MutableState<kotlin.Boolean>
+            VALUE_PARAMETER BOUND_VALUE_PARAMETER name:$context index:2 type:android.content.Context
+            BLOCK_BODY
+              SET_FIELD 'FIELD FIELD_FOR_CAPTURED_VALUE name:$this_apply type:com.ncorti.slidetoact.SlideToActView visibility:public/*package*/ [final] declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=kotlin.Unit origin=INITIALIZER_OF_FIELD_FOR_CAPTURED_VALUE
+                receiver: GET_VAR '<this>: com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=null
+                value: GET_VAR '$this_apply: com.ncorti.slidetoact.SlideToActView declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.<init>' type=com.ncorti.slidetoact.SlideToActView origin=null
+              SET_FIELD 'FIELD FIELD_FOR_CAPTURED_VALUE name:$isTransitioning$delegate type:androidx.compose.runtime.MutableState<kotlin.Boolean> visibility:public/*package*/ [final] declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=kotlin.Unit origin=INITIALIZER_OF_FIELD_FOR_CAPTURED_VALUE
+                receiver: GET_VAR '<this>: com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=null
+                value: GET_VAR '$isTransitioning$delegate: androidx.compose.runtime.MutableState<kotlin.Boolean> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.<init>' type=androidx.compose.runtime.MutableState<kotlin.Boolean> origin=null
+              SET_FIELD 'FIELD FIELD_FOR_CAPTURED_VALUE name:$context type:android.content.Context visibility:public/*package*/ [final] declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=kotlin.Unit origin=INITIALIZER_OF_FIELD_FOR_CAPTURED_VALUE
+                receiver: GET_VAR '<this>: com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=null
+                value: GET_VAR '$context: android.content.Context declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.<init>' type=android.content.Context origin=null
+              DELEGATING_CONSTRUCTOR_CALL 'public constructor <init> () [primary] declared in kotlin.Any'
+              BLOCK type=kotlin.Unit origin=null
+          FUN name:onSlideComplete visibility:public modality:OPEN <> ($this:com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>, view:com.ncorti.slidetoact.SlideToActView) returnType:kotlin.Unit
+            overridden:
+              public abstract fun onSlideComplete (view: com.ncorti.slidetoact.SlideToActView): kotlin.Unit declared in com.ncorti.slidetoact.SlideToActView.OnSlideCompleteListener
+            $this: VALUE_PARAMETER name:<this> type:com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>
+            VALUE_PARAMETER name:view index:0 type:com.ncorti.slidetoact.SlideToActView
+            BLOCK_BODY
+              WHEN type=kotlin.Unit origin=IF
+                BRANCH
+                  if: CALL 'public final fun access$MainComposeScreen$lambda$1 ($isTransitioning$delegate: androidx.compose.runtime.MutableState<kotlin.Boolean>): kotlin.Boolean declared in com.example.myapplication.MainActivityKt' type=kotlin.Boolean origin=GET_LOCAL_PROPERTY
+                    $isTransitioning$delegate: GET_FIELD 'FIELD FIELD_FOR_CAPTURED_VALUE name:$isTransitioning$delegate type:androidx.compose.runtime.MutableState<kotlin.Boolean> visibility:public/*package*/ [final] declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=androidx.compose.runtime.MutableState<kotlin.Boolean> origin=null
+                      receiver: GET_VAR '<this>: com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.onSlideComplete' type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=null
+                  then: RETURN type=kotlin.Nothing from='public open fun onSlideComplete (view: com.ncorti.slidetoact.SlideToActView): kotlin.Unit declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>'
+                    GET_FIELD 'FIELD FIELD_FOR_OBJECT_INSTANCE name:INSTANCE type:kotlin.Unit visibility:public [final,static] declared in kotlin.Unit' type=kotlin.Unit origin=null
+              CALL 'public final fun access$MainComposeScreen$lambda$2 ($isTransitioning$delegate: androidx.compose.runtime.MutableState<kotlin.Boolean>, <set-?>: kotlin.Boolean): kotlin.Unit declared in com.example.myapplication.MainActivityKt' type=kotlin.Unit origin=EQ
+                $isTransitioning$delegate: GET_FIELD 'FIELD FIELD_FOR_CAPTURED_VALUE name:$isTransitioning$delegate type:androidx.compose.runtime.MutableState<kotlin.Boolean> visibility:public/*package*/ [final] declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=androidx.compose.runtime.MutableState<kotlin.Boolean> origin=null
+                  receiver: GET_VAR '<this>: com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.onSlideComplete' type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=null
+                <set-?>: CONST Boolean type=kotlin.Boolean value=true
+              COMPOSITE type=kotlin.Unit origin=null
+                CALL 'public open fun postDelayed (p0: @[FlexibleNullability] java.lang.Runnable?, p1: kotlin.Long): kotlin.Boolean [fake_override] declared in com.ncorti.slidetoact.SlideToActView' type=kotlin.Boolean origin=null
+                  $this: GET_FIELD 'FIELD FIELD_FOR_CAPTURED_VALUE name:$this_apply type:com.ncorti.slidetoact.SlideToActView visibility:public/*package*/ [final] declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=com.ncorti.slidetoact.SlideToActView origin=null
+                    receiver: GET_VAR '<this>: com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.onSlideComplete' type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=null
+                  p0: BLOCK type=java.lang.Runnable origin=LAMBDA
+                    COMPOSITE type=kotlin.Unit origin=null
+                    CALL 'public final fun <jvm-indy> <T> (dynamicCall: T of kotlin.jvm.internal.<jvm-indy>, bootstrapMethodHandle: kotlin.Any, vararg bootstrapMethodArguments: kotlin.Any): T of kotlin.jvm.internal.<jvm-indy> declared in kotlin.jvm.internal' type=java.lang.Runnable origin=null
+                      <T>: java.lang.Runnable
+                      dynamicCall: CALL 'public final fun run (p0: android.content.Context): java.lang.Runnable declared in kotlin.jvm.internal.invokeDynamic' type=java.lang.Runnable origin=null
+                        p0: GET_FIELD 'FIELD FIELD_FOR_CAPTURED_VALUE name:$context type:android.content.Context visibility:public/*package*/ [final] declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=android.content.Context origin=null
+                          receiver: GET_VAR '<this>: com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.onSlideComplete' type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=null
+                      bootstrapMethodHandle: CALL 'public final fun <jvm-method-handle> (tag: kotlin.Int, owner: kotlin.String, name: kotlin.String, descriptor: kotlin.String, isInterface: kotlin.Boolean): kotlin.Any declared in kotlin.jvm.internal' type=kotlin.Any origin=null
+                        tag: CONST Int type=kotlin.Int value=6
+                        owner: CONST String type=kotlin.String value="java/lang/invoke/LambdaMetafactory"
+                        name: CONST String type=kotlin.String value="metafactory"
+                        descriptor: CONST String type=kotlin.String value="(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;"
+                        isInterface: CONST Boolean type=kotlin.Boolean value=false
+                      bootstrapMethodArguments: VARARG type=kotlin.Array<kotlin.Any> varargElementType=kotlin.Any
+                        CALL 'public final fun <jvm-original-method-type> (method: kotlin.Any): kotlin.Any declared in kotlin.jvm.internal' type=kotlin.Any origin=null
+                          method: RAW_FUNCTION_REFERENCE 'public abstract fun run (): kotlin.Unit declared in java.lang.Runnable' type=kotlin.Any
+                        RAW_FUNCTION_REFERENCE 'private final fun onSlideComplete$lambda$0 ($context: android.content.Context): kotlin.Unit declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=kotlin.Any
+                        CALL 'public final fun <jvm-original-method-type> (method: kotlin.Any): kotlin.Any declared in kotlin.jvm.internal' type=kotlin.Any origin=null
+                          method: RAW_FUNCTION_REFERENCE 'public abstract fun run (): kotlin.Unit [fake_override] declared in kotlin.jvm.internal.invokeDynamic.<fake>' type=kotlin.Any
+                  p1: CONST Long type=kotlin.Long value=200
+                COMPOSITE type=kotlin.Unit origin=null
+          FUN FAKE_OVERRIDE name:equals visibility:public modality:OPEN <> ($this:kotlin.Any, other:kotlin.Any?) returnType:kotlin.Boolean [fake_override,operator]
+            overridden:
+              public open fun equals (other: kotlin.Any?): kotlin.Boolean [fake_override,operator] declared in com.ncorti.slidetoact.SlideToActView.OnSlideCompleteListener
+            $this: VALUE_PARAMETER name:<this> type:kotlin.Any
+            VALUE_PARAMETER name:other index:0 type:kotlin.Any?
+          FUN FAKE_OVERRIDE name:hashCode visibility:public modality:OPEN <> ($this:kotlin.Any) returnType:kotlin.Int [fake_override]
+            overridden:
+              public open fun hashCode (): kotlin.Int [fake_override] declared in com.ncorti.slidetoact.SlideToActView.OnSlideCompleteListener
+            $this: VALUE_PARAMETER name:<this> type:kotlin.Any
+          FUN FAKE_OVERRIDE name:toString visibility:public modality:OPEN <> ($this:kotlin.Any) returnType:kotlin.String [fake_override]
+            overridden:
+              public open fun toString (): kotlin.String [fake_override] declared in com.ncorti.slidetoact.SlideToActView.OnSlideCompleteListener
+            $this: VALUE_PARAMETER name:<this> type:kotlin.Any
+          FIELD FIELD_FOR_CAPTURED_VALUE name:$this_apply type:com.ncorti.slidetoact.SlideToActView visibility:public/*package*/ [final]
+          FIELD FIELD_FOR_CAPTURED_VALUE name:$isTransitioning$delegate type:androidx.compose.runtime.MutableState<kotlin.Boolean> visibility:public/*package*/ [final]
+          FIELD FIELD_FOR_CAPTURED_VALUE name:$context type:android.content.Context visibility:public/*package*/ [final]
+          FUN LOCAL_FUNCTION_FOR_LAMBDA name:onSlideComplete$lambda$0 visibility:private modality:FINAL <> ($context:android.content.Context) returnType:kotlin.Unit
+            VALUE_PARAMETER BOUND_VALUE_PARAMETER name:$context index:0 type:android.content.Context
+            BLOCK_BODY
+              VAR name:intent type:android.content.Intent [val]
+                CONSTRUCTOR_CALL 'public constructor <init> (p0: @[FlexibleNullability] android.content.Context?, p1: @[FlexibleNullability] java.lang.Class<*>?) declared in android.content.Intent' type=android.content.Intent origin=null
+                  p0: GET_VAR '$context: android.content.Context declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.onSlideComplete$lambda$0' type=android.content.Context origin=null
+                  p1: CALL 'public final fun <get-java> <T> (): java.lang.Class<T of kotlin.jvm.JvmClassMappingKt.<get-java>> declared in kotlin.jvm.JvmClassMappingKt' type=java.lang.Class<com.example.myapplication.activity.LoginActivity> origin=GET_PROPERTY
+                    <T>: com.example.myapplication.activity.LoginActivity
+                    $receiver: CLASS_REFERENCE 'CLASS IR_EXTERNAL_DECLARATION_STUB CLASS name:LoginActivity modality:FINAL visibility:public superTypes:[androidx.appcompat.app.AppCompatActivity]' type=kotlin.reflect.KClass<com.example.myapplication.activity.LoginActivity>
+              CALL 'public abstract fun startActivity (p0: @[FlexibleNullability] android.content.Intent?): kotlin.Unit declared in android.content.Context' type=kotlin.Unit origin=null
+                $this: GET_VAR '$context: android.content.Context declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.onSlideComplete$lambda$0' type=android.content.Context origin=null
+                p0: GET_VAR 'val intent: android.content.Intent [val] declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>.onSlideComplete$lambda$0' type=android.content.Intent origin=null
+        BLOCK type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=null
+          CONSTRUCTOR_CALL 'public/*package*/ constructor <init> ($this_apply: com.ncorti.slidetoact.SlideToActView, $isTransitioning$delegate: androidx.compose.runtime.MutableState<kotlin.Boolean>, $context: android.content.Context) [primary] declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided>' type=com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10.<no name provided> origin=OBJECT_LITERAL
+            $this_apply: GET_VAR '$this$apply: com.ncorti.slidetoact.SlideToActView declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10' type=com.ncorti.slidetoact.SlideToActView origin=null
+            $isTransitioning$delegate: GET_VAR '$isTransitioning$delegate: androidx.compose.runtime.MutableState<kotlin.Boolean> declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10' type=androidx.compose.runtime.MutableState<kotlin.Boolean> origin=null
+            $context: GET_VAR '$context: android.content.Context declared in com.example.myapplication.MainActivityKt.MainComposeScreen$lambda$14$lambda$13$lambda$12$lambda$11$lambda$10' type=android.content.Context origin=null
+
+	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate(FunctionCodegen.kt:47)
+	at org.jetbrains.kotlin.backend.jvm.codegen.IrSourceCompilerForInline.generateLambdaBody(IrSourceCompilerForInline.kt:67)
+	at org.jetbrains.kotlin.codegen.inline.ExpressionLambda.generateLambdaBody(LambdaInfo.kt:72)
+	at org.jetbrains.kotlin.backend.jvm.codegen.IrInlineCodegen.genValueAndPut(IrInlineCodegen.kt:100)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitCall$handleParameter(ExpressionCodegen.kt:616)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitCall(ExpressionCodegen.kt:644)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitCall(ExpressionCodegen.kt:138)
+	at org.jetbrains.kotlin.ir.expressions.IrCall.accept(IrCall.kt:24)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitReturn(ExpressionCodegen.kt:1051)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitReturn(ExpressionCodegen.kt:138)
+	at org.jetbrains.kotlin.ir.expressions.IrReturn.accept(IrReturn.kt:24)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitStatementContainer(ExpressionCodegen.kt:579)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitBlockBody(ExpressionCodegen.kt:584)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitBlockBody(ExpressionCodegen.kt:138)
+	at org.jetbrains.kotlin.ir.expressions.IrBlockBody.accept(IrBlockBody.kt:20)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.generate(ExpressionCodegen.kt:240)
+	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.doGenerate(FunctionCodegen.kt:123)
+	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate(FunctionCodegen.kt:44)
+	... 54 more
+Caused by: java.lang.AssertionError: access of const val: SET_FIELD 'FIELD IR_EXTERNAL_JAVA_DECLARATION_STUB name:textSize type:kotlin.Int visibility:public [final,static] declared in android.R.attr' type=kotlin.Unit superQualifierSymbol=android.R.attr origin=EQ
+  value: CONST Int type=kotlin.Int value=16
+
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitFieldAccess(ExpressionCodegen.kt:861)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitFieldAccess(ExpressionCodegen.kt:138)
+	at org.jetbrains.kotlin.ir.visitors.IrElementVisitor$DefaultImpls.visitSetField(IrElementVisitor.kt:206)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitSetField(ExpressionCodegen.kt:908)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitSetField(ExpressionCodegen.kt:138)
+	at org.jetbrains.kotlin.ir.expressions.IrSetField.accept(IrSetField.kt:21)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitStatementContainer(ExpressionCodegen.kt:579)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitBlockBody(ExpressionCodegen.kt:584)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitBlockBody(ExpressionCodegen.kt:138)
+	at org.jetbrains.kotlin.ir.expressions.IrBlockBody.accept(IrBlockBody.kt:20)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.generate(ExpressionCodegen.kt:240)
+	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.doGenerate(FunctionCodegen.kt:123)
+	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate(FunctionCodegen.kt:44)
+	... 71 more
+
+

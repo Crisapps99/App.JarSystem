@@ -1,188 +1,255 @@
 package com.example.myapplication
 
-import android.os.Bundle
-import android.widget.TextView
-import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import com.example.myapplication.activity.LoginActivity
-import com.example.myapplication.activity.switchToActivity
-import com.ncorti.slidetoact.SlideToActView
-import android.view.animation.OvershootInterpolator
-import android.animation.ValueAnimator
+
 import android.content.Intent
-import android.view.animation.AccelerateDecelerateInterpolator
-import com.example.myapplication.ui.JarvisOrbView
-import com.example.myapplication.utils.ThemeUtils
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.example.myapplication.activity.LoginActivity
+import com.example.myapplication.ui.JarvisOrb
+import com.ncorti.slidetoact.SlideToActView
+import kotlinx.coroutines.delay
+import android.graphics.BlurMaskFilter
+import android.graphics.Paint
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.center
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 
-
-class MainActivity : AppCompatActivity() {
-    private lateinit var IngresoButton: SlideToActView
-    private lateinit var orbView: JarvisOrbView
-    private var isInitialLaunch = true
-    private var pulseAnimator: ValueAnimator? = null
-    private var isTransitioning = false  // evita doble-tap
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        ThemeUtils.applyTheme(this)
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContentView(R.layout.activity_main)
-        // Ejemplo: detectar si estamos en modo oscuro
-        val isDark = ThemeUtils.isDarkMode(this)
-        println("¿Modo oscuro activado? $isDark")
-
-        // Ejemplo: cambiar tema cuando el usuario lo desee
-        // setupThemeButton()
-        IngresoButton = findViewById(R.id.Ingresobutton)
-        orbView = findViewById(R.id.orbView)
-        val textView = findViewById<TextView>(R.id.textView)
-        val textViewSub = findViewById<TextView>(R.id.textViewSub)
-
-        setupInitialState(textView, textViewSub)
-        startWelcomeAnimation(textView, textViewSub)
-        setupIngresoButton()
-        setupWindowInsets()
+// Easing personalizado que imita OvershootInterpolator
+class OvershootEasing(private val tension: Float = 1.5f) : Easing {
+    override fun transform(x: Float): Float {
+        val x1 = x - 1f
+        return x1 * x1 * ((tension + 1) * x1 + tension) + 1f
     }
+}
 
-    private fun setupInitialState(textView: TextView, textViewSub: TextView) {
-        IngresoButton.text = ""
-        IngresoButton.translationY = -900f
-        IngresoButton.alpha = 0f
-        textViewSub.alpha = 0f
-        textView.translationY = -600f
-        textView.alpha = 0f
-        orbView.scaleX = 0f
-        orbView.scaleY = 0f
-        orbView.alpha = 0f
-    }
-
-    private fun startWelcomeAnimation(textView: TextView, textViewSub: TextView) {
-        orbView.animate()
-            .scaleX(1.2f).scaleY(1.2f).alpha(1f)
-            .setDuration(1200)
-            .setInterpolator(AccelerateDecelerateInterpolator())
-            .withStartAction { startOrbAnimation() }
-            .withEndAction {
-                orbView.animate()
-                    .scaleX(1f).scaleY(1f)
-                    .setDuration(800)
-                    .setInterpolator(OvershootInterpolator(1.5f))
-                    .withStartAction { showTextAndButton(textView, textViewSub) }
-                    .start()
-            }.start()
-    }
-
-    private fun showTextAndButton(textView: TextView, textViewSub: TextView) {
-        textViewSub.animate().alpha(1f).setDuration(1000).start()
-        textView.animate()
-            .translationY(0f).alpha(1f)
-            .setDuration(1000)
-            .setInterpolator(OvershootInterpolator(1.0f))
-            .start()
-
-        IngresoButton.text = "Comenzar"
-        IngresoButton.resetSlider()
-        IngresoButton.animate()
-            .translationY(0f).alpha(1f)
-            .setDuration(800).setStartDelay(300)
-            .setInterpolator(OvershootInterpolator(1.0f))
-            .start()
-    }
-
-    private fun startOrbAnimation() {
-        pulseAnimator = ValueAnimator.ofFloat(0f, 8f, 0f).apply {
-            duration = 3000
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = AccelerateDecelerateInterpolator()
-            addUpdateListener { orbView.updateRms(it.animatedValue as Float) }
-            start()
-        }
-    }
-
-    private fun setupIngresoButton() {
-        IngresoButton.onSlideCompleteListener = object : SlideToActView.OnSlideCompleteListener {
-            override fun onSlideComplete(view: SlideToActView) {
-                if (isTransitioning) return
-                isTransitioning = true
-
-                pulseAnimator?.cancel()
-
-                val duration = 200L
-
-                IngresoButton.animate()
-                    .alpha(0f).scaleX(0.95f).scaleY(0.95f)
-                    .setDuration(duration).start()
-
-                orbView.animate()
-                    .alpha(0f).scaleX(0.9f).scaleY(0.9f)
-                    .setDuration(duration).start()
-
-                findViewById<TextView>(R.id.textView).animate()
-                    .alpha(0f).translationY(-30f)
-                    .setDuration(duration).start()
-
-                findViewById<TextView>(R.id.textViewSub).animate()
-                    .alpha(0f)
-                    .setDuration(duration).start()
-
-                // Navegar al terminar el fade (200ms = casi inmediato)
-                IngresoButton.postDelayed({
-                    val intent = Intent(this@MainActivity, LoginActivity::class.java)
-                    // Sin animación de sistema — la nuestra ya hizo el trabajo visual
-                    startActivity(intent)
-                    overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
-
-                }, duration)
-            }
-        }
-    }
-
-    private fun setupWindowInsets() {
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-            insets
-        }
-    }
+class MainActivity : ComponentActivity() {
+    private var sliderResetKey = mutableStateOf(0)
 
     override fun onResume() {
         super.onResume()
-        if (::IngresoButton.isInitialized && !isInitialLaunch) {
-            isTransitioning = false
-            resetToReadyState()
+        sliderResetKey.value++
+    }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            val resetKey by sliderResetKey
+            var energy by remember { mutableFloatStateOf(0f) }
+
+            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+            val pulseValue by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 8f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(3000, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                )
+            )
+
+            LaunchedEffect(pulseValue) {
+                energy = pulseValue
+            }
+
+            MainComposeScreen(energy = energy, sliderKey = resetKey)
         }
-        isInitialLaunch = false
+
     }
 
-    private fun resetToReadyState() {
-        val textView = findViewById<TextView>(R.id.textView)
-        val textViewSub = findViewById<TextView>(R.id.textViewSub)
-        IngresoButton.text = "Comenzar"
-        IngresoButton.resetSlider()
-        IngresoButton.alpha = 1f
-        IngresoButton.translationY = 0f
-        IngresoButton.scaleX = 1f
-        IngresoButton.scaleY = 1f
-        textViewSub.alpha = 1f
-        textViewSub.translationY = 0f
-        textView.alpha = 1f
-        textView.translationY = 0f
-        orbView.alpha = 1f
-        orbView.scaleX = 1f
-        orbView.scaleY = 1f
-        orbView.reset()
-        startOrbAnimation()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        pulseAnimator?.cancel()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        pulseAnimator?.cancel()
-    }
 }
+
+@Composable
+fun MainComposeScreen(energy: Float, sliderKey: Int = 0) {
+    val context = LocalContext.current
+    var isTransitioning by remember { mutableStateOf(false) }
+    val animScale = remember { Animatable(0f) }
+    val animAlpha = remember { Animatable(0f) }
+    // Colores exactos de tu ejemplo ListeningBarView
+    val neonColors = listOf(
+        Color(0xFF2979FF), // azul eléctrico
+        Color(0xFFD500F9), // violeta neón
+        Color(0xFFFF1744), // rojo vivo
+        Color(0xFFFF6D00), // naranja
+        Color(0xFFFFD600), // amarillo
+        Color(0xFF00E676), // verde neón
+        Color(0xFF2979FF)  // cierra el ciclo
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "neon")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "rotation"
+    )
+
+    LaunchedEffect(Unit) {
+        animAlpha.animateTo(1f, tween(1500))
+        animScale.animateTo(1.2f, tween(1200, easing = FastOutSlowInEasing))
+        animScale.animateTo(1f, tween(800, easing = OvershootEasing(1.5f)))
+    }
+
+    Box(modifier = Modifier.fillMaxSize().padding(WindowInsets.systemBars.asPaddingValues())) {
+
+        // --- PARTE CENTRAL (ORBE Y TEXTOS) ---
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            JarvisOrb(
+                modifier = Modifier
+                    .size(490.dp)
+                    .scale(animScale.value)
+                    .alpha(if (isTransitioning) 0f else animAlpha.value),
+                energy = energy
+            )
+            Spacer(modifier = Modifier.height(22.dp))
+            Text(
+                text = "NEXUS",
+                fontSize = 56.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                letterSpacing = 4.sp,
+                modifier = Modifier
+                    .offset(y = (-100).dp)
+                    .alpha(if (isTransitioning) 0f else animAlpha.value)
+            )
+            Text(
+                text = "Tu asistente de voz inteligente",
+                fontSize = 20.sp,
+                color = Color.LightGray,
+                modifier = Modifier
+                    .offset(y = (-100).dp)
+                    .alpha(if (isTransitioning) 0f else animAlpha.value)
+            )
+        }
+
+        // --- PARTE INFERIOR (SLIDER CON GLOW ROTATORIO) ---
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = (-50).dp)
+                .padding(horizontal = 55.dp, vertical = 60.dp)
+                .fillMaxWidth()
+                .height(75.dp)
+                .alpha(animAlpha.value)
+                .padding(0.dp)  // separación interna para que el slider no tape el glow
+        ) {
+            key(sliderKey){
+                var isTransitioning by remember { mutableStateOf(false) }
+                AndroidView(
+                    factory = { ctx ->
+                        SlideToActView(ctx).apply {
+                            text = "COMENZAR"
+                            textColor = android.graphics.Color.WHITE
+                            // textAppearance = R.style.SliderTextAppearance  // comenta si no existe
+                            outerColor = android.graphics.Color.parseColor("#33F0FBFF")
+                            innerColor = android.graphics.Color.parseColor("#B3FFFFFF")
+                            sliderIcon = R.drawable.ic_mic_vector
+                            bumpVibration = 50L
+
+                            onSlideCompleteListener = object : SlideToActView.OnSlideCompleteListener {
+                                    override fun onSlideComplete(view: SlideToActView) {
+                                        if (isTransitioning) return
+                                        isTransitioning = true
+
+                                        postDelayed({
+                                            context.startActivity(
+                                                Intent(
+                                                    context,
+                                                    LoginActivity::class.java
+                                                )
+                                            )
+                                        }, 200)
+                                    }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+
+    }
+
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF070B2C)
+@Composable
+fun MainPreview() {
+    MainComposeScreen(energy = 4f)
+}
+//fun Modifier.glowingRoundedRect(
+//    rotation: Float,
+//    energy: Float = 1f,
+//    cornerRadius: androidx.compose.ui.unit.Dp = 24.dp,
+//    strokeWidthOuter: androidx.compose.ui.unit.Dp = 16.dp,
+//    strokeWidthInner: androidx.compose.ui.unit.Dp = 8.dp,
+//    blurOuter: Float = 20f,
+//    blurInner: Float = 10f
+//): Modifier = this.drawWithContent {
+//    drawContent()
+//    drawIntoCanvas { canvas ->
+//        val center = size.center
+//        val cornerPx = cornerRadius.toPx()
+//
+//        val gradientColors = intArrayOf(
+//            android.graphics.Color.parseColor("#FF00DAF3"),
+//            android.graphics.Color.parseColor("#FF0077FF"),
+//            android.graphics.Color.parseColor("#FF00DAF3"),
+//            android.graphics.Color.parseColor("#FF1A214D"),
+//            android.graphics.Color.parseColor("#FF00DAF3"),
+//
+//
+//        )
+//        // Inner glow — rota en sentido contrario, más rápido (igual que ListeningBarView)
+//        val shaderInner = android.graphics.SweepGradient(
+//            center.x, center.y, gradientColors, null
+//        )
+//        val matrixInner = android.graphics.Matrix().apply {
+//            postRotate(rotation * 2f, center.x, center.y)
+//        }
+//        shaderInner.setLocalMatrix(matrixInner)
+//
+//        val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
+//
+//        val paintInner = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+//            shader = shaderInner
+//            style = Paint.Style.STROKE
+//            strokeWidth = strokeWidthInner.toPx()
+//            maskFilter = BlurMaskFilter(blurInner, BlurMaskFilter.Blur.NORMAL)
+//            alpha = (200 + (energy * 40)).toInt().coerceIn(0, 255)
+//        }
+//        canvas.nativeCanvas.drawRoundRect(rect, cornerPx, cornerPx, paintInner)
+//    }
+//}

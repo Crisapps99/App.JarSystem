@@ -1,4 +1,4 @@
-// ARCHIVO: app/src/main/java/com/example/myapplication/activity/ActionExecutor.kt
+
 package com.example.myapplication.activity
 
 import android.Manifest
@@ -15,17 +15,106 @@ import androidx.core.content.ContextCompat
 import com.example.myapplication.api.ActionDto
 import com.example.myapplication.core.ContactsManager
 import com.example.myapplication.core.MessagingManager
+import com.example.myapplication.core.YoutubeController
+import com.example.myapplication.core.YoutubeController.YouTubeCache
 import com.google.gson.Gson
+import kotlinx.coroutines.launch
+
 
 object ActionExecutor {
 
+    private val YOUTUBE_API_KEY = "AIzaSyDbkFoz0-6cj2AR8cXGJVci2RPK_0oAxos"
     // ── Callback de confirmación (lo setea MyAccessibilityService) ────────────
     var onConfirmacionPendiente: ((confirmado: Boolean) -> Unit)? = null
+
+    var pendingWhatsappContact: String = ""
+    var pendingWhatsappMessage: String = ""
 
     // ── Flag interno para evitar doble disparo ────────────────────────────────
     private var confirmacionEnCurso = false
     private var pendingMessageText: String = ""
+    private var pendingNavName: String = ""
+    private var pendingNavLat: Double = 0.0
+    private var pendingNavLng: Double = 0.0
 
+    fun showPlaceAndConfirmNavigation(
+        context: Context,
+        name: String,
+        address: String,
+        lat: Double,
+        lng: Double,
+        placeId: String = ""
+    ) {
+        // 1. Abrir Maps en el punto exacto (solo vista, no navegación)
+        val uri = "geo:0,0?q=${lat},${lng}(${Uri.encode(name)})"
+        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+            setPackage("com.google.android.apps.maps")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(mapIntent)
+        } catch (e: Exception) {
+            // Fallback: abrir en navegador
+            val webUri = "https://www.google.com/maps/search/?api=1&query=${lat},${lng}"
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webUri)))
+        }
+
+        // 2. Esperar 1.5s para que cargue Maps y luego pedir confirmación
+        Handler(Looper.getMainLooper()).postDelayed({
+            pedirConfirmacionNavegacion(context, name, lat, lng)
+        }, 1500)
+    }
+
+    private fun pedirConfirmacionNavegacion(
+        context: Context,
+        name: String,
+        lat: Double,
+        lng: Double
+    ) {
+        // Guardar datos temporalmente
+        pendingNavName = name
+        pendingNavLat = lat
+        pendingNavLng = lng
+
+        // Registrar callback (reutilizamos el mismo onConfirmacionPendiente, pero con una bandera)
+        // Para no interferir con el de mensajes, podemos usar un callback exclusivo para navegación.
+        // Si prefieres mantener un solo callback, añade un flag "tipoConfirmacion", pero por simplicidad
+        // vamos a crear un callback separado para navegación.
+        onConfirmacionPendiente = null  // limpia cualquier callback anterior
+
+        onConfirmacionPendiente = { confirmado ->
+            if (confirmado) {
+                // Iniciar navegación por voz
+                val navUri = "google.navigation:q=${pendingNavLat},${pendingNavLng}&mode=d"
+                val navIntent = Intent(Intent.ACTION_VIEW, Uri.parse(navUri)).apply {
+                    setPackage("com.google.android.apps.maps")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(navIntent)
+
+                val doneIntent = Intent("JARVIS.NAV_STARTED").apply {
+                    setPackage(context.packageName)
+                }
+                context.sendBroadcast(doneIntent)
+            } else {
+                // Se queda en el mapa, no hace nada
+                val cancelIntent = Intent("JARVIS.NAV_CANCELLED").apply {
+                    setPackage(context.packageName)
+                }
+                context.sendBroadcast(cancelIntent)
+            }
+            pendingNavName = ""; pendingNavLat = 0.0; pendingNavLng = 0.0
+        }
+
+        // Enviar broadcast para que el sistema de voz pregunte
+        val confirmIntent = Intent("JARVIS.PEDIR_CONFIRMACION").apply {
+            putExtra("pregunta", "¿Inicio viaje a $name?")
+            putExtra("tipo", "navigation")
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(confirmIntent)
+        Log.d("JARVIS_ACTION", "❓ Confirmación de navegación solicitada")
+    }
     // ─────────────────────────────────────────────────────────────────────────
     // WHATSAPP - VERSIÓN MEJORADA CON CONFIRMACIÓN DE VOZ
     // ─────────────────────────────────────────────────────────────────────────
@@ -33,40 +122,37 @@ object ActionExecutor {
         Log.d("JARVIS_ACTION", "📱 sendWhatsAppMessage: contacto='$contactName', mensaje='$message'")
 
         val contact = ContactsManager.findContact(context, contactName)
-
         if (contact == null) {
-            Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado")
+            // Si no lo encuentra, al menos abre la app para que el usuario busque
             openApp(context, "com.whatsapp")
             return
         }
 
-        var numero = contact.phoneNumber.replace(Regex("[^0-9+]"), "")
-        if (numero.startsWith("0") && !numero.startsWith("00")) {
-            numero = "593" + numero.substring(1)
-        }
-        numero = numero.replace("+", "")
+        // Limpiar y formatear número
+        var numero = contact.phoneNumber.replace(Regex("[^0-9]"), "")
+        if (numero.startsWith("0")) numero = "593" + numero.substring(1) // Ajusta tu prefijo
+        if (numero.length == 10) numero = "593" + numero.substring(1)
 
-        Log.d("JARVIS_ACTION", "📱 Abriendo WhatsApp con ${contact.name} ($numero)")
+        pendingWhatsappContact = contact.name
+        pendingWhatsappMessage = message
 
-        pendingMessageText = message
-
-        // Abrir WhatsApp con el mensaje pre-escrito (NO lo envía todavía)
+        // FLAG_ACTIVITY_CLEAR_TASK y FLAG_ACTIVITY_NEW_TASK son clave para forzar el cambio de chat
         val url = "https://api.whatsapp.com/send?phone=$numero&text=${Uri.encode(message)}"
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            action = Intent.ACTION_VIEW
+            setPackage("com.whatsapp") // Forzamos que lo abra WhatsApp
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP) // <--- Esta línea obliga a cambiar el chat
         }
-        context.startActivity(intent)
 
-        // Esperar que WhatsApp cargue el chat (~3s) y luego pedir confirmación
-        Handler(Looper.getMainLooper()).postDelayed({
-            _pedirConfirmacionEnvio(
-                context = context,
-                appPackage = "com.whatsapp",
-                nombreContacto = contact.name,
-                mensaje = message
-            )
-        }, 3500) // Aumentado a 3.5 segundos para asegurar carga
+        try {
+            context.startActivity(intent)
+            Log.d("JARVIS_ACTION", "✅ Intent enviado para cambiar a chat de: $numero")
+        } catch (e: Exception) {
+            Log.e("JARVIS_ACTION", "❌ Error al cambiar de chat: ${e.message}")
+        }
     }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // TELEGRAM
@@ -157,7 +243,44 @@ object ActionExecutor {
             Log.d("JARVIS_ACTION", "❓ Confirmación solicitada para $nombreContacto")
         }, 500) // 500ms para que el broadcast de ocultar orbe llegue primero
     }
+    fun controlYoutube(context: Context, comando: String, valor: Int = 0) {
+        Log.d("JARVIS_ACTION", "🎬 Control YouTube: $comando ($valor)")
 
+        when (comando) {
+            "pausar" -> YoutubeController.pausar(context)
+            "play" -> YoutubeController.reproducir(context)
+            "siguiente" -> YoutubeController.siguienteCancion(context)
+            "anterior" -> YoutubeController.anteriorCancion(context)
+            "adelantar" -> YoutubeController.saltarTiempo(context, valor)
+            "retroceder" -> YoutubeController.saltarTiempo(context, -valor)
+            "pantalla_completa" -> togglePantallaCompletaYouTube(context)
+            "salir_pantalla_completa" -> salirPantallaCompletaYouTube(context)
+
+        }
+    }
+
+    private fun togglePantallaCompletaYouTube(context: Context) {
+        val acciones = listOf(
+            ActionDto(
+                tipo = "tap_by_id",
+                params = mapOf("id" to "com.google.android.youtube:id/fullscreen_button")
+            )
+        )
+        _ejecutarAccion(context, acciones, "pantalla_completa")
+    }
+
+    fun salirPantallaCompletaYouTube(context: Context) {
+        val acciones = listOf(
+            ActionDto(
+                tipo = "tap_send_button",
+                params = mapOf(
+                    "candidatos" to "Salir de pantalla completa,Exit fullscreen,Minimize,Minimizar",
+                    "fallback" to "back"
+                )
+            )
+        )
+        _ejecutarAccion(context, acciones, "salir_pantalla_completa")
+    }
     // ─────────────────────────────────────────────────────────────────────────
     // EJECUTAR TAP EN BOTÓN DE ENVIAR
     // ─────────────────────────────────────────────────────────────────────────
@@ -293,73 +416,35 @@ object ActionExecutor {
      * @param query Búsqueda (canción, artista, etc.)
      * @param appPackage Paquete de la app (spotify o youtube music)
      */
+    /**
+     * Reproduce música automáticamente en Spotify o YouTube Music.
+     * @param query Búsqueda (canción, artista, etc.)
+     * @param appPackage Paquete de la app (spotify o youtube music)
+     */
     fun playMusic(context: Context, query: String, appPackage: String = "com.spotify.music") {
         Log.d("ActionExecutor", "🎵 playMusic: query='$query', app='$appPackage'")
 
-        // ✅ Declarar encodedQuery UNA SOLA VEZ al inicio
-        val encodedQuery = Uri.encode(query)
-
         try {
-            when {
-                appPackage.contains("spotify") -> {
-                    // Método 1: Deep link de Spotify que reproduce automáticamente
-                    val spotifyUri = "https://open.spotify.com/search/$encodedQuery"
-
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(spotifyUri)).apply {
-                        setPackage("com.spotify.music")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        // Forzar reproducción automática
-                        putExtra("autoplay", true)
-                    }
-
-                    context.startActivity(intent)
-                    Log.d("ActionExecutor", "✅ Spotify abierto: búsqueda '$query' con autoplay")
-                }
-
-                appPackage.contains("youtube") -> {
-                    // Método 2: YouTube Music con reproducción automática
-                    // ✅ encodedQuery ya está declarado, no lo declares de nuevo
-
-                    // Intentar primero con MEDIA_PLAY_FROM_SEARCH
-                    val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
-                        putExtra(android.app.SearchManager.QUERY, query)
-                        putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*")
-                        setPackage("com.google.android.apps.youtube.music")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-
-                    try {
-                        context.startActivity(intent)
-                        Log.d("ActionExecutor", "✅ YouTube Music: reproduciendo '$query'")
-                    } catch (e: Exception) {
-                        // Fallback: abrir YouTube normal
-                        val fallbackIntent = Intent(Intent.ACTION_VIEW,
-                            Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery&autoplay=1")).apply {
-                            setPackage("com.google.android.youtube")
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        context.startActivity(fallbackIntent)
-                        Log.d("ActionExecutor", "✅ Fallback a YouTube: buscando '$query'")
-                    }
-                }
-
-                else -> {
-                    // Método genérico
-                    val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
-                        putExtra(android.app.SearchManager.QUERY, query)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("ActionExecutor", "❌ Error reproduciendo música: ${e.message}")
-            // Último recurso: abrir navegador con búsqueda
-            val webIntent = Intent(Intent.ACTION_VIEW,
-                Uri.parse("https://www.google.com/search?q=${Uri.encode(query)}+música")).apply {
+            // Usamos el Intent estándar de Android para "Buscar y Reproducir"
+            val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
+                putExtra(android.app.SearchManager.QUERY, query)
+                putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*")
+                setPackage(appPackage)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(webIntent)
+
+            // Para Spotify específicamente, a veces necesita este extra
+            if (appPackage.contains("spotify")) {
+                intent.putExtra("android.intent.extra.title", query)
+            }
+
+            context.startActivity(intent)
+            Log.d("ActionExecutor", "✅ Comando de reproducción enviado a $appPackage")
+
+        } catch (e: Exception) {
+            Log.e("ActionExecutor", "❌ Error en playMusic: ${e.message}")
+            // Fallback: abrir la app si el intent de reproducción falla
+            openApp(context, appPackage)
         }
     }
     /**
@@ -407,44 +492,115 @@ object ActionExecutor {
             Log.e("ActionExecutor", "❌ Error: ${e.message}")
         }
     }
-    /**
-     * Reproduce video automáticamente en YouTube.
-     */
-    /**
-     * Reproduce video automáticamente en YouTube.
-     */
-    fun playVideo(context: Context, query: String) {
-        Log.d("ActionExecutor", "🎬 playVideo: query='$query'")
 
+    fun playVideo(context: Context, query: String) {
+        val cachedId = YouTubeCache.get(query)
+        if (cachedId != null) {
+            reproducirPorId(context, cachedId)
+            return
+        }
+        Log.d("ActionExecutor", "🎬 playVideo: query='$query'")
         if (query.isBlank()) {
-            Log.w("ActionExecutor", "⚠️ Query vacía, abriendo YouTube")
             openApp(context, "com.google.android.youtube")
             return
         }
 
-        // ✅ encodedQuery declarado FUERA del try-catch
-        val encodedQuery = Uri.encode(query)
-
-        try {
-            // Intentar abrir YouTube con autoplay
-            val intent = Intent(Intent.ACTION_VIEW,
-                Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery&autoplay=1")).apply {
-                setPackage("com.google.android.youtube")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // Buscar en background y reproducir directamente por ID
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val videoId = buscarVideoIdEnYouTube(query)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (videoId != null) {
+                        Log.d("ActionExecutor", "✅ Video ID encontrado: $videoId")
+                        reproducirPorId(context, videoId)
+                    } else {
+                        Log.w("ActionExecutor", "⚠️ No se encontró ID, usando fallback")
+                        reproducirFallback(context, query)
+                    }
+                }
             }
-            context.startActivity(intent)
-            Log.d("ActionExecutor", "✅ YouTube: '$query' con autoplay")
-
-        } catch (e: Exception) {
-            Log.e("ActionExecutor", "❌ Error abriendo YouTube: ${e.message}")
-            // Fallback: abrir en navegador
-            val webIntent = Intent(Intent.ACTION_VIEW,
-                Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery")).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(webIntent)
         }
     }
+
+    private suspend fun buscarVideoIdEnYouTube(query: String): String? {
+        return try {
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+
+            val url = "https://www.googleapis.com/youtube/v3/search" +
+                    "?part=snippet" +
+                    "&q=${android.net.Uri.encode(query)}" +
+                    "&type=video" +
+                    "&maxResults=1" +
+                    "&key=$YOUTUBE_API_KEY"
+
+            val request = okhttp3.Request.Builder().url(url).build()
+            val response = client.newCall(request).execute()
+            val responseCode = response.code
+            val responseBody = response.body?.string() ?: ""
+            Log.d("ActionExecutor", "📡 Código de respuesta YouTube: $responseCode")
+
+            if (!response.isSuccessful) {
+                Log.e("ActionExecutor", "❌ YouTube API error: ${response.code}")
+                return null
+            }
+
+            if (responseBody.isNullOrBlank()) {
+                Log.e("ActionExecutor", "❌ El cuerpo de la respuesta está vacío")
+                return null
+            }
+            // IMPRIMIR EL JSON COMPLETO PARA ANÁLISIS
+            Log.d("ActionExecutor", "📦 JSON RECIBIDO DE YOUTUBE: $responseBody")
+
+            val json = org.json.JSONObject(responseBody)
+            val items = json.optJSONArray("items")
+            if (items != null && items.length() > 0) {
+                val videoId = items.getJSONObject(0).getJSONObject("id").getString("videoId")
+                Log.d("ActionExecutor", "🎯 Video ID: $videoId para query: '$query'")
+                videoId
+            } else {
+                Log.w("ActionExecutor", "⚠️ Sin resultados para: '$query'")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("ActionExecutor", "❌ Error YouTube API: ${e.message}")
+            null
+        }
+    }
+
+    private fun reproducirPorId(context: Context, videoId: String) {
+        // vnd.youtube: hace que YouTube reproduzca directamente sin mostrar lista
+        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$videoId")).apply {
+            setPackage("com.google.android.youtube")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        try {
+            context.startActivity(intent)
+            Log.d("ActionExecutor", "✅ Reproduciendo video: $videoId")
+        } catch (e: Exception) {
+            // Si falla vnd.youtube, intentar con https
+            val fallbackIntent = Intent(Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://www.youtube.com/watch?v=$videoId")
+            ).apply {
+                setPackage("com.google.android.youtube")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            context.startActivity(fallbackIntent)
+        }
+    }
+
+    private fun reproducirFallback(context: Context, query: String) {
+        val intent = Intent(Intent.ACTION_VIEW,
+            android.net.Uri.parse("https://www.youtube.com/results?search_query=${android.net.Uri.encode(query)}")
+        ).apply {
+            setPackage("com.google.android.youtube")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        context.startActivity(intent)
+    }
+
 
     fun setAlarmAtTimestamp(context: Context, timestampMillis: Long, label: String = "") {
         val calendar = java.util.Calendar.getInstance().apply {

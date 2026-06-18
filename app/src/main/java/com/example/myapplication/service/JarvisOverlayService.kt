@@ -1,132 +1,135 @@
 package com.example.myapplication.service
 
-import android.animation.ValueAnimator
 import android.app.*
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
+import android.content.IntentFilter
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.text.Html
 import android.util.Log
 import android.view.*
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
+import androidx.compose.runtime.Recomposer
+import androidx.compose.ui.platform.AndroidUiDispatcher
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.compositionContext
+import androidx.lifecycle.*
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
 import androidx.core.app.NotificationCompat
-import com.example.myapplication.R
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.myapplication.core.*
-import com.example.myapplication.ui.ListeningBarView
-import com.example.myapplication.ui.VoiceWaveView
+import com.example.myapplication.ui.*
 import kotlinx.coroutines.*
 
 class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
     // ── Ventana ──────────────────────────────────────────────────────────────
     private var windowManager: WindowManager? = null
-    private var overlayView: View? = null
+    private var composeView: ComposeView? = null
 
-    // ── Barra inferior ───────────────────────────────────────────────────────
-    private var listeningBar: ListeningBarView? = null
-    private var tvListeningLabel: TextView? = null
-    private var ivMicIcon: ImageView? = null
-    private var voiceWaveView: VoiceWaveView? = null
-    private var btnMicContainer: FrameLayout? = null
-    private var btnPauseContainer: FrameLayout? = null
+    // ── Estado Compose ───────────────────────────────────────────────────────
+    private val uiState   = JarvisOverlayUiState()
+    private val barState  = ListeningBarState()
 
-    // ── Panel de resultados ──────────────────────────────────────────────────
-    private var frameContainer: FrameLayout? = null
-    private var resultsPanelInner: LinearLayout? = null
-    private var imagesScrollView: android.widget.HorizontalScrollView? = null
-    private var imagesInnerLayout: LinearLayout? = null   // creado programáticamente
-    private var tvTranscription: TextView? = null
-    private var chipsContainer: LinearLayout? = null
-
+    private var stepsJob: Job? = null
     // ── Control ──────────────────────────────────────────────────────────────
     private lateinit var controller: JarvisVoiceController
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val mainHandler  = Handler(Looper.getMainLooper())
     private lateinit var voiceEngine: ContinuousVoiceEngine
 
     @Volatile private var wakeWordPaused = false
-    private var currentJarvisState: JarvisState = JarvisState.IDLE
     private var isOverlayReady = false
     private var ultimoResultadoBusqueda: SearchResult? = null
-    private var typewriterHandler: Handler? = null
-    private var currentCharIndex = 0
-    private var fullPlainText = ""
-    private var isTyping = false
-    private var currentHtmlText = ""
-    companion object {
-        private const val TAG = "JARVIS_OVERLAY"
-        private const val NOTIFICATION_ID = 1001
-        private const val CHANNEL_ID = "nexus_overlay"
 
-        // Colores del tema oscuro
-        private const val COLOR_BG_DARK    = "#1C1C1E"
-        private const val COLOR_TEXT_MAIN  = "#E8E8F0"
-        private const val COLOR_TEXT_DIM   = "#9999BB"
-        private const val COLOR_CHIP_BG    = "#2C2C3A"
-        private const val COLOR_CHIP_BORDER= "#3A3A50"
-        private const val COLOR_AQUA       = "#4DEEE9"
-        private const val COLOR_BLUE       = "#7BD7F8"
-        private const val COLOR_GREEN      = "#1DE0A0"
+    // Typewriter
+    private var typewriterJob: Job? = null
+
+    companion object {
+        private const val TAG           = "JARVIS_OVERLAY"
+        private const val NOTIFICATION_ID = 1001
+        private const val CHANNEL_ID   = "nexus_overlay"
     }
-    private inline fun <reified T : View> findViewById(id: Int): T? = overlayView?.findViewById(id)
+
+    // ── Lifecycle owner para ComposeView (requerido fuera de Activity) ───────
+    private val lifecycleOwner = ServiceLifecycleOwner()
+
     // ────────────────────────────────────────────────────────────────────────
     // LIFECYCLE
     // ────────────────────────────────────────────────────────────────────────
-
+    private val whatsappPreviewReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "JARVIS.SHOW_WHATSAPP_PREVIEW") {
+                val contact = intent.getStringExtra("contact") ?: return
+                val message = intent.getStringExtra("message") ?: return
+                Log.d(TAG, "📱 Mostrando preview de WhatsApp para $contact")
+                mainHandler.post {
+                    uiState.pendingWhatsappContact = contact
+                    uiState.pendingWhatsappMessage = message
+                    uiState.showWhatsappPreview = true
+                    uiState.showPanel = true
+                    // Aseguramos que el overlay sea visible
+                    showOverlay()
+                }
+            }
+        }
+    }
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "🚀 Servicio creado")
         startForeground(NOTIFICATION_ID, createNotification())
+        lifecycleOwner.start()
         createOverlay()
 
         mainHandler.postDelayed({
-            voiceEngine = ContinuousVoiceEngine(
-                context = this,
-                onWakeWordDetected = {
-                    Log.d(TAG, "🎤 Wake word detectado!")
-                    serviceScope.launch(Dispatchers.Main) { onWakeWordDetected() }
-                },
-                onFinalResult = { texto -> Log.d(TAG, "Resultado final: $texto") },
-                onPartialResult = { parcial -> Log.v(TAG, "Parcial: $parcial") },
-                onRmsChanged = { rms -> mainHandler.post { updateORB(rms) } }
-            )
             controller = JarvisVoiceController(
-                context = this,
-                ui = this,
-                scope = serviceScope,
-                porcupineController = this
+                context              = this,
+                ui                   = this,
+                scope                = serviceScope,
+                porcupineController  = this,
+                uiState = uiState
             )
             controller.init()
             showOverlay()
-            tvTranscription?.text = "Di 'Hey Nexus' para activarme"
+            uiState.transcription = "Di 'Hey Nexus' para activarme"
         }, 900)
+        registerReceiver(whatsappPreviewReceiver, IntentFilter("JARVIS.SHOW_WHATSAPP_PREVIEW"),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Context.RECEIVER_NOT_EXPORTED else 0)
     }
-//tama;o del panel
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterReceiver(whatsappPreviewReceiver)
         if (::controller.isInitialized) controller.destroy()
-        overlayView?.let {
+        composeView?.let {
             try { windowManager?.removeView(it) } catch (e: Exception) {
                 Log.e(TAG, "Error removiendo overlay: ${e.message}")
             }
         }
+        lifecycleOwner.stop()
         serviceScope.cancel()
         Log.d(TAG, "Servicio destruido")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
+    // Dentro de JarvisOverlayService, junto a los otros override de JarvisUi
+    override fun updateUserTranscription(text: String) {
+        mainHandler.post {
+            if (!isOverlayReady) return@post
+            uiState.userTranscription = text
+            // Si el usuario está hablando, cancelamos cualquier temporizador de borrado
+            if (text.isNotBlank()) {
+                mainHandler.removeCallbacksAndMessages("HIDE_UI_IDLE")
+            }
+        }
+    }
     // ────────────────────────────────────────────────────────────────────────
     // CREAR OVERLAY
     // ────────────────────────────────────────────────────────────────────────
@@ -134,55 +137,45 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     private fun createOverlay() {
         try {
             windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-            overlayView = LayoutInflater.from(this).inflate(R.layout.view_bar, null)
 
-            // Barra inferior
-            listeningBar      = overlayView!!.findViewById(R.id.containerOuter)
-            tvListeningLabel  = overlayView!!.findViewById(R.id.tvListeningLabel)
-            ivMicIcon         = overlayView!!.findViewById(R.id.ivMicIcon)
-            voiceWaveView     = overlayView!!.findViewById(R.id.voiceWaveView)
-            btnMicContainer   = overlayView!!.findViewById(R.id.btnMicContainer)
-            btnPauseContainer = overlayView!!.findViewById(R.id.btnPauseContainer)
-
-            // Panel de resultados
-            frameContainer   = overlayView!!.findViewById(R.id.frameContainer)
-            resultsPanelInner = overlayView!!.findViewById(R.id.resultsPanelInner)
-            imagesScrollView = overlayView!!.findViewById(R.id.imagesScrollView)
-            tvTranscription  = overlayView!!.findViewById(R.id.tvTranscription)
-            chipsContainer   = overlayView!!.findViewById(R.id.chipsContainer)
-
-            // LinearLayout interno del scroll de imágenes (creado aquí para full-width)
-            imagesInnerLayout = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-            imagesScrollView?.addView(imagesInnerLayout)
-
-            // Fondo del panel de resultados: oscuro con esquinas redondeadas solo arriba
-            aplicarFondoOscuroConEsquinas(resultsPanelInner, soloArriba = false)
-
-            // Tap en mic: activa/cancela
-            btnMicContainer?.setOnClickListener {
-                if (!::controller.isInitialized) return@setOnClickListener
-                if (currentJarvisState == JarvisState.IDLE) {
-                    onWakeWordDetected()
-                } else {
-                    controller.detenerSesionCompleta()
-                    renderState(JarvisState.IDLE)
+            composeView = ComposeView(this).apply {
+                setContent {
+                    JarvisOverlayContent(
+                        uiState      = uiState,
+                        barState     = barState,
+                        onMicClick   = {
+                            if (!::controller.isInitialized) return@JarvisOverlayContent
+                            if (uiState.jarvisState == com.example.myapplication.core.JarvisState.IDLE) {
+                                onWakeWordDetected()
+                            } else {
+                                controller.detenerSesionCompleta()
+                                renderState(com.example.myapplication.core.JarvisState.IDLE)
+                            }
+                        },
+                        onPauseClick = {
+                            if (::controller.isInitialized) {
+                                controller.detenerAudio()
+                                renderState(com.example.myapplication.core.JarvisState.IDLE)
+                            }
+                        },
+                        onBackgroundClick = {
+                            // Ejecutar el reset total
+                            handleBackgroundDismiss()
+                        }
+                    )
                 }
             }
 
-            // Tap en pausa: detiene TTS
-            btnPauseContainer?.setOnClickListener {
-                if (::controller.isInitialized) {
-                    controller.detenerAudio()
-                    renderState(JarvisState.IDLE)
-                }
-            }
+            // Conectar ComposeView al LifecycleOwner del Service
+            composeView!!.setViewTreeLifecycleOwner(lifecycleOwner)
+            composeView!!.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+
+            // Recomposer manual (necesario en un Service sin Activity)
+            val coroutineContext = AndroidUiDispatcher.CurrentThread
+            val runRecomposeScope = CoroutineScope(coroutineContext)
+            val recomposer = Recomposer(coroutineContext)
+            composeView!!.compositionContext = recomposer
+            runRecomposeScope.launch { recomposer.runRecomposeAndApplyChanges() }
 
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -197,77 +190,31 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             )
             params.gravity = Gravity.BOTTOM
 
-//            overlayView?.setOnTouchListener { _, event ->
-//                if (event.action == MotionEvent.ACTION_OUTSIDE) { hideOverlay(); true } else false
-//            }
-
-            windowManager?.addView(overlayView, params)
-            overlayView?.visibility = View.GONE
+            windowManager?.addView(composeView, params)
+            composeView?.visibility = View.GONE
             isOverlayReady = true
-            Log.d(TAG, "✅ Overlay creado")
+            Log.d(TAG, "✅ Overlay Compose creado")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error creando overlay: ${e.message}")
             isOverlayReady = false
         }
     }
+    private fun handleBackgroundDismiss() {
+        Log.d(TAG, "Touch detectado fuera - Volviendo a Wake Word")
 
-    /**
-     * Fondo oscuro con esquinas redondeadas.
-     * soloArriba=true → solo esquinas superiores redondeadas (cuando el panel se acopla a la barra).
-     */
-    private fun aplicarFondoOscuroConEsquinas(view: View?, soloArriba: Boolean) {
-        val r = 22f * resources.displayMetrics.density
-        view?.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            if (soloArriba) {
-                cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
-            } else {
-                cornerRadius = r
-            }
-            setColor(Color.parseColor(COLOR_BG_DARK))
+        // 1. Detener escucha/procesamiento
+        if (::controller.isInitialized) {
+            controller.detenerSesionCompleta()
         }
+
+        // 2. Limpiar estados de UI
+        renderState(JarvisState.IDLE)
+        uiState.userTranscription = ""
+        ocultarPanelResultados()
+
+        // 3. Ocultar el overlay (la barra también)
+        hideOverlay()
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // PANEL DE RESULTADOS
-    // ────────────────────────────────────────────────────────────────────────
-
-    private fun mostrarPanelResultados() {
-        val panel = frameContainer ?: return
-        if (panel.visibility == View.VISIBLE) return
-
-        // Empieza invisible y desplazado hacia abajo
-        panel.alpha = 0f
-        panel.translationY = 0f
-        panel.visibility = View.VISIBLE
-
-        panel.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(350)
-            .setInterpolator(android.view.animation.DecelerateInterpolator(2f))
-            .start()
-    }
-
-    private fun ocultarPanelResultados() {
-        frameContainer?.let { panel ->
-            if (panel.visibility == View.VISIBLE) {
-                panel.animate().alpha(0f).setDuration(200).withEndAction {
-                    panel.visibility = View.GONE
-                    limpiarContenidoPanel()
-                }.start()
-            }
-        }
-    }
-
-    private fun limpiarContenidoPanel() {
-        tvTranscription?.text = ""
-        imagesInnerLayout?.removeAllViews()
-        imagesScrollView?.visibility = View.GONE
-        chipsContainer?.removeAllViews()
-        chipsContainer?.visibility = View.GONE
-    }
-
     // ────────────────────────────────────────────────────────────────────────
     // JarvisUi
     // ────────────────────────────────────────────────────────────────────────
@@ -279,33 +226,18 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         }
         mainHandler.post {
             if (!isOverlayReady) return@post
-            mostrarPanelResultados()
+            uiState.applyText(text)
+            uiState.showPanel = true
 
-            val formatoHtml = text
-                .replace(Regex("\\*\\*(.*?)\\*\\*"), "<b>$1</b>")
-                .replace(Regex("» (.*?)"), "<font color='$COLOR_AQUA'><b>» $1</b></font>")
-                .replace("•", "<font color='$COLOR_AQUA'>•</font>")
-                .replace("\n", "<br/>")
-
-            tvTranscription?.run {
-                setLineSpacing(5f * resources.displayMetrics.density, 1.0f)
-                this.text = android.text.Html.fromHtml(formatoHtml, android.text.Html.FROM_HTML_MODE_LEGACY)
-                setTextColor(Color.parseColor(COLOR_TEXT_MAIN))
-                visibility = View.VISIBLE
-            }
-            if (currentJarvisState == JarvisState.IDLE && text.length < 50) {
+            if (uiState.jarvisState == com.example.myapplication.core.JarvisState.IDLE && text.length < 50) {
                 mainHandler.removeCallbacksAndMessages(null)
                 mainHandler.postDelayed({
-                    if (currentJarvisState == JarvisState.IDLE &&
-                        frameContainer?.visibility == View.VISIBLE &&
-                        tvTranscription?.text?.toString()?.length ?: 0 < 100) {
+                    if (uiState.jarvisState == com.example.myapplication.core.JarvisState.IDLE &&
+                        uiState.showPanel &&
+                        (uiState.transcription.length) < 100) {
                         ocultarPanelResultados()
                     }
                 }, 15_000L)
-            } else if (currentJarvisState == JarvisState.IDLE && text.length >= 50) {
-                // Si el texto es largo (resultado de búsqueda), mantenemos el panel visible
-                // y NO programamos auto-ocultado
-                Log.d(TAG, "Resultado largo ($text.length chars) - manteniendo panel visible permanentemente hasta nueva interacción")
             }
         }
     }
@@ -313,214 +245,68 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     override fun showImages(urls: List<String>) {
         mainHandler.post {
             if (!isOverlayReady) return@post
-
-            imagesInnerLayout?.removeAllViews()
-            mostrarPanelResultados()
-
-            val density = resources.displayMetrics.density
-            // Alto fijo: imágenes de pantalla completa sin espacios a los lados
-            val imageH = (185 * density).toInt()
-            val imageW = (185 * density).toInt()
-
-            urls.take(6).forEach { url ->
-                val imageView = ImageView(this).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    // Sin bordes redondeados — imagen de borde a borde como en Copilot
-                    layoutParams = LinearLayout.LayoutParams(imageW, imageH).apply {
-                        marginEnd = (3 * density).toInt()
-                    }
-                    cargarImagenNativa(url, serviceScope, this)
-                    setOnClickListener {
-                        try {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            })
-                        } catch (e: Exception) { Log.e(TAG, "Error abriendo imagen: ${e.message}") }
-                    }
-                }
-                imagesInnerLayout?.addView(imageView)
-            }
-
-            // Ajustar alto del HorizontalScrollView al tamaño de las imágenes
-            imagesScrollView?.layoutParams?.height = imageH
-            imagesScrollView?.requestLayout()
-
-            // Fondo oscuro con esquinas redondeadas ARRIBA del scroll (primera sección visible)
-            imagesScrollView?.background = GradientDrawable().apply {
-                val r = 22f * density
-                cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
-                setColor(Color.parseColor(COLOR_BG_DARK))
-            }
-            imagesScrollView?.clipToOutline = true
-            imagesScrollView?.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
-
-            imagesScrollView?.visibility = View.VISIBLE
+            uiState.applyImages(urls)
         }
     }
 
     override fun renderState(state: JarvisState) {
-        currentJarvisState = state
         mainHandler.post {
             if (!isOverlayReady) return@post
-            when (state) {
-                JarvisState.LISTENING -> {
-                    tvListeningLabel?.text = "ESCUCHANDO"
-                    tvListeningLabel?.setTextColor(Color.parseColor(COLOR_AQUA))
-                    listeningBar?.animateWithEnergy(0.7f)
-                    setMicMode(ttsHablando = false)
-                    btnPauseContainer?.visibility = View.GONE
-                }
-                JarvisState.THINKING -> {
-                    tvListeningLabel?.text = "PENSANDO"
-                    tvListeningLabel?.setTextColor(Color.parseColor(COLOR_BLUE))
-                    listeningBar?.animateWithEnergy(0.4f)
-                    setMicMode(ttsHablando = false)
-                    btnPauseContainer?.visibility = View.GONE
-                }
-                JarvisState.SPEAKING -> {
-                    tvListeningLabel?.text = "HABLANDO"
-                    tvListeningLabel?.setTextColor(Color.parseColor(COLOR_GREEN))
-                    listeningBar?.animateWithEnergy(0.6f)
-                    setMicMode(ttsHablando = true)
-                    btnPauseContainer?.visibility = View.VISIBLE
-                }
-                JarvisState.IDLE -> {
-                    tvListeningLabel?.text = "NEXUS"
-                    tvListeningLabel?.setTextColor(Color.WHITE)
-                    listeningBar?.animateWithEnergy(0.15f)
-                    setMicMode(ttsHablando = false)
-                    btnPauseContainer?.visibility = View.GONE
-                    resumeWakeWordDetection()
-                    // Solo ocultar panel si no hay texto mostrado o es muy corto
-                    val textoActual = tvTranscription?.text?.toString() ?: ""
-                    if (textoActual.isBlank() || textoActual.length < 50) {
-                        mainHandler.postDelayed({
-                            if (currentJarvisState == JarvisState.IDLE) ocultarPanelResultados()
-                        }, 3_000L)
-                    } else {
-                        Log.d(TAG, "Resultado largo presente ($textoActual.length chars) - manteniendo panel visible")
-                        // No programamos ocultado automático
+            uiState.applyJarvisState(state)
+            barState.animateWithEnergy(when (state) {
+                JarvisState.LISTENING -> 0.7f
+                JarvisState.THINKING  -> 0.4f
+                JarvisState.SPEAKING  -> 0.6f
+                JarvisState.IDLE      -> 0.15f
+            })
+
+            if (state == JarvisState.IDLE) {
+                resumeWakeWordDetection()
+                mainHandler.removeCallbacksAndMessages("HIDE_UI_IDLE")
+
+                mainHandler.postAtTime({
+                    if (uiState.jarvisState == JarvisState.IDLE && !uiState.showWhatsappPreview) {
+                        // Limpiamos la transcripción del usuario y el panel de resultados
+                        uiState.userTranscription = ""
+                        ocultarPanelResultados()
+                        Log.d(TAG, "Limpiando UI por inactividad en IDLE")
                     }
-                }
+                }, "HIDE_UI_IDLE", android.os.SystemClock.uptimeMillis() + 5000L) // 5 segundos de espera
+            } else {
+                // Si el estado NO es IDLE (ej. empezó a escuchar), cancelamos el borrado
+                mainHandler.removeCallbacksAndMessages("HIDE_UI_IDLE")
             }
         }
     }
+
+
 
     override fun updateORB(rms: Float) {
         mainHandler.post {
             if (!isOverlayReady) return@post
             val energy = (rms / 15f).coerceIn(0f, 1f)
-            listeningBar?.updateProgress(energy)
-            if (currentJarvisState == JarvisState.LISTENING) listeningBar?.animateWithEnergy(energy)
-            if (currentJarvisState == JarvisState.SPEAKING) voiceWaveView?.setEnergy(energy)
+            barState.updateProgress(energy)
+            if (uiState.jarvisState == JarvisState.LISTENING) barState.animateWithEnergy(energy)
         }
     }
 
     override fun hideOverlayFromTimeout() {
+        if (uiState.showWhatsappPreview) return
         mainHandler.post {
-            if (!isOverlayReady || overlayView?.visibility != View.VISIBLE) return@post
-            if (frameContainer?.visibility == View.VISIBLE) {
+            if (!isOverlayReady || composeView?.visibility != View.VISIBLE) return@post
+            if (uiState.showPanel) {
                 Log.d(TAG, "Timeout con panel visible — manteniendo overlay abierto")
-                if (currentJarvisState != JarvisState.IDLE) {
-                    renderState(JarvisState.IDLE)
-                }
+                if (uiState.jarvisState != JarvisState.IDLE) renderState(JarvisState.IDLE)
                 return@post
             }
             Log.d(TAG, "Ocultando overlay por timeout")
-            overlayView?.animate()?.alpha(0f)?.setDuration(300)?.withEndAction {
-                overlayView?.visibility = View.GONE
+            composeView?.animate()?.alpha(0f)?.setDuration(300)?.withEndAction {
+                composeView?.visibility = View.GONE
                 ocultarPanelResultados()
             }?.start()
         }
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // BOTÓN MIC / ONDAS / PAUSA
-    // ────────────────────────────────────────────────────────────────────────
-
-    private fun setMicMode(ttsHablando: Boolean) {
-        if (ttsHablando) {
-            ivMicIcon?.visibility = View.GONE
-            voiceWaveView?.visibility = View.VISIBLE
-        } else {
-            voiceWaveView?.visibility = View.GONE
-            ivMicIcon?.visibility = View.VISIBLE
-        }
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // CHIPS
-    // ────────────────────────────────────────────────────────────────────────
-
-    private fun inyectarChipsDeSugerencia(textoBase: String) {
-        val chips = chipsContainer ?: return
-        chips.removeAllViews()
-        val density = resources.displayMetrics.density
-
-        listOf("🌐 Ver más fuentes", "📋 Copiar texto", "🔄 Volver a buscar").forEach { sugerencia ->
-            val chip = TextView(this).apply {
-                text = sugerencia
-                textSize = 12f
-                setTextColor(Color.parseColor("#CCCCEE"))
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = 14f * density
-                    setColor(Color.parseColor(COLOR_CHIP_BG))
-                    setStroke((1 * density).toInt(), Color.parseColor(COLOR_CHIP_BORDER))
-                }
-                setPadding(
-                    (12 * density).toInt(), (6 * density).toInt(),
-                    (12 * density).toInt(), (6 * density).toInt()
-                )
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { marginEnd = (8 * density).toInt() }
-
-                setOnClickListener {
-                    if (!::controller.isInitialized) return@setOnClickListener
-                    when (sugerencia) {
-                        "🌐 Ver más fuentes" -> {
-                            val query = controller.ultimoResultadoBusqueda?.query ?: ""
-                            val url = if (query.isNotBlank())
-                                "https://www.google.com/search?q=${Uri.encode(query)}"
-                            else "https://www.google.com"
-                            try {
-                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                })
-                            } catch (e: Exception) { Log.e(TAG, "Error: ${e.message}") }
-                        }
-                        "📋 Copiar texto" -> {
-                            val textoACopiar = controller.ultimoResultadoBusqueda?.content ?: textoBase
-                            (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                                .setPrimaryClip(android.content.ClipData.newPlainText("Nexus", textoACopiar))
-                            this.text = "Copiado! ✓"
-                            postDelayed({ this.text = sugerencia }, 1500)
-                        }
-                        "🔄 Volver a buscar" -> onWakeWordDetected()
-                    }
-                }
-            }
-            chips.addView(chip)
-        }
-        chips.visibility = View.VISIBLE
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // WAKE WORD / SESIÓN
-    // ────────────────────────────────────────────────────────────────────────
-
-    private fun onWakeWordDetected() {
-        showOverlay()
-        mainHandler.post {
-            ocultarPanelResultados()
-            tvListeningLabel?.text = "ESCUCHANDO"
-            tvListeningLabel?.setTextColor(Color.parseColor(COLOR_AQUA))
-        }
-        if (::controller.isInitialized) controller.detenerSesionCompleta()
-        serviceScope.launch { controller.startInteraction() }
-    }
     override fun showSearchResult(
         textoCompleto: String,
         fuentes: List<String>,
@@ -529,109 +315,100 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     ) {
         mainHandler.post {
             if (!isOverlayReady) return@post
+            stepsJob?.cancel() // Detener la animación de pasos inmediatamente
+            uiState.processingSteps = emptyList() // Limpiar pasos para dar prioridad al resultado
 
-            // Cancelar typewriter anterior si hubiera
-            typewriterHandler?.removeCallbacksAndMessages(null)
-            isTyping = false
+            // Cancelar typewriter anterior
+            typewriterJob?.cancel()
 
-            // Limpiar contenido previo antes de mostrar
-            limpiarContenidoPanel()
-            tvTranscription?.text = ""
-            tvTranscription?.visibility = View.VISIBLE
+            // Mostrar panel y limpiar solo lo necesario
+            uiState.showPanel = true
+            uiState.fullHtmlText = textoCompleto
+            uiState.typewriterText = ""
+            uiState.imageUrls = imagenes.take(6)
+            uiState.sourceUrls = fuentes
 
-            // Mostrar panel (animación slide desde abajo)
-            mostrarPanelResultados()
-
-            // Imágenes con fade-in
-            if (imagenes.isNotEmpty()) {
-                showImages(imagenes)
-                imagesScrollView?.alpha = 0f
-                imagesScrollView?.animate()?.alpha(1f)?.setDuration(400)?.start()
+            // Iniciar efecto máquina de escribir
+            val plainText = Html.fromHtml(textoCompleto, Html.FROM_HTML_MODE_LEGACY).toString()
+            typewriterJob = serviceScope.launch {
+                uiState.startTypewriter(plainText, delayMs = 120)
+                // Al terminar, dejamos fullHtmlText para que se muestre completo
+                uiState.typewriterText = ""
             }
 
-            // Chips de fuentes
-            if (fuentes.isNotEmpty()) {
-                mostrarChipsFuentes(fuentes)
-            }
-
-            // Extraer texto plano del HTML
-            fullPlainText = android.text.Html.fromHtml(
-                textoCompleto,
-                android.text.Html.FROM_HTML_MODE_LEGACY
-            ).toString().trim()
-            currentHtmlText = textoCompleto
-            currentCharIndex = 0
-            isTyping = true
-
-            // Typewriter: cada carácter va creciendo el TextView,
-            // animateLayoutChanges en el XML hace que el panel suba solo
-            typewriterHandler = Handler(Looper.getMainLooper())
-            val runnable = object : Runnable {
-                override fun run() {
-                    if (!isTyping) return
-                    if (currentCharIndex < fullPlainText.length) {
-                        currentCharIndex = minOf(currentCharIndex + 2, fullPlainText.length)
-                        tvTranscription?.text = fullPlainText.substring(0, currentCharIndex)
-                        typewriterHandler?.postDelayed(this, 18)
-                    } else {
-                        // Aplicar formato HTML completo al terminar
-                        tvTranscription?.text = android.text.Html.fromHtml(
-                            currentHtmlText,
-                            android.text.Html.FROM_HTML_MODE_LEGACY
-                        )
-                        isTyping = false
-                    }
+            // Opcional: limpiar userTranscription después de un tiempo
+            mainHandler.postDelayed({
+                if (uiState.jarvisState == JarvisState.IDLE) {
+                    uiState.userTranscription = ""
                 }
-            }
-            typewriterHandler?.postDelayed(runnable, 150) // pequeño delay tras la animación del panel
+            }, 5000)
         }
     }
 
-    private fun mostrarChipsFuentes(fuentes: List<String>) {
-        val chips = chipsContainer ?: return
-        chips.removeAllViews()
-        val density = resources.displayMetrics.density
+    // ────────────────────────────────────────────────────────────────────────
+    // Panel helpers
+    // ────────────────────────────────────────────────────────────────────────
 
-        fuentes.forEach { url ->
-            val chip = TextView(this).apply {
-                text = "🔗 Fuente"
-                textSize = 12f
-                setTextColor(Color.parseColor("#CCCCEE"))
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = 14f * density
-                    setColor(Color.parseColor(COLOR_CHIP_BG))
-                    setStroke((1 * density).toInt(), Color.parseColor(COLOR_CHIP_BORDER))
-                }
-                setPadding(
-                    (12 * density).toInt(), (6 * density).toInt(),
-                    (12 * density).toInt(), (6 * density).toInt()
-                )
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { marginEnd = (8 * density).toInt() }
+    private fun ocultarPanelResultados() {
+        uiState.hidePanel()
+    }
 
-                setOnClickListener {
-                    try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        })
-                    } catch (e: Exception) { Log.e(TAG, "Error abriendo fuente: ${e.message}") }
-                }
-            }
-            chips.addView(chip)
+    // ────────────────────────────────────────────────────────────────────────
+    // WAKE WORD / SESIÓN
+    // ────────────────────────────────────────────────────────────────────────
+
+    private fun onWakeWordDetected() {
+        showOverlay()
+        uiState.userTranscription = ""
+        uiState.clearPanel()
+        uiState.showPanel = false
+        uiState.applyJarvisState(JarvisState.LISTENING)
+        if (::controller.isInitialized) controller.detenerSesionCompleta()
+        serviceScope.launch { controller.startInteraction() }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // OVERLAY SHOW / HIDE
+    // ────────────────────────────────────────────────────────────────────────
+    override fun updateProcessingSteps(steps: List<ProcessingStep>) {
+        stepsJob?.cancel()
+        stepsJob = serviceScope.launch {
+            uiState.processingSteps = steps  // limpia antes de empezar
+
         }
-        chips.visibility = View.VISIBLE
     }
 
-    private fun mostrarPreguntasSugeridas(preguntas: List<String>) {
-        // Similar a los chips, pero con acción de enviar la pregunta como nuevo comando
-        // Puedes reutilizar el mismo código que en inyectarChipsDeSugerencia
+    private fun showOverlay() {
+        if (!isOverlayReady) return
+        composeView?.let {
+            if (it.visibility != View.VISIBLE) {
+                it.visibility = View.VISIBLE
+                it.alpha = 0f
+                it.animate().alpha(1f).setDuration(300).start()
+            } else {
+                it.alpha = 1f
+            }
+        }
     }
+
+    private fun hideOverlay() {
+        if (!isOverlayReady) return
+        composeView?.let {
+            it.animate().alpha(0f).setDuration(200).withEndAction {
+                it.visibility = View.GONE
+                if (::controller.isInitialized) controller.detenerSesionCompleta()
+                wakeWordPaused = true
+                resumeWakeWordDetection()
+            }.start()
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Utilidades copiadas intactas del Service original
+    // ────────────────────────────────────────────────────────────────────────
 
     fun mostrarResultadoBusquedaCompleto(resultado: SearchResult) {
-        this.ultimoResultadoBusqueda = resultado
+        ultimoResultadoBusqueda = resultado
         showText(resultado.content)
         if (resultado.imageUrls.isNotEmpty()) showImages(resultado.imageUrls)
     }
@@ -640,7 +417,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         val comando = textoHablado.lowercase().trim()
         if (comando.contains("copiar texto") || comando.contains("copia el texto")) {
             ultimoResultadoBusqueda?.let { ejecutarCopiarTexto(it.content) }
-                ?: tvTranscription?.text?.toString()?.let { ejecutarCopiarTexto(it) }
+                ?: uiState.transcription.takeIf { it.isNotBlank() }?.let { ejecutarCopiarTexto(it) }
             return true
         }
         if (comando.contains("ver más") || comando.contains("ver mas") || comando.contains("abrir enlaces")) {
@@ -661,58 +438,15 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
     private fun ejecutarAbrirNavegador(urls: List<String>) {
         val query = ultimoResultadoBusqueda?.query ?: ""
-        val url = if (query.isNotBlank()) "https://www.google.com/search?q=${Uri.encode(query)}"
+        val url   = if (query.isNotBlank()) "https://www.google.com/search?q=${Uri.encode(query)}"
         else if (urls.isNotEmpty()) urls.first()
         else "https://www.google.com"
         try {
-            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             })
             renderState(JarvisState.IDLE)
         } catch (e: Exception) { Log.e(TAG, "Error abriendo navegador: ${e.message}") }
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // OVERLAY SHOW / HIDE
-    // ────────────────────────────────────────────────────────────────────────
-
-    private fun showOverlay() {
-        if (!isOverlayReady) return
-        overlayView?.let {
-            if (it.visibility != View.VISIBLE) {
-                it.visibility = View.VISIBLE
-                it.alpha = 0f
-                it.animate().alpha(1f).setDuration(300).start()
-            } else {
-                it.alpha = 1f
-            }
-        }
-    }
-
-    private fun hideOverlay() {
-        if (!isOverlayReady) return
-        overlayView?.let {
-            it.animate().alpha(0f).setDuration(200).withEndAction {
-                it.visibility = View.GONE
-                if (::controller.isInitialized) controller.detenerSesionCompleta()
-                wakeWordPaused = true
-                resumeWakeWordDetection()
-            }.start()
-        }
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // HELPERS
-    // ────────────────────────────────────────────────────────────────────────
-
-    private fun cargarImagenNativa(url: String, scope: CoroutineScope, imageView: ImageView) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val stream = java.net.URL(url).openStream()
-                val bitmap = android.graphics.BitmapFactory.decodeStream(stream)
-                withContext(Dispatchers.Main) { imageView.setImageBitmap(bitmap) }
-            } catch (e: Exception) { Log.e("JARVIS_IMG", "Error: $url -> ${e.message}") }
-        }
     }
 
     private fun endSession() { stopSelf() }
@@ -721,12 +455,12 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     // PorcupineController
     // ────────────────────────────────────────────────────────────────────────
 
-    override fun pausarPorcupine() { wakeWordPaused = true }
-    override fun reanudarPorcupine() { if (wakeWordPaused) wakeWordPaused = false }
-    override fun esPorcupinePausado(): Boolean = wakeWordPaused
+    override fun pausarPorcupine()      { wakeWordPaused = true }
+    override fun reanudarPorcupine()    { if (wakeWordPaused) wakeWordPaused = false }
+    override fun esPorcupinePausado()   = wakeWordPaused
 
     private fun resumeWakeWordDetection() {
-        if (wakeWordPaused && overlayView?.visibility != View.VISIBLE) {
+        if (wakeWordPaused && composeView?.visibility != View.VISIBLE) {
             wakeWordPaused = false
             Log.d(TAG, "Wake word reanudado")
         }
@@ -736,11 +470,11 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     // JarvisUi — stubs
     // ────────────────────────────────────────────────────────────────────────
 
-    override fun setOrbVisibility(visible: Boolean) { if (visible) showOverlay() else hideOverlay() }
-    override fun onRecognizerReady() {}
+    override fun setOrbVisibility(visible: Boolean)  { if (visible) showOverlay() else hideOverlay() }
+    override fun onRecognizerReady()                 {}
     override fun getCurrentScreenText(): List<String> = ScreenMemory.lastSeenTexts
-    override fun showToast(text: String) {}
-    override fun getDisplayedText(): String = tvTranscription?.text?.toString() ?: ""
+    override fun showToast(text: String)             {}
+    override fun getDisplayedText(): String          = uiState.transcription
 
     // ────────────────────────────────────────────────────────────────────────
     // NOTIFICACIÓN
@@ -758,5 +492,33 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .build()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LifecycleOwner + SavedStateRegistryOwner para usar ComposeView en un Service
+// (sin esto ComposeView lanza IllegalStateException)
+// ─────────────────────────────────────────────────────────────────────────────
+internal class ServiceLifecycleOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
+
+    private val lifecycleRegistry  = LifecycleRegistry(this)
+    private val savedStateController = SavedStateRegistryController.create(this)
+    override val lifecycle: Lifecycle get() = lifecycleRegistry
+    override val viewModelStore     = ViewModelStore()
+    override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
+
+    fun start() {
+        savedStateController.performAttach()
+        savedStateController.performRestore(null)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+    }
+
+    fun stop() {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        viewModelStore.clear()
     }
 }
