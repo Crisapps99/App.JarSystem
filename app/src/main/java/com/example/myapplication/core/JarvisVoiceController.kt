@@ -1,6 +1,7 @@
 package com.example.myapplication.core
 
 import android.Manifest
+import android.R.attr.port
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -44,6 +45,10 @@ import com.example.myapplication.ui.JarvisOverlayUiState
 import com.example.myapplication.ui.StepStatus
 import com.example.myapplication.ui.ProcessingStep
 import kotlinx.coroutines.withTimeoutOrNull
+import com.example.myapplication.grpc.NexusWebSocketClient
+import com.example.myapplication.ui.BarColorMode
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 
 
 enum class JarvisState { IDLE, LISTENING, THINKING, SPEAKING }
@@ -79,7 +84,7 @@ object ElevenLabsConfig {
 }
 
 enum class TtsMode { ANDROID, ELEVEN_LABS }
-private val TTS_MODE = TtsMode.ANDROID
+private val TTS_MODE = TtsMode.ELEVEN_LABS
 
 class JarvisVoiceController(
     private val context: Context,
@@ -117,7 +122,7 @@ class JarvisVoiceController(
     private var esperandoConfirmacion = false
     private var wakeWordCooldown = false
     private val TIMEOUT_ESCUCHA_MS = 5000L  // 5 segundos
-
+    private var esperandoRespuestaServidor = false
     // ── Modo visual (sin cambios) ────────────────────────────────────────────
     private var modoVisualActivo = false
     private var numberedOverlay: NumberedElementsOverlay? = null
@@ -138,8 +143,8 @@ class JarvisVoiceController(
     // ── Ventana anti-eco para confirmaciones ────────────────────────────────
     private var ttsTerminoTimestamp = 0L
     private val ECO_WINDOW_MS = 500L
-
-//    private lateinit var hybridTranscriber: HybridSpeechTranscriber
+    private var timestampUltimoTTS = 0L
+    //    private lateinit var hybridTranscriber: HybridSpeechTranscriber
 //    private var hybridListo = false
     private var confirmationDoneReceiver: BroadcastReceiver? = null
     private var esperandoConfirmacionGoogle = false
@@ -148,15 +153,31 @@ class JarvisVoiceController(
     private val audioManagerSystem by lazy {
         context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
     }
+    // ── Flag para evitar escucharse a sí mismo ──────────────────────────────
+    private var estaHablando = false
+    private val TIEMPO_BLOQUEO_POST_TTS = 1500L  // 1.5 segundos después de TTS
     private lateinit var voiceEngine: ContinuousVoiceEngine
     private var wakeWordDetected = false
+
+    private var wsClient: NexusWebSocketClient? = null
+    private var ultimoComandoEnviado = ""
+    private var ultimoTimestampComando = 0L
+    private var estaProcesandoComando = false
+    private var estaEnviandoAlServidor = false
+    // ── Timeout para respuestas del servidor ──────────────────────────────────
+    private var timeoutServidor: Runnable? = null
+    private val TIMEOUT_SERVIDOR_MS = 15000L  // 15 segundos máximo
+
+    private var spotifyUpdateJob: Job? = null
     // ────────────────────────────────────────────────────────────────────────
     // INICIALIZACIÓN
     // ────────────────────────────────────────────────────────────────────────
 
     fun init() {
+        registrarReceptorSpotify()
         audioManager = AudioManager(context)
         configurarTts()
+        inicializarWebSocket()
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -165,37 +186,40 @@ class JarvisVoiceController(
             return
         }
 
+
         voiceEngine = ContinuousVoiceEngine(
             context = context,
             onWakeWordDetected = {
                 Log.d(TAG, "Wakeword detectado por Vosk")
                 mainHandler.post {
-                    ui.setOrbVisibility(true)  // Esto llama a rlay()
+                    esperandoRespuestaServidor = false
+                    estaEnviandoAlServidor = false
+                    estaProcesandoComando = false
+                    timeoutServidor?.let { mainHandler.removeCallbacks(it) }
+                    ui.setOrbVisibility(true)
+                    ui.showText("🎤 Escuchando...")
+                    // Activar sesión de escucha con Google Cloud STT
+                    sesionActiva = true
+                    isProcessing = false
+                    setState(JarvisState.LISTENING)
                 }
-
-                // Evitar múltiples detecciones mientras ya estamos activos
-                if (sesionActiva) {
-                    Log.d(TAG, "Sesión ya activa, ignorando wake word")
-                    return@ContinuousVoiceEngine
-                }
-
-                if (wakeWordCooldown) {
-                    Log.d(TAG, "En cooldown, ignorando wake word")
-                    return@ContinuousVoiceEngine
-                }
-
-                wakeWordCooldown = true
-                wakeWordDetected = true
-                modoConversacionActivo = false
-                esperandoPostTTS = false
-                startInteraction()
-
-                // Cooldown de 2 segundos para evitar detecciones repetidas
-                mainHandler.postDelayed({ wakeWordCooldown = false }, 2000L)
             },
             onFinalResult = { texto ->
                 Log.d(TAG, "resultado final:  $texto")
+                if (esperandoRespuestaServidor) {
+                    Log.d(TAG, "Ignorando voz mientras se espera respuesta del servidor")
+                    return@ContinuousVoiceEngine
+                }
                 ui.updateUserTranscription(texto)
+                if (estaHablando) {
+                    Log.d(TAG, "Ignorando resultado porque el asistente está hablando")
+                    return@ContinuousVoiceEngine
+                }
+                val tiempoDesdeTTS = System.currentTimeMillis() - timestampUltimoTTS
+                if (tiempoDesdeTTS < TIEMPO_BLOQUEO_POST_TTS + 500) {
+                    Log.d(TAG, " Ignorando resultado (${tiempoDesdeTTS}ms desde último TTS)")
+                    return@ContinuousVoiceEngine
+                }
                 if (sesionActiva && !isProcessing) {
                     isProcessing = true
                     setState(JarvisState.THINKING)
@@ -205,11 +229,10 @@ class JarvisVoiceController(
             },
             onPartialResult = { parcial ->
                 Log.v(TAG, " Parcial'$parcial'")
-                Log.v(TAG, " Parcial'$parcial'")
-//                ui.showText(parcial)
                 ui.updateUserTranscription(parcial)
                 mainHandler.removeCallbacks(timeoutRunnable)
             },
+
             onRmsChanged = { rms ->
                 mainHandler.post { ui.updateORB(rms) }
             },
@@ -232,6 +255,40 @@ class JarvisVoiceController(
         Log.i(TAG, " Controlador inicializado")
     }
 
+    private fun startSpotifyPlayerUpdates() {
+        stopSpotifyPlayerUpdates() // evitar duplicados
+        spotifyUpdateJob = scope.launch {
+            while (uiState?.showSpotifyPlayer == true && coroutineContext.isActive) {
+                val title = SpotifyController.getTituloActual(context) ?: ""
+                val artist = SpotifyController.getArtistaActual(context) ?: ""
+                val isPlaying = SpotifyController.estaReproduciendo(context)
+                withContext(Dispatchers.Main) {
+                    uiState?.spotifyTrackTitle = title
+                    uiState?.spotifyTrackArtist = artist
+                    uiState?.spotifyIsPlaying = isPlaying
+                    // Si la canción ha terminado y no hay título, podríamos ocultar el reproductor
+                    if (title.isBlank() && artist.isBlank() && !isPlaying) {
+                        // no ocultamos automáticamente, el usuario puede cerrarlo
+                    }
+                }
+                delay(2000) // actualiza cada 2 segundos
+            }
+        }
+    }
+
+    private fun stopSpotifyPlayerUpdates() {
+        spotifyUpdateJob?.cancel()
+        spotifyUpdateJob = null
+    }
+
+    private fun ocultarReproductor() {
+        uiState?.showSpotifyPlayer = false
+        stopSpotifyPlayerUpdates()
+        // También resetear los textos
+        uiState?.spotifyTrackTitle = ""
+        uiState?.spotifyTrackArtist = ""
+        uiState?.spotifyIsPlaying = false
+    }
     private fun solicitarAudioFocusSR() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val attrs = android.media.AudioAttributes.Builder()
@@ -335,12 +392,60 @@ class JarvisVoiceController(
      * Se ejecuta en IO para no bloquear el hilo principal.
      */
     private fun procesarTexto(texto: String) {
+        val ahora = System.currentTimeMillis()
+        val textoLimpio = texto.trim()
+
+        if (estaHablando) {
+            Log.d(TAG, " Ignorando comando porque el asistente está hablando: '$texto'")
+            detenerTTS()
+            estaHablando = false
+        }
+        val tiempoDesdeTTS = ahora - ttsTerminoTimestamp
+        if (tiempoDesdeTTS < 2000L) {
+            // Si el texto es muy corto o parece eco, ignorar
+            if (textoLimpio.length < 15) {
+                Log.d(TAG, "⏭️ Posible eco post-TTS ignorado: '$texto'")
+                return
+            }
+        }
+        if (textoLimpio == ultimoComandoEnviado &&
+            (ahora - ultimoTimestampComando) < 3000L) {
+            Log.d(TAG, " Comando duplicado ignorado: '$texto'")
+            return
+        }
         if (esperandoConfirmacion) {
-            Log.d(TAG, "📨 Procesando respuesta de confirmación: '$texto'")
+            Log.d(TAG, " Procesando respuesta de confirmación: '$texto'")
             procesarRespuestaConfirmacion(texto)
             return
         }
-        val textoLimpio = texto.lowercase().trim()
+        if (estaEnviandoAlServidor) {
+            Log.d(TAG, " Limpiando envío colgado antes de procesar nuevo texto")
+            cancelarEnvioActual()
+            // Pequeña pausa para que se limpie todo
+            Thread.sleep(100)
+        }
+// Interceptor local: PANTALLA DIVIDIDA / MULTIVENTANA
+        val textoLower = texto.lowercase().trim()
+        if (textoLower.contains("en la misma pantalla") ||
+            textoLower.contains("pantalla dividida") ||
+            textoLower.contains("multiventana") ||
+            textoLower.contains("doble pantalla")) {
+
+            val apps = extraerAppsParaSplitScreen(texto) // definido abajo
+            if (apps.isNotEmpty()) {
+                ActionExecutor.openAppsInSplitScreen(context, apps)
+                hablar("Abriendo las aplicaciones en pantalla dividida.") {
+                    isProcessing = false
+                    if (sesionActiva) iniciarSRContinuo()
+                }
+            } else {
+                hablar("No entendí qué aplicaciones quieres abrir.") {
+                    isProcessing = false
+                    if (sesionActiva) iniciarSRContinuo()
+                }
+            }
+            return
+        }
         when {
             // Adelantar (ej: "adelanta 30 segundos")
             textoLimpio.contains("adelanta") || textoLimpio.contains("avanza") -> {
@@ -366,10 +471,13 @@ class JarvisVoiceController(
                     hablar("Poniendo pantalla completa")
                 }
             }
+            // Pantalla dividida / multiventana
+
+
         }
-        if (modoConversacionActivo || esperandoPostTTS){
-            mainHandler.removeCallbacks ( timeoutRunnable )
-            mainHandler.postDelayed (timeoutRunnable, TIMEOUT_ESCUCHA_MS)
+        if (modoConversacionActivo || esperandoPostTTS) {
+            mainHandler.removeCallbacks(timeoutRunnable)
+            mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
             Log.d(TAG, "Comando recibido en modo conversación, timeout reiniciado")
         }
         if (textoLimpio.contains("busca imágenes de") || textoLimpio.contains("muéstrame imágenes de") ||
@@ -446,11 +554,20 @@ class JarvisVoiceController(
             return
         }
         // Interceptor control YouTube via MediaSession
-        val controlMedia  = when {
-            textoLimpio.contains("pausa") || textoLimpio.contains("para la música") || textoLimpio.contains("para el video") -> "pausa"
-            textoLimpio.contains("continúa") || textoLimpio.contains("continua") || textoLimpio.contains("reanuda") || textoLimpio.contains("sigue") -> "play"
+        val controlMedia = when {
+            textoLimpio.contains("pausa") || textoLimpio.contains("para la música") || textoLimpio.contains(
+                "para el video"
+            ) -> "pausa"
+
+            textoLimpio.contains("continúa") || textoLimpio.contains("continua") || textoLimpio.contains(
+                "reanuda"
+            ) || textoLimpio.contains("sigue") -> "play"
+
             textoLimpio.contains("siguiente") || textoLimpio.contains("próxima") -> "siguiente"
-            textoLimpio.contains("qué suena") || textoLimpio.contains("que suena") || textoLimpio.contains("qué canción") -> "titulo"
+            textoLimpio.contains("qué suena") || textoLimpio.contains("que suena") || textoLimpio.contains(
+                "qué canción"
+            ) -> "titulo"
+
             else -> null
         }
 
@@ -464,20 +581,24 @@ class JarvisVoiceController(
                     else if (conYoutube) YoutubeController.pausar(context)
                     else false
                 }
+
                 "play" -> {
                     if (conSpotify) SpotifyController.reproducir(context)
                     else if (conYoutube) YoutubeController.reproducir(context)
                     else false
                 }
+
                 "siguiente" -> {
                     if (conSpotify) SpotifyController.siguienteCancion(context)
                     else if (conYoutube) YoutubeController.siguienteCancion(context)
                     else false
                 }
+
                 "anterior" -> {
                     if (conSpotify) SpotifyController.cancionAnterior(context)
                     else false
                 }
+
                 "titulo" -> {
                     val titulo = SpotifyController.getTituloActual(context)
                         ?: YoutubeController.getTituloActual(context)
@@ -493,8 +614,9 @@ class JarvisVoiceController(
                     }
                     return
                 }
+
                 else -> false
-                }
+            }
         }
         if (esComandoCancelacion(texto)) {
             Log.d(TAG, "🛑 Comando de cancelación detectado: '$texto'")
@@ -523,16 +645,17 @@ class JarvisVoiceController(
             }
 
             CommandAnalyzer.Intent.SEND_WHATSAPP -> {
-                val textoLimpio = texto.lowercase()
-
                 // Extraer contacto y mensaje del comando
                 val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
                 val mensaje = extraerMensajeDelComando(texto)
 
                 if (contacto.isNotBlank() && mensaje.isNotBlank()) {
-                    // ✅ Solo muestra preview en UI Jarvis
                     Log.d(TAG, "📱 [WHATSAPP] Mostrando preview para $contacto")
-                    mostrarPreviewWhatsApp(contacto, mensaje)
+                    ActionExecutor.sendWhatsAppMessage(context, contacto, mensaje)
+                    hablar("Enviando mensaje a $contacto") {
+                        isProcessing = false
+                        if (sesionActiva) iniciarSRContinuo()
+                    }
                 } else {
                     hablar("No entendí bien el mensaje. Repite por favor.") {
                         isProcessing = false
@@ -619,6 +742,18 @@ class JarvisVoiceController(
             }
         }
     }
+    private fun extraerAppsParaSplitScreen(texto: String): List<String> {
+        // Quitar la frase fija
+        val limpio = texto.lowercase()
+            .replace(Regex("(en la misma pantalla|pantalla dividida|multiventana|doble pantalla)"), "")
+            .replace("abre", "").replace("abrir", "").trim()
+        // Separar por "y", "e", o coma
+        val partes = limpio.split(Regex(",\\s*| y | e "))
+        val paquetes = partes.mapNotNull { parte ->
+            ActionExecutor.getPackageNameFromAppName(parte.trim(), context)
+        }.distinct()
+        return paquetes.take(2) // máximo dos apps para pantalla dividida real
+    }
     private fun extraerMensajeDelComando(texto: String): String {
         val patrones = listOf(
             "dile que (.+)$",
@@ -657,10 +792,12 @@ class JarvisVoiceController(
             }
         })
     }
+
     // Función auxiliar para extraer números del texto
     private fun extraerSegundos(texto: String): Int? {
         return Regex("\\d+").find(texto)?.value?.toInt()
     }
+
     private fun ejecutarBusquedaImagenes(query: String) {
         ui.showText("🔍 Buscando imágenes de $query...")
         setState(JarvisState.THINKING)
@@ -808,21 +945,13 @@ class JarvisVoiceController(
 
         hablar(mensaje) {
             if (esYoutube) {
-                // ✅ USAR LA FUNCIÓN MEJORADA DE ACTION EXECUTOR
                 ActionExecutor.playVideo(context, busqueda)
             } else {
-                // Lógica de Spotify (esta suele funcionar bien con MEDIA_PLAY_FROM_SEARCH)
-                try {
-                    val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        putExtra(android.app.SearchManager.QUERY, busqueda)
-                        putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*")
-                        setPackage("com.spotify.music")
-                    }
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    ActionExecutor.openApp(context, "com.spotify.music")
-                }
+                // Spotify
+                ActionExecutor.playMusic(context, busqueda, "com.spotify.music")
+                // Mostrar reproductor en el panel
+                uiState?.showSpotifyPlayer = true
+                startSpotifyPlayerUpdates()
             }
             isProcessing = false
             if (sesionActiva) iniciarSRContinuo()
@@ -1080,15 +1209,516 @@ class JarvisVoiceController(
             }
         }
     }
+
+    // Agregar este método a JarvisVoiceController.kt
+
+    private suspend fun obtenerDireccionGrpc(): Pair<String, Int>? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(10, TimeUnit.SECONDS)
+                    .build()
+
+                // 🔑 REEMPLAZA ESTO CON TU URL REAL DE MODAL
+                val url = "https://mausand2499--jarvoice-nexus-api-fastapi-server-dev.modal.run/grpc-endpoint"
+                Log.d(TAG, "📡 Consultando: $url")
+
+                val request = Request.Builder()
+                    .url(url)
+                    .build()
+
+                val response = client.newCall(request).execute()
+
+                if (response.isSuccessful) {
+                    val json = JSONObject(response.body?.string() ?: "{}")
+                    val status = json.optString("status", "")
+
+                    Log.d(TAG, "📡 Response: $json")
+
+                    if (status == "ready") {
+                        val host = json.optString("host", "")
+                        val port = json.optInt("port", 0)
+
+                        if (host.isNotEmpty() && port > 0) {
+                            Log.d(TAG, "✅ Endpoint: $host:$port")
+                            return@withContext Pair(host, port)
+                        }
+                    } else if (status == "not_ready") {
+                        Log.w(TAG, "⏳ gRPC aún no listo, reintentando...")
+                        delay(2000)
+                        return@withContext obtenerDireccionGrpc()
+                    } else {
+                        Log.e(TAG, "❌ Estado desconocido: $status")
+                    }
+                } else {
+                    Log.e(TAG, "❌ HTTP ${response.code}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error: ${e.message}")
+            }
+            null
+        }
+    }
+    private fun inicializarWebSocket() {
+        if (wsClient != null) return
+
+        scope.launch {
+            // Intentar obtener la dirección del servidor gRPC
+            val direccion = obtenerDireccionGrpc()
+
+            val urlCompleta = if (direccion != null) {
+                val (host, port) = direccion
+                "$host:$port"
+            } else {
+                // Fallback al endpoint directo de Modal
+                "mausand2499--jarvoice-nexus-api-fastapi-server-dev.modal.run"        }
+
+            Log.d(TAG, "📡 Conectando a WebSocket en: $urlCompleta")
+
+            wsClient = NexusWebSocketClient(
+                hostUrl = urlCompleta,
+                scope = scope
+            )
+
+            wsClient?.onConnected = {
+                Log.d(TAG, "🚀 Canal WebSocket con Nexus AI vinculado exitosamente.")
+            }
+
+            wsClient?.onDisconnected = {
+                Log.d(TAG, "🛑 Conexión WebSocket cerrada.")
+                mainHandler.post {
+                    setState(JarvisState.IDLE)
+                }
+            }
+
+            wsClient?.onError = { error ->
+                Log.e(TAG, " Error en el canal de comunicación: $error")
+                mainHandler.post {
+                    ui.showToast("Error de conexión con el servidor")
+                    setState(JarvisState.IDLE)
+                    isProcessing = false
+                }
+            }
+
+            wsClient?.onEvent = { jsonString ->
+                Log.d(TAG, "Evento recibido: ${jsonString.take(200)}...")
+                procesarEventoWebSocket(jsonString)  // ✅ Aquí está la llamada
+            }
+            wsClient?.connect()
+        }
+    }
     // ────────────────────────────────────────────────────────────────────────
+// gRPC - Cliente
+// ────────────────────────────────────────────────────────────────────────
+    private fun procesarEventoWebSocket(jsonString: String) {
+        try {
+            Log.d(TAG, "Procesando evento: $jsonString")
+
+            val root = JSONObject(jsonString)
+            val eventType = root.optString("type", "")
+            val stage = root.optString("stage", "")
+
+            Log.d(TAG, "Evento Type: $eventType, Stage: $stage")
+
+            when (eventType) {
+                "PAYLOAD" -> {
+                    timeoutServidor?.let { mainHandler.removeCallbacks(it) }
+                    timeoutServidor = null
+                    esperandoRespuestaServidor = false
+                    estaEnviandoAlServidor = false
+                    estaProcesandoComando = false
+                    uiState?.serverProcessing = false
+
+                    val payloadObj = root.getJSONObject("payload")
+                    val actionsArray = payloadObj.optJSONArray("payload")
+                    val responseText = payloadObj.optString("response", "")
+                    val action = payloadObj.optString("action", "")
+                    Log.d(TAG, " PAYLOAD recibido:")
+                    Log.d(TAG, "  - response: $responseText")
+                    Log.d(TAG, "  - action: $action")
+                    Log.d(TAG, "  - actions: ${actionsArray?.length() ?: 0}")
+
+                    mainHandler.post {
+                        uiState?.serverProcessing = false
+                        //  Mostrar respuesta en UI
+                        if (responseText.isNotBlank()) {
+                            uiState?.apply {
+                                showPanel = true
+                                transcription = responseText
+                                typewriterText = responseText
+                                fullHtmlText = responseText
+                            }
+                            ui.showText(responseText)
+                        }
+
+                        // HABLAR LA RESPUESTA (TTS)
+                        if (responseText.isNotBlank()){
+                            Log.d(TAG, "Hablando: $responseText")
+                            hablar(responseText) {
+                                finalizarInteraccion()
+                            }
+                        } else if (responseText.isNotBlank()) {
+                            // Respuesta larga - dividir en partes
+                            val partes = dividirRespuesta(responseText)
+                            hablarPartes(partes)
+                        } else {
+                            // No hay respuesta de texto, solo ejecutar acciones
+                            isProcessing = false
+                            if (sesionActiva) {
+                                mainHandler.postDelayed({ iniciarSRContinuo() }, 500)
+                            }
+                        }
+
+                        if (actionsArray != null && actionsArray.length() > 0) {
+                            val broadcastActions = mutableListOf<ActionDto>()
+                            for (i in 0 until actionsArray.length()) {
+                                val accion = actionsArray.getJSONObject(i)
+                                val tipo = accion.getString("tipo")
+                                when (tipo) {
+                                    "navigate" -> {
+                                        val params = accion.optJSONObject("params") ?: continue
+                                        val lat = params.getDouble("destination_lat")
+                                        val lng = params.getDouble("destination_lng")
+                                        val name = params.optString("destination_name", "Destino")
+                                        ActionExecutor.navigateTo(context, lat, lng, name)
+                                    }
+                                    "show_search_result" -> {
+                                        // (tu código existente para mostrar resultados de búsqueda)
+                                        val params = accion.optJSONObject("params")
+                                        if (params != null) {
+                                            val answer = params.optString("answer", responseText)
+                                            val sources = mutableListOf<String>()
+                                            val images = mutableListOf<String>()
+                                            // ... etc.
+                                            ui.showSearchResult(answer, sources, images, emptyList())
+                                        }
+                                    }
+                                    // ═══════ NUEVOS CASOS ═══════
+                                    "send_whatsapp" -> {
+                                        val params = accion.optJSONObject("params") ?: continue
+                                        val contact = params.optString("contact", "")
+                                        val message = params.optString("message", "")
+                                        if (contact.isNotBlank() && message.isNotBlank()) {
+                                            ActionExecutor.sendWhatsAppMessage(context, contact, message)
+                                        }
+                                    }
+                                    "send_telegram" -> {
+                                        val params = accion.optJSONObject("params") ?: continue
+                                        val contact = params.optString("contact", "")
+                                        val message = params.optString("message", "")
+                                        if (contact.isNotBlank() && message.isNotBlank()) {
+                                            ActionExecutor.sendTelegramMessage(context, contact, message)
+                                        }
+                                    }
+                                    "send_sms" -> {
+                                        val params = accion.optJSONObject("params") ?: continue
+                                        val contact = params.optString("contact", "")
+                                        val message = params.optString("message", "")
+                                        if (contact.isNotBlank() && message.isNotBlank()) {
+                                            ActionExecutor.sendSms(context, contact, message)
+                                        }
+                                    }
+                                    "open_apps_in_split_screen" -> {
+                                        val params = accion.optJSONObject("params") ?: continue
+                                        val appsArray = params.optJSONArray("apps")
+                                        if (appsArray != null && appsArray.length() >= 2) {
+                                            val packages = mutableListOf<String>()
+                                            for (i in 0 until appsArray.length()) {
+                                                val appName = appsArray.getString(i)
+                                                val pkg = ActionExecutor.getPackageNameFromAppName(appName, context)
+                                                if (pkg != null) packages.add(pkg)
+                                            }
+                                            if (packages.size >= 2) {
+                                                ActionExecutor.openAppsInSplitScreen(context, packages)
+                                            } else {
+                                                Log.w(TAG, "No se encontraron paquetes para las apps: $appsArray")
+                                            }
+                                        }
+                                    }
+                                    else -> {
+                                        // El resto se envía al AccessibilityService (como ya hacías)
+                                        try {
+                                            val paramsObj = accion.optJSONObject("params") ?: JSONObject()
+                                            val actionParams = mutableMapOf<String, Any>()
+                                            val keys = paramsObj.keys()
+                                            while (keys.hasNext()) {
+                                                val key = keys.next()
+                                                actionParams[key] = paramsObj.get(key)
+                                            }
+                                            broadcastActions.add(ActionDto(tipo = tipo, params = actionParams))
+                                        } catch (e: Exception) {
+                                            Log.e(TAG, "Error parseando acción: ${e.message}")
+                                        }
+                                    }
+                                }
+                            }
+                            if (broadcastActions.isNotEmpty()) {
+                                Log.d(TAG, "🎯 Ejecutando ${broadcastActions.size} acciones")
+                                ejecutarAccionesTecnicas(broadcastActions, responseText, "websocket_payload")
+                            }
+                        }
+                    }
+                }
+
+                "PROGRESS" -> {
+                    val payload = root.getJSONObject("payload")
+                    val message = payload.optString("message", "")
+                    val percent = payload.optDouble("percent", 0.0)
+                    val type = payload.optString("type", "")
+                    val step = payload.optString("step", "")
+                    val status = payload.optString("status", "")
+                    val steps = buildStepsFromStep(step, status, message)
+                    if (steps.isNotEmpty()) {
+                        mainHandler.post {
+                            uiState?.serverProcessing = true
+                            uiState?.showPanel = true
+                            ui.updateProcessingSteps(steps)
+                        }
+                    }
+
+                    Log.d(TAG, "Progreso: $percent% - $message (type: $type)")
+
+                    mainHandler.post {
+                        when {
+                            type == "conversacional" || type == "fallback" -> {
+                                // ✅ Cancelar timeout del servidor — esta es la respuesta final
+                                timeoutServidor?.let { mainHandler.removeCallbacks(it) }
+                                timeoutServidor = null
+                                esperandoRespuestaServidor = false
+                                estaEnviandoAlServidor = false
+                                estaProcesandoComando = false
+
+                                if (message.isNotBlank()) {
+                                    Log.d(TAG, "Respuesta conversacional: $message")
+                                    ui.showText(message)
+                                    hablar(message) {
+                                        Log.d(TAG, "TTS conversacional completado")
+                                        isProcessing = false
+                                        sesionActiva = false
+                                        estaHablando = false
+                                        setState(JarvisState.IDLE)
+                                        ui.hideOverlayFromTimeout()
+                                    }
+                                }
+                            }
+                            type == "busqueda" -> {
+                                if (message.isNotBlank()) {
+                                    ui.showText("🔍 $message")
+                                }
+                            }
+                            message.contains("listo") || percent >= 1.0 -> {
+                                Log.d(TAG, "Procesamiento completado")
+                            }
+                            message.isNotBlank() && status != "active" -> {
+                                ui.showText(message)
+                            }
+                        }
+                    }
+
+                    if (percent >= 1.0 && message.contains("listo")) {
+                        mainHandler.postDelayed({
+                            if (estaEnviandoAlServidor && !estaProcesandoComando) {
+                                Log.w(TAG, "PAYLOAD tardó — limpiando estado")
+                                cancelarEnvioActual()
+                                setState(JarvisState.IDLE)
+                            }
+                        }, 3000L)
+                    }
+                }
+
+                "INTENT", "REFINED" -> {
+                    val payload = root.getJSONObject("payload")
+                    val intent = payload.optString("intent", "")
+                    val params = payload.optJSONObject("params")
+
+                    Log.d(TAG, "🎯 Intent: $intent, Params: $params")
+                }
+
+                "ERROR" -> {
+                    val payload = root.getJSONObject("payload")
+                    val errorMsg = payload.optString("message", "Error desconocido")
+                    Log.e(TAG, "❌ Error del servidor: $errorMsg")
+                    estaEnviandoAlServidor = false
+                    estaProcesandoComando = false
+                    cancelarEnvioActual()
+                    mainHandler.post {
+                        ui.showText("Error: $errorMsg")
+                        setState(JarvisState.IDLE)
+                        isProcessing = false
+                        if (sesionActiva) {
+                            mainHandler.postDelayed({ iniciarSRContinuo() }, 500)
+                        }
+                    }
+                }
+
+                else -> {
+                    // Fallback: intentar extraer TTS de cualquier evento
+                    if (root.has("tts")) {
+                        val ttsObj = root.getJSONObject("tts")
+                        val respuestaTexto = ttsObj.getString("text")
+                        hablar(respuestaTexto) { finalizarInteraccion() }
+
+                        Log.d(TAG, "🔊 TTS extraído: $respuestaTexto")
+
+                        mainHandler.post {
+                            ui.showText(respuestaTexto)
+                            hablar(respuestaTexto) {
+                                isProcessing = false
+                                if (sesionActiva) iniciarSRContinuo()
+                            }
+                        }
+                    }
+
+                    // También revisar si hay respuesta en el payload
+                    if (root.has("payload")) {
+                        val payloadObj = root.getJSONObject("payload")
+                        val responseText = payloadObj.optString("response", "")
+
+                        if (responseText.isNotBlank()) {
+                            ui.showText(responseText)
+                            hablar(responseText) { finalizarInteraccion() }
+                        }
+                    }
+                }
+            }
+
+            // También manejar el campo "stage" directamente
+            if (root.has("stage") && eventType != "PAYLOAD") {
+                val stageValue = root.getString("stage")
+                mainHandler.post {
+                    when (stageValue) {
+                        "STAGE_LISTENING" -> setState(JarvisState.LISTENING)
+                        "STAGE_THINKING" -> setState(JarvisState.THINKING)
+                        "STAGE_READY" -> setState(JarvisState.IDLE)
+                        "STAGE_SPEAKING" -> setState(JarvisState.SPEAKING)
+                    }
+                }
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, " Error procesando evento WebSocket: ${e.message}", e)
+        }
+    }
+    private fun buildStepsFromStep(step: String, status: String, message: String): List<ProcessingStep> {
+        // Definir los pasos fijos
+        val allSteps = listOf(
+            "Texto recibido",
+            "Verificando reglas",
+            "Clasificando intención",
+            "Identificando comando",
+            "Refinando con LLaMA",
+            "Construyendo respuesta"
+        )
+
+        // Mapa de estado para cada paso
+        val stepStatusMap = mutableMapOf<String, StepStatus>()
+
+        // Inicializar todos como PENDING
+        allSteps.forEach { stepStatusMap[it] = StepStatus.PENDING }
+
+        // Marcar pasos según el step actual
+        when (step) {
+            "recibido" -> {
+                stepStatusMap["Texto recibido"] = StepStatus.DONE
+            }
+            "rescate" -> {
+                stepStatusMap["Texto recibido"] = StepStatus.DONE
+                stepStatusMap["Verificando reglas"] = if (status == "done") StepStatus.DONE else StepStatus.ACTIVE
+            }
+            "clasificando" -> {
+                stepStatusMap["Texto recibido"] = StepStatus.DONE
+                stepStatusMap["Verificando reglas"] = StepStatus.DONE
+                stepStatusMap["Clasificando intención"] = if (status == "done") StepStatus.DONE else StepStatus.ACTIVE
+            }
+            "jarvoice" -> {
+                stepStatusMap["Texto recibido"] = StepStatus.DONE
+                stepStatusMap["Verificando reglas"] = StepStatus.DONE
+                stepStatusMap["Clasificando intención"] = StepStatus.DONE
+                stepStatusMap["Identificando comando"] = if (status == "done") StepStatus.DONE else StepStatus.ACTIVE
+            }
+            "llama" -> {
+                stepStatusMap["Texto recibido"] = StepStatus.DONE
+                stepStatusMap["Verificando reglas"] = StepStatus.DONE
+                stepStatusMap["Clasificando intención"] = StepStatus.DONE
+                stepStatusMap["Identificando comando"] = StepStatus.DONE
+                stepStatusMap["Refinando con LLaMA"] = if (status == "done") StepStatus.DONE else StepStatus.ACTIVE
+            }
+            "payload" -> {
+                stepStatusMap["Texto recibido"] = StepStatus.DONE
+                stepStatusMap["Verificando reglas"] = StepStatus.DONE
+                stepStatusMap["Clasificando intención"] = StepStatus.DONE
+                stepStatusMap["Identificando comando"] = StepStatus.DONE
+                stepStatusMap["Refinando con LLaMA"] = StepStatus.DONE
+                stepStatusMap["Construyendo respuesta"] = if (status == "done") StepStatus.DONE else StepStatus.ACTIVE
+            }
+            "completado", "saludo", "conversacional", "fallback" -> {
+                allSteps.forEach { stepStatusMap[it] = StepStatus.DONE }
+            }
+        }
+
+        // Convertir a lista de ProcessingStep
+        return allSteps.map { stepText ->
+            ProcessingStep(stepText, stepStatusMap[stepText] ?: StepStatus.PENDING)
+        }
+    }
+    private fun parseActionsFromJson(actionsArray: org.json.JSONArray): List<ActionDto> {
+        val actions = mutableListOf<ActionDto>()
+        for (i in 0 until actionsArray.length()) {
+            try {
+                val actionObj = actionsArray.getJSONObject(i)
+                val tipo = actionObj.getString("tipo")
+                val params = mutableMapOf<String, Any>()
+
+                val paramsObj = actionObj.optJSONObject("params")
+                if (paramsObj != null) {
+                    val keys = paramsObj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        params[key] = paramsObj.get(key)
+                    }
+                }
+
+                actions.add(ActionDto(tipo = tipo, params = params))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error parseando acción: ${e.message}")
+            }
+        }
+        return actions
+    }
     // API
     // ────────────────────────────────────────────────────────────────────────
 
     private fun enviarComandoAlServidor(texto: String) {
+        if (estaEnviandoAlServidor) {
+            Log.d(TAG, "Había un envío en curso, cancelando para procesar nuevo comando")
+            cancelarEnvioActual()
+            // Esperar un momento para que se limpie
+            mainHandler.postDelayed({
+                enviarComandoAlServidor(texto)
+            }, 300L)
+            return
+        }
+        esperandoRespuestaServidor = true
+        estaEnviandoAlServidor = true
+        estaProcesandoComando = true
+        mainHandler.removeCallbacks(timeoutRunnable)
+        voiceEngine.detenerSesion()  // Detener STT mientras procesamos
+        // iniciar timeout para evitar que se quede colgado
+        timeoutServidor?.let { mainHandler.removeCallbacks(it) }
+        timeoutServidor = Runnable {
+            Log.w(TAG, "⏰ TIMEOUT del servidor (${TIMEOUT_SERVIDOR_MS}ms)")
+            cancelarEnvioActual()
+            setState(JarvisState.IDLE)
+            ui.showText("El servidor tardó demasiado en responder")
+            // Volver a modo wake word
+            stopListeningCompletamente()
+        }
+
+        mainHandler.postDelayed(timeoutServidor!!, TIMEOUT_SERVIDOR_MS)
         scope.launch {
             try {
                 setState(JarvisState.THINKING)
-                // Actualización de UI: Pasos de procesamiento
                 ui.updateProcessingSteps(
                     listOf(
                         ProcessingStep("Escuchando tu pregunta", StepStatus.DONE),
@@ -1098,53 +1728,32 @@ class JarvisVoiceController(
                         ProcessingStep("Preparando respuesta", StepStatus.PENDING)
                     )
                 )
-                // Obtener ubicación si es posible
+
+                // 📍 Obtener ubicación
                 var latitude: Double? = null
                 var longitude: Double? = null
                 var locationError: String? = null
                 try {
-                    // Intentar obtener ubicación con timeout
                     val location = withTimeoutOrNull(5000L) {
                         LocationHelper.getCurrentLocation(context)
                     }
-
                     if (location != null) {
                         latitude = location.latitude
                         longitude = location.longitude
                         Log.d(TAG, "Ubicación obtenida: $latitude, $longitude")
-
-                        // Mostrar en UI que tenemos ubicación
                         ui.showText("📍 Ubicación obtenida")
                     } else {
-                        locationError = "No se pudo obtener ubicación (GPS apagado o sin señal)"
-                        Log.w(TAG, "⚠$locationError")
+                        locationError = "No se pudo obtener ubicación"
                     }
                 } catch (e: Exception) {
-                    locationError = "Error obteniendo ubicación: ${e.message}"
-                    Log.e(TAG, "❌ $locationError")
+                    locationError = "Error: ${e.message}"
                 }
-                // Capturar pantalla
+
+                // 📸 Capturar pantalla
                 MyAccessibilityService.instance?.captureNow()
                 delay(200)
 
                 val snapshot = ScreenMemory.lastSnapshot
-                val contextoDetallado = snapshot?.elements
-                    ?.sortedByDescending { it.importance }
-                    ?.take(100)
-                    ?.map { it.toDto() } ?: emptyList()
-
-                val metadata = mutableMapOf<String, Any>(
-                    "packageName" to (snapshot?.packageName ?: "unknown"),
-                    "activityName" to (snapshot?.activityName ?: "unknown"),
-                    "totalElements" to (snapshot?.totalElements ?: 0),
-                    "timestamp" to System.currentTimeMillis()
-                )
-                metadata["lat"] = latitude ?: 0.0
-                metadata["lon"] = longitude ?: 0.0
-
-                if (locationError != null) {
-                    metadata["locationError"] = locationError
-                }
 
                 ui.updateProcessingSteps(
                     listOf(
@@ -1156,122 +1765,100 @@ class JarvisVoiceController(
                     )
                 )
 
-                val response = actionApiService.predictActionEnriquecido(
-                    ActionRequestEnriquecido(
-                        texto = texto,
-                        contexto = emptyList(),
-                        contextoDetallado = contextoDetallado,
-                        metadata = metadata
-                    )
-                )
-
-                ui.updateProcessingSteps(
-                    listOf(
-                        ProcessingStep("Escuchando tu pregunta", StepStatus.DONE),
-                        ProcessingStep("Analizando pantalla", StepStatus.DONE),
-                        ProcessingStep("Consultando servidor", StepStatus.DONE),
-                        ProcessingStep("Preparando respuesta", StepStatus.ACTIVE)
-                    )
-                )
-
-                if (response.success) {
-                    when (response.mode) {
-                        "SEARCH_RESULT" -> {
-                            val payload = response.payload?.firstOrNull()
-                            if (payload != null && payload.tipo == "show_search_result") {
-                                val params = payload.params
-                                val textoCompleto = (params?.get("html") as? String)
-                                    ?: (params?.get("answer") as? String)
-                                    ?: response.response_text
-
-                                val fuentes = (params?.get("sources") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-                                val imagenes = (params?.get("images") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-                                val preguntas = (params?.get("preguntas") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-
-                                ultimoResultadoBusqueda = SearchResult(
-                                    content = textoCompleto,
-                                    urls = fuentes,
-                                    imageUrls = imagenes,
-                                    query = (params?.get("query") as? String) ?: texto
-                                )
-
-                                ui.showSearchResult(textoCompleto, fuentes, imagenes, preguntas)
-                                hablar(response.response_text) {
-                                    isProcessing = false
-                                    if (sesionActiva) iniciarSRContinuo()
-                                }
-                            }
-                        }
-
-                        "NAVIGATION_CONFIRM" -> {
-                            val payload = response.payload?.getOrNull(0) ?: return@launch
-                            val params = payload.params ?: return@launch
-                            val name = params["name"] as? String ?: "el destino"
-                            val address = params["address"] as? String ?: ""
-                            val lat = (params["lat"] as? Number)?.toDouble() ?: 0.0
-                            val lng = (params["lng"] as? Number)?.toDouble() ?: 0.0
-                            val placeId = params["place_id"] as? String ?: ""
-
-                            ActionExecutor.showPlaceAndConfirmNavigation(
-                                context, name, address, lat, lng, placeId
-                            )
-
-                            // Respuesta hablada inicial
-                            hablar(response.response_text) {
-                                isProcessing = false
-                                if (sesionActiva) iniciarSRContinuo()
-                            }
-                            return@launch
-                        }
-
-                        "COMMAND", "DYNAMIC_ACTION" -> {
-                            // NUEVO: Interceptar comando SEND de WhatsApp para mostrar preview
-                            if (response.action == "SEND" && response.payload?.any { it.tipo == "send_whatsapp" } == true) {
-                                val whatsappPayload = response.payload.first { it.tipo == "send_whatsapp" }
-                                val contacto = whatsappPayload.params?.get("contact") as? String ?: ""
-                                val mensaje = whatsappPayload.params?.get("message") as? String ?: ""
-
-                                if (contacto.isNotBlank() && mensaje.isNotBlank()) {
-                                    // Mostrar preview en la UI
-                                    mostrarPreviewWhatsApp(contacto, mensaje)
-
-                                } else {
-                                    // Fallback: ejecutar directamente si faltan datos
-                                    if (!response.payload.isNullOrEmpty()) {
-                                        ejecutarAccionesTecnicas(response.payload, texto, response.action)
-                                    }
-                                    hablar(response.response_text) {
-                                        isProcessing = false
-                                        if (sesionActiva) iniciarSRContinuo()
-                                    }
-                                }
-                                return@launch
-                            }
-                                if (!response.payload.isNullOrEmpty()) {
-                                    ejecutarAccionesTecnicas(response.payload, texto, response.action ?: "unknown")
-                                }
-                                hablar(response.response_text) {
-                                    isProcessing = false
-                                    if (sesionActiva) iniciarSRContinuo()
-                                }
-                        }
-                        else -> {
-                            ui.showText(response.response_text)
-                            hablar(response.response_text) {
-                                isProcessing = false
-                                if (sesionActiva) iniciarSRContinuo()
-                            }
-                        }
-                    }
-                    ui.updateProcessingSteps(emptyList())
+                // 🌐 Verificar WebSocket
+                val client = wsClient ?: run {
+                    inicializarWebSocket()
+                    wsClient ?: error("No se pudo inicializar el canal WebSocket")
                 }
+
+                if (!client.isReady()) {
+                    Log.d(TAG, "Reconectando canal WebSocket antes de transmitir...")
+                    client.connect()
+                }
+
+                var intentos = 0
+                while (!client.isReady() && intentos < 30) {
+                    delay(100)
+                    intentos++
+                }
+
+                if (!client.isReady()) {
+                    Log.e(TAG, "WebSocket no se pudo conectar tras 3 segundos de tolerancia")
+                    ui.showText("Error: Servidor remoto no disponible")
+                    isProcessing = false
+                    ui.updateProcessingSteps(emptyList())
+                    setState(JarvisState.IDLE)
+                    return@launch
+                }
+
+                // ✅ Construir el JSON correctamente
+                val mensajeJson = JSONObject().apply {
+                    put("text", texto.trim())  // ✅ Texto limpio
+                    put("timestamp", System.currentTimeMillis())
+
+                    val contextObj = JSONObject().apply {
+                        put("packageName", snapshot?.packageName ?: "unknown")
+                        put("activityName", snapshot?.activityName ?: "unknown")
+                        put("totalElements", snapshot?.totalElements ?: 0)
+                        put("lat", latitude ?: 0.0)
+                        put("lon", longitude ?: 0.0)
+                        put("locationError", locationError ?: "")
+
+                        val elementsArray = org.json.JSONArray()
+                        snapshot?.elements?.take(50)?.forEach { element ->
+                            val elObj = JSONObject().apply {
+                                put("id", element.id)
+                                put("text", element.text ?: "")
+                                put("x", element.centerX)
+                                put("y", element.centerY)
+                                put("clickable", element.isClickable)
+                                put("description", element.contentDescription ?: "")
+                            }
+                            elementsArray.put(elObj)
+                        }
+                        put("elements", elementsArray)
+                    }
+                    put("context", contextObj)
+                }
+
+                // ✅ Enviar el JSON directamente usando el WebSocket
+                val jsonString = mensajeJson.toString()
+                Log.d(TAG, "📤 Enviando comando: $jsonString")
+
+                // ✅ Enviar directamente sin pasar por sendText()
+                client.sendText(jsonString)
+
+                Log.d(TAG, "📤 Comando enviado exitosamente")
+
             } catch (e: Exception) {
-                Log.e(TAG, "Error en enviarComandoAlServidor: ${e.message}")
+                Log.e(TAG, "Error crítico en enviarComandoAlServidor: ${e.message}")
                 isProcessing = false
                 setState(JarvisState.IDLE)
                 ui.updateProcessingSteps(emptyList())
+                ui.showText("Error: ${e.message}")
+                cancelarEnvioActual()
             }
         }
+    }
+
+    private fun cancelarEnvioActual() {
+        // Limpia estado de envío
+        estaEnviandoAlServidor = false
+        estaProcesandoComando = false
+
+        // Cancelar timeout
+        timeoutServidor?.let { mainHandler.removeCallbacks(it) }
+        timeoutServidor = null
+        esperandoRespuestaServidor = false
+        // Limpiar UI de pasos de procesamiento
+        ui.updateProcessingSteps(emptyList())
+        uiState?.apply {
+            serverProcessing = false
+            processingSteps = emptyList()
+            showPanel = false
+        }
+
+        Log.d(TAG, " Envío al servidor cancelado/limpiado")
     }
     /**
      * Obtiene un resumen de las notificaciones activas del dispositivo.
@@ -1446,7 +2033,13 @@ class JarvisVoiceController(
             alTerminar?.invoke()
             return
         }
+        estaHablando = true
+        timestampUltimoTTS = System.currentTimeMillis()
+        mainHandler.removeCallbacks(timeoutRunnable)
 
+        if (voiceEngine.isSrSessionActive()) {
+            voiceEngine.detenerSesion()
+        }
         setState(JarvisState.SPEAKING)
         modoConversacionActivo = true
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -1460,25 +2053,11 @@ class JarvisVoiceController(
                 mainHandler.post {
                     ui.updateORB(0f)
                     ttsTerminoTimestamp = System.currentTimeMillis()
-
+                    isProcessing = false
+                    estaEnviandoAlServidor = false
+                    estaProcesandoComando = false
+                    estaHablando = false
                     alTerminar?.invoke()
-
-                    if (sesionActiva) {
-                        Log.d(TAG, "TTS terminado, esperando...")
-                        esperandoPostTTS = true
-                        mainHandler.removeCallbacks (timeoutRunnable )
-
-                        if (!voiceEngine.isSrSessionActive()){
-                            voiceEngine.iniciarSesionContinua(language = "es")
-                        }else{
-                            voiceEngine.reiniciarEscucha()
-                        }
-                        setState(JarvisState.LISTENING)
-
-                        mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
-                        Log.d(TAG,"esperando siguiente comando ($(TIMEOUT_ESCUCHA_MS/1000}$")
-
-                    }
                 }
             }
 
@@ -1496,6 +2075,11 @@ class JarvisVoiceController(
         })
 
         tts.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "UTT_${System.currentTimeMillis()}")
+    }
+    private fun finalizarInteraccion() {
+        Log.d(TAG, "Finalizando interacción, volviendo a modo IDLE")
+        stopListeningCompletamente()   // sets sesionActiva = false, stops STT
+        ui.hideOverlayFromTimeout()
     }
 
     fun detenerAudio() {
@@ -1602,10 +2186,15 @@ class JarvisVoiceController(
 
     private fun iniciarSRContinuo(timeoutMs: Long = TIMEOUT_ESCUCHA_MS) {
         if (!sesionActiva) return
+        if (estaHablando) {
+            Log.d(TAG, " No iniciar SR porque el asistente está hablando")
+            return
+        }
         if (voiceEngine.isSrSessionActive()) {
             Log.d(TAG, "SR ya activo — ignorando iniciarSRContinuo")
             return
         }
+
         setState(JarvisState.LISTENING)
         voiceEngine.iniciarSesionContinua(language = "es")
         mainHandler.removeCallbacks(timeoutRunnable)
@@ -1652,18 +2241,26 @@ class JarvisVoiceController(
 
 
     private fun stopListeningCompletamente() {
+
         sesionActiva = false
         isProcessing = false
         esperandoConfirmacion = false
         wakeWordDetected = false
         modoConversacionActivo = false
         esperandoPostTTS = false
+        esperandoRespuestaServidor = false
+        estaEnviandoAlServidor = false
+        estaProcesandoComando = false
         voiceEngine.detenerSesion()
 //        hybridTranscriber.detenerSesion()
 //        sessionManager.stopSession()
 //        liberarAudioFocusSR()
         detenerTTS()
-//        if (::audioEngine.isInitialized) audioEngine.start()
+//        if (::audioEngine.isInitializetry:
+//    rescate_result = await check_rescates(texto_lower, self.texto_acumulado, metadata_ws)
+//except Exception as e:
+//    self._log(f"❌ Error en rescates: {e}")
+//    rescate_result = Noned) audioEngine.start()
 //        porcupineController?.reanudarPorcupine()
         setState(JarvisState.IDLE)
         mainHandler.removeCallbacks(timeoutRunnable)
@@ -1725,7 +2322,19 @@ class JarvisVoiceController(
             Context.RECEIVER_NOT_EXPORTED
         )
     }
-
+    private fun registrarReceptorSpotify() {
+        context.registerReceiver(
+            object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    if (intent?.action == "JARVIS.HIDE_SPOTIFY_PLAYER") {
+                        ocultarReproductor()
+                    }
+                }
+            },
+            IntentFilter("JARVIS.HIDE_SPOTIFY_PLAYER"),
+            Context.RECEIVER_NOT_EXPORTED
+        )
+    }
     private fun registrarReceptorOrbe() {
         orbHideReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
@@ -2090,20 +2699,14 @@ class JarvisVoiceController(
 
         Log.d(TAG, " CANCELANDO acción actual...")
 
-        // 1. Detener TTS si está hablando
         detenerTTS()
 
-        // 2. Cancelar cualquier procesamiento pendiente
         isProcessing = false
         esperandoConfirmacion = false
 
-        // 3. Cancelar cualquier callback de confirmación pendiente
         ActionExecutor.onConfirmacionPendiente = null
 
-        // 4. Detener el SpeechRecognizer y liberar recursos
-//        hybridTranscriber.detenerSesion()
 
-        // 5. Limpiar overlay visual si está activo
         if (modoVisualActivo) {
             desactivarModoVisual()
         }
@@ -2246,6 +2849,63 @@ class JarvisVoiceController(
 
     private fun setState(s: JarvisState) {
         ui.renderState(s)
+
+        mainHandler.post {
+            when (s) {
+                JarvisState.LISTENING -> {
+                    uiState?.apply {
+                        barColors = BarColorMode.LISTENING
+                        showPanel = false
+                        labelColor = android.graphics.Color.parseColor("#4DEEE9")
+                        showPause = false
+                        showWave = false
+                        labelText = "ESCUCHANDO"
+                    }
+                }
+
+                JarvisState.THINKING -> {
+                    uiState?.apply {
+                        barColors = BarColorMode.THINKING
+                        labelText = ""
+                        labelColor = android.graphics.Color.parseColor("#7BD7F8")
+                    }
+                }
+
+                JarvisState.SPEAKING -> {
+                    uiState?.apply {
+                        barColors = BarColorMode.SPEAKING
+                        labelText = ""
+                        labelColor = android.graphics.Color.parseColor("#1DE0A0")
+                        showPause = true
+                        showWave = true
+                    }
+                }
+
+                JarvisState.IDLE -> {
+                    // RESETEO COMPLETO
+                    uiState?.apply {
+                        barColors = BarColorMode.IDLE
+                        showPanel = false
+                        labelText = "NEXUS"
+                        labelColor = android.graphics.Color.WHITE
+                        showPause = false
+                        showWave = false
+                        showWhatsappPreview = false
+                        serverProcessing = false
+                        transcription = ""
+                        typewriterText = "Como puedo Ayudarte"
+                        fullHtmlText = ""
+                        userTranscription = ""
+                        imageUrls = emptyList()
+                        sourceUrls = emptyList()
+                        processingSteps = emptyList()
+                        pendingWhatsappContact = ""
+                        pendingWhatsappMessage = ""
+                    }
+                    ui.showText("")
+                }
+            }
+        }
     }
 
     fun procesarComandoExterno(comando: String) {
@@ -2269,6 +2929,7 @@ class JarvisVoiceController(
     // ────────────────────────────────────────────────────────────────────────
 
     fun destroy() {
+        stopSpotifyPlayerUpdates()
 //        stopListeningCompletamente()
         voiceEngine.stop()
         if (::tts.isInitialized && ttsListo) tts.shutdown()

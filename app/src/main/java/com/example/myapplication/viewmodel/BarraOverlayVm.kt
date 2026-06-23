@@ -33,7 +33,12 @@ class ListeningBarState {
         animateWithEnergy(progress)
     }
 }
-
+enum class BarColorMode {
+    IDLE,       // Neutro/oscuro
+    LISTENING,  // Azul → Morado
+    SPEAKING,   // Todos los colores (arcoíris)
+    THINKING    // Cyan
+}
 @Composable
 fun rememberListeningBarState(): ListeningBarState = remember { ListeningBarState() }
 
@@ -41,21 +46,45 @@ fun rememberListeningBarState(): ListeningBarState = remember { ListeningBarStat
 fun ListeningBar(
     modifier: Modifier = Modifier,
     state: ListeningBarState,
-    jarvisState: JarvisState
+    jarvisState: JarvisState,
+    barColorMode: BarColorMode = BarColorMode.IDLE
 ) {
     val density      = LocalDensity.current.density
     val glowMargin   = 16f * density
     val cornerRadius = 22f * density
-
-    val activeColors = remember {
-        intArrayOf(
-            Color.parseColor("#2979FF"), Color.parseColor("#D500F9"),
-            Color.parseColor("#FF1744"), Color.parseColor("#FF6D00"),
-            Color.parseColor("#FFD600"), Color.parseColor("#00E676"),
-            Color.parseColor("#2979FF")
-        )
+    val infiniteTransition = rememberInfiniteTransition(label = "listening")
+    // ✅ Colores según modo
+    val activeColors = remember(barColorMode) {
+        when (barColorMode) {
+            BarColorMode.IDLE -> intArrayOf(
+                Color.parseColor("#1A1A2E"), Color.parseColor("#16213E"),
+                Color.parseColor("#1A1A2E"), Color.parseColor("#16213E")
+            )
+            BarColorMode.LISTENING -> intArrayOf(
+                Color.parseColor("#4D4DFF"), Color.parseColor("#9B59B6"),  // Azul → Morado
+                Color.parseColor("#3B3BFF"), Color.parseColor("#8E44AD"),
+                Color.parseColor("#2E2EFF"), Color.parseColor("#7D3C98"),
+                Color.parseColor("#4D4DFF")
+            )
+            BarColorMode.SPEAKING -> intArrayOf(
+                Color.parseColor("#FF6B6B"), Color.parseColor("#FFA502"),  // Rojo → Naranja
+                Color.parseColor("#FFD700"), Color.parseColor("#4DEEE9"),  // Amarillo → Cyan
+                Color.parseColor("#00D2FF"), Color.parseColor("#9B59B6"),  // Azul → Morado
+                Color.parseColor("#FF6B6B")
+            )
+            BarColorMode.THINKING -> intArrayOf(
+                Color.parseColor("#7BD7F8"), Color.parseColor("#4DEEE9"),
+                Color.parseColor("#7BD7F8"), Color.parseColor("#4DEEE9")
+            )
+        }
     }
 
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(tween(3000, easing = LinearEasing)),
+        label = "barPhase"
+    )
     val darkBoxPaint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#131618")
@@ -97,6 +126,7 @@ fun ListeningBar(
             val rectBox = RectF(glowMargin, glowMargin, w - glowMargin, h - glowMargin)
 
             if (jarvisState != JarvisState.IDLE) {
+                // ✅ Borde exterior con SweepGradient usando los colores del modo
                 val shaderOuter = SweepGradient(centerX, centerY, activeColors, null).apply {
                     setLocalMatrix(Matrix().apply { postRotate(sweepOffset, centerX, centerY) })
                 }
@@ -109,7 +139,8 @@ fun ListeningBar(
                 }
                 nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, glowPaintOuter)
 
-                val shaderInner = SweepGradient(centerX, centerY, activeColors, null).apply {
+                // ✅ Borde interior con colores invertidos
+                val shaderInner = SweepGradient(centerX, centerY, activeColors.reversedArray(), null).apply {
                     setLocalMatrix(Matrix().apply { postRotate(-sweepOffset * 1.2f, centerX, centerY) })
                 }
                 val blurI = (4f * density + 2f * density * energy * cos(wavePhase.toDouble()).toFloat()).coerceAtLeast(1f)
@@ -122,6 +153,7 @@ fun ListeningBar(
                 nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, glowPaintInner)
             }
 
+            // ✅ Fondo oscuro siempre
             nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, darkBoxPaint)
         }
     }

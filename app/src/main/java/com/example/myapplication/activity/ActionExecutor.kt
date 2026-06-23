@@ -1,4 +1,3 @@
-
 package com.example.myapplication.activity
 
 import android.Manifest
@@ -19,7 +18,7 @@ import com.example.myapplication.core.YoutubeController
 import com.example.myapplication.core.YoutubeController.YouTubeCache
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
-
+import android.provider.ContactsContract
 
 object ActionExecutor {
 
@@ -118,17 +117,32 @@ object ActionExecutor {
     // ─────────────────────────────────────────────────────────────────────────
     // WHATSAPP - VERSIÓN MEJORADA CON CONFIRMACIÓN DE VOZ
     // ─────────────────────────────────────────────────────────────────────────
+    // ActionExecutor.kt
     fun sendWhatsAppMessage(context: Context, contactName: String, message: String) {
         Log.d("JARVIS_ACTION", "📱 sendWhatsAppMessage: contacto='$contactName', mensaje='$message'")
 
-        val contact = ContactsManager.findContact(context, contactName)
+        // 1. Buscar contacto exacto
+        var contact = ContactsManager.findContact(context, contactName)
+        // 2. Si no se encuentra, intentar búsqueda parcial (contiene el nombre)
         if (contact == null) {
-            // Si no lo encuentra, al menos abre la app para que el usuario busque
+            val allContacts = ContactsManager.getAllContacts(context)
+            contact = allContacts.firstOrNull { it.name.lowercase().contains(contactName.lowercase()) }
+            if (contact == null) {
+                // Si aún no se encuentra, quitar "mi " al inicio y probar de nuevo
+                val cleanedName = contactName.replace(Regex("^mi\\s+", RegexOption.IGNORE_CASE), "")
+                if (cleanedName != contactName) {
+                    contact = allContacts.firstOrNull { it.name.lowercase().contains(cleanedName.lowercase()) }
+                }
+            }
+        }
+
+        if (contact == null) {
+            Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado. Abriendo WhatsApp sin mensaje.")
             openApp(context, "com.whatsapp")
             return
         }
 
-        // Limpiar y formatear número
+        // Formatear número
         var numero = contact.phoneNumber.replace(Regex("[^0-9]"), "")
         if (numero.startsWith("0")) numero = "593" + numero.substring(1) // Ajusta tu prefijo
         if (numero.length == 10) numero = "593" + numero.substring(1)
@@ -136,24 +150,39 @@ object ActionExecutor {
         pendingWhatsappContact = contact.name
         pendingWhatsappMessage = message
 
-        // FLAG_ACTIVITY_CLEAR_TASK y FLAG_ACTIVITY_NEW_TASK son clave para forzar el cambio de chat
+        // Abrir chat con mensaje predefinido
         val url = "https://api.whatsapp.com/send?phone=$numero&text=${Uri.encode(message)}"
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
             action = Intent.ACTION_VIEW
-            setPackage("com.whatsapp") // Forzamos que lo abra WhatsApp
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP) // <--- Esta línea obliga a cambiar el chat
+            setPackage("com.whatsapp")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
 
         try {
             context.startActivity(intent)
-            Log.d("JARVIS_ACTION", "✅ Intent enviado para cambiar a chat de: $numero")
+            Log.d("JARVIS_ACTION", "✅ Intent enviado para chat de: $numero")
+            // Enviar broadcast para presionar el botón "Enviar" después de que cargue el chat
+            val sendIntent = Intent("JARVIS.SEND_CURRENT_MESSAGE").apply {
+                setPackage(context.packageName)
+            }
+            Handler(Looper.getMainLooper()).postDelayed({
+                context.sendBroadcast(sendIntent)
+            }, 2500) // Aumentamos a 2.5s para asegurar carga
         } catch (e: Exception) {
-            Log.e("JARVIS_ACTION", "❌ Error al cambiar de chat: ${e.message}")
+            Log.e("JARVIS_ACTION", "❌ Error al abrir chat: ${e.message}")
+            openApp(context, "com.whatsapp")
         }
     }
-
-
+    // ─────────────────────────────────────────────────────────────────────────
+// SPEAK TEXT (envía un mensaje de voz al controlador)
+// ─────────────────────────────────────────────────────────────────────────
+    private fun speakText(context: Context, texto: String) {
+        val intent = Intent("JARVIS.SPEAK_TEXT").apply {
+            putExtra("texto", texto)
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(intent)
+    }
     // ─────────────────────────────────────────────────────────────────────────
     // TELEGRAM
     // ─────────────────────────────────────────────────────────────────────────
@@ -368,6 +397,134 @@ object ActionExecutor {
             context.startActivity(intent)
         }
     }
+    // ActionExecutor.kt - Agregar esta función
+
+    // ActionExecutor.kt - Reemplazar con esta versión mejorada
+
+    fun openAppsInSplitScreen(
+        context: Context,
+        packageNames: List<String>
+    ) {
+
+        if (packageNames.size < 2) {
+            Log.e("ActionExecutor", "❌ Se requieren 2 apps")
+            return
+        }
+
+        val pkg1 = packageNames[0]
+        val pkg2 = packageNames[1]
+
+        Log.d(
+            "ActionExecutor",
+            "🚀 Solicitando Split Screen Accessibility: $pkg1 + $pkg2"
+        )
+
+        val intent = Intent("JARVIS.START_SPLIT_SCREEN").apply {
+            putExtra("app1", pkg1)
+            putExtra("app2", pkg2)
+            setPackage(context.packageName)
+        }
+
+        context.sendBroadcast(intent)
+    }
+
+    private fun abrirAppsSecuencialmente(context: Context, packageNames: List<String>) {
+        try {
+            val pm = context.packageManager
+            for (pkg in packageNames) {
+                val intent = pm.getLaunchIntentForPackage(pkg)
+                if (intent != null) {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                    Log.d("ActionExecutor", "✅ Abriendo app: $pkg")
+                    Thread.sleep(500)
+                }
+            }
+            Log.d("ActionExecutor", "⚠️ Fallback: apps abiertas secuencialmente")
+        } catch (e: Exception) {
+            Log.e("ActionExecutor", "❌ Fallback falló: ${e.message}")
+        }
+    }
+
+    // ActionExecutor.kt - Agregar esta función
+
+    fun getPackageNameFromAppName(appName: String, context: Context): String? {
+        val packageManager = context.packageManager
+        val appNameLower = appName.lowercase().trim()
+
+        // Mapa de nombres comunes a paquetes
+        val appMap = mapOf(
+            "facebook" to "com.facebook.katana",
+            "whatsapp" to "com.whatsapp",
+            "instagram" to "com.instagram.android",
+            "youtube" to "com.google.android.youtube",
+            "spotify" to "com.spotify.music",
+            "telegram" to "org.telegram.messenger",
+            "twitter" to "com.twitter.android",
+            "tiktok" to "com.zhiliaoapp.musically",
+            "reddit" to "com.reddit.frontpage",
+            "netflix" to "com.netflix.mediaclient",
+            "prime video" to "com.amazon.avod.thirdpartyclient",
+            "disney" to "com.disney.disneyplus",
+            "hbo" to "com.hbo.hbonow",
+            "maps" to "com.google.android.apps.maps",
+            "gmail" to "com.google.android.gm",
+            "chrome" to "com.android.chrome",
+            "firefox" to "org.mozilla.firefox",
+            "brave" to "com.brave.browser",
+            "edge" to "com.microsoft.emmx",
+            "opera" to "com.opera.browser",
+            "viber" to "com.viber.voip",
+            "skype" to "com.skype.raider",
+            "discord" to "com.discord",
+            "slack" to "com.Slack",
+            "outlook" to "com.microsoft.office.outlook",
+            "drive" to "com.google.android.apps.docs",
+            "photos" to "com.google.android.apps.photos",
+            "keep" to "com.google.android.keep",
+            "calendar" to "com.google.android.calendar",
+            "contacts" to "com.google.android.contacts",
+            "phone" to "com.google.android.dialer",
+            "messages" to "com.google.android.apps.messaging",
+            "clock" to "com.google.android.deskclock",
+            "calculator" to "com.google.android.calculator",
+            "camera" to "com.google.android.GoogleCamera",
+            "gallery" to "com.google.android.apps.photos",
+            "files" to "com.google.android.apps.nbu.files",
+            "settings" to "com.android.settings",
+            "play store" to "com.android.vending",
+            "google" to "com.google.android.googlequicksearchbox",
+            "assistant" to "com.google.android.apps.googleassistant",
+            "maps go" to "com.google.android.apps.mapslite",
+            "youtube music" to "com.google.android.apps.youtube.music",
+            "youtube kids" to "com.google.android.apps.youtube.kids",
+            "youtube tv" to "com.google.android.apps.youtube.tv",
+            "google tv" to "com.google.android.tvrecommendations",
+            "android tv" to "com.google.android.tvlauncher"
+        )
+
+        // 1. Buscar en el mapa
+        appMap.keys.forEach { key ->
+            if (appNameLower.contains(key)) {
+                return appMap[key]
+            }
+        }
+
+        // 2. Buscar en apps instaladas
+        try {
+            val installedApps = packageManager.getInstalledApplications(0)
+            for (app in installedApps) {
+                val appLabel = packageManager.getApplicationLabel(app).toString().lowercase()
+                if (appNameLower in appLabel || appLabel in appNameLower) {
+                    return app.packageName
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ActionExecutor", "Error buscando apps: ${e.message}")
+        }
+
+        return null
+    }
 
     fun setAlarm(context: Context, hour: Int, minute: Int, label: String = "") {
         Log.d("ActionExecutor", "⏰ Configurando alarma: $hour:$minute - '$label'")
@@ -492,7 +649,23 @@ object ActionExecutor {
             Log.e("ActionExecutor", "❌ Error: ${e.message}")
         }
     }
-
+    fun navigateTo(context: Context, lat: Double, lng: Double, name: String) {
+        val uri = "google.navigation:q=${lat},${lng}&mode=d"
+        val navIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+            setPackage("com.google.android.apps.maps")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(navIntent)
+            Log.d("ActionExecutor", "🚗 Navegación iniciada hacia $name ($lat, $lng)")
+        } catch (e: Exception) {
+            // Fallback: abrir con URL web
+            val webUri = "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving&dir_action=navigate"
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webUri)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        }
+    }
     fun playVideo(context: Context, query: String) {
         val cachedId = YouTubeCache.get(query)
         if (cachedId != null) {

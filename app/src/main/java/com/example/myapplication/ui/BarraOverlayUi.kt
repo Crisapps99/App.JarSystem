@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.activity.ActionExecutor
 import com.example.myapplication.core.JarvisState
+import com.example.myapplication.core.SpotifyController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -60,7 +61,16 @@ class JarvisOverlayUiState {
     var pendingWhatsappContact by mutableStateOf("")
     var pendingWhatsappMessage by mutableStateOf("")
     var showWhatsappPreview by mutableStateOf(false)
+
+    var barColors        by mutableStateOf(BarColorMode.IDLE)
+    var serverProcessing by mutableStateOf(false)
+
+    var spotifyTrackTitle  by mutableStateOf("")
+    var spotifyTrackArtist by mutableStateOf("")
+    var spotifyIsPlaying   by mutableStateOf(false)
+    var showSpotifyPlayer  by mutableStateOf(false)
 }
+
 //mensaje whatsapp
 @Composable
 private fun WhatsAppMessagePreview(
@@ -179,14 +189,16 @@ fun JarvisOverlayContent(
             ),
         contentAlignment = Alignment.BottomCenter
     ) {
+        // ✅ Panel SOLO visible en SPEAKING o THINKING con serverProcessing
         AnimatedVisibility(
-            visible = uiState.showPanel,
-
-            enter   = fadeIn(tween(350)) + slideInVertically(
-                animationSpec  = tween(450, easing = FastOutSlowInEasing),
+            visible = uiState.showPanel &&
+                    uiState.jarvisState != JarvisState.LISTENING &&
+                    uiState.jarvisState != JarvisState.IDLE,
+            enter = fadeIn(tween(350)) + slideInVertically(
+                animationSpec = tween(450, easing = FastOutSlowInEasing),
                 initialOffsetY = { it }
             ),
-            exit    = fadeOut(tween(200)) + slideOutVertically(
+            exit = fadeOut(tween(200)) + slideOutVertically(
                 animationSpec = tween(250, easing = FastOutSlowInEasing),
                 targetOffsetY = { it }
             ),
@@ -204,6 +216,7 @@ fun JarvisOverlayContent(
             )
         }
 
+        // Barra siempre visible
         ListeningBarRow(
             uiState      = uiState,
             barState     = barState,
@@ -217,9 +230,100 @@ fun JarvisOverlayContent(
                 .clickable(enabled = true, onClick = {})
         )
     }
-
+}
+@Composable
+private fun SpotifyPlayer(
+    title: String,
+    artist: String,
+    isPlaying: Boolean,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onClose: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ColorBgDark, RoundedCornerShape(22.dp))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "🎵 Spotify",
+                color = Color(0xFF1DB954),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clickable { onClose() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("✕", color = Color.White.copy(alpha = 0.7f), fontSize = 18.sp)
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        if (title.isNotBlank()) {
+            Text(
+                text = title,
+                color = ColorTextMain,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        } else {
+            Text(
+                text = "Esperando canción...",
+                color = Color(0xFF888899),
+                fontSize = 16.sp,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
+        if (artist.isNotBlank()) {
+            Text(
+                text = artist,
+                color = Color(0xFFA0A0B0),
+                fontSize = 14.sp
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            IconButton(
+                onClick = onPlayPause,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Text(
+                    text = if (isPlaying) "⏸" else "▶️",
+                    fontSize = 28.sp,
+                    color = Color.White
+                )
+            }
+            IconButton(
+                onClick = onNext,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Text("⏭", fontSize = 28.sp, color = Color.White)
+            }
+        }
+    }
 }
 
+@Composable
+private fun IconButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(
+        modifier = modifier.clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // Barra inferior
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +339,8 @@ private fun ListeningBarRow(
         ListeningBar(
             modifier    = Modifier.matchParentSize(),
             state       = barState,
-            jarvisState = uiState.jarvisState
+            jarvisState = uiState.jarvisState,
+            barColorMode = uiState.barColors
         )
 
         Row(
@@ -244,30 +349,31 @@ private fun ListeningBarRow(
                 .padding(horizontal = 26.dp, vertical = 22.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            JarvisOrb(
-                modifier      = Modifier.size(52.dp, 42.dp),
-                energy        = barState.energy,
-                maxRings      = 3,
-                showLightCore = false,
-                showParticles = false
-            )
-
+                JarvisOrb(
+                    modifier      = Modifier.size(52.dp, 42.dp),
+                    energy        = if (uiState.jarvisState == JarvisState.IDLE) 0f else barState.energy,
+                    maxRings      = 3,
+                    showLightCore = false,
+                    showParticles = false
+                )
             Text(
                 text = when {
+                    uiState.jarvisState == JarvisState.IDLE -> "En que peudo Ayudarte"  //  Siempre "NEXUS" en IDLE
                     uiState.userTranscription.isNotBlank() -> uiState.userTranscription
-                    uiState.jarvisState == JarvisState.LISTENING -> "Escuchando..."
-                    uiState.jarvisState == JarvisState.THINKING -> "Pensando..."
-                    uiState.jarvisState == JarvisState.SPEAKING -> "Hablando..."
-                    else -> "Como puedo ayudarte?"
+                    uiState.jarvisState == JarvisState.LISTENING -> ""  //  Vacío en LISTENING
+                    uiState.jarvisState == JarvisState.THINKING -> ""   //  Vacío en THINKING
+                    uiState.jarvisState == JarvisState.SPEAKING -> ""   //  Vacío en SPEAKING
+                    else -> "¿Cómo puedo ayudarte?"
                 },
-                color         = Color(uiState.labelColor),
-                fontSize      = 15.sp,
-                fontWeight    = FontWeight.Bold,
+                color = Color(uiState.labelColor),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
                 letterSpacing = 0.08.sp,
-                modifier      = Modifier.weight(1f)
+                modifier = Modifier.weight(1f)
             )
 
-            AnimatedVisibility(visible = uiState.showPause) {
+            // Pause solo visible en SPEAKING
+            AnimatedVisibility(visible = uiState.showPause && uiState.jarvisState == JarvisState.SPEAKING) {
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -279,6 +385,7 @@ private fun ListeningBarRow(
                 }
             }
 
+            // Mic button
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -334,6 +441,31 @@ private fun ResultsPanel(
                 }
             )
             return  // No mostrar el resto del panel
+        }
+        if (uiState.showSpotifyPlayer) {
+            SpotifyPlayer(
+                title = uiState.spotifyTrackTitle,
+                artist = uiState.spotifyTrackArtist,
+                isPlaying = uiState.spotifyIsPlaying,
+                onPlayPause = {
+                    if (uiState.spotifyIsPlaying) {
+                        SpotifyController.pausar(context)
+                    } else {
+                        SpotifyController.reproducir(context)
+                    }
+                },
+                onNext = {
+                    SpotifyController.siguienteCancion(context)
+                },
+                onClose = {
+                    // Enviar broadcast para que el controlador oculte y detenga actualizaciones
+                    context.sendBroadcast(
+                        Intent("JARVIS.HIDE_SPOTIFY_PLAYER").apply {
+                            setPackage(context.packageName)
+                        }
+                    )
+                }
+            )
         }
         if (uiState.imageUrls.isNotEmpty()) {
             LazyRow(
@@ -498,10 +630,54 @@ private fun VoiceWaveCompose(modifier: Modifier = Modifier) {
 fun JarvisOverlayUiState.applyJarvisState(state: JarvisState) {
     jarvisState = state
     when (state) {
-        JarvisState.LISTENING -> { labelText = "ESCUCHANDO"; labelColor = android.graphics.Color.parseColor("#4DEEE9"); showWave = false; showPause = false }
-        JarvisState.THINKING  -> { labelText = "PENSANDO";   labelColor = android.graphics.Color.parseColor("#7BD7F8"); showWave = false; showPause = false }
-        JarvisState.SPEAKING  -> { labelText = "HABLANDO";   labelColor = android.graphics.Color.parseColor("#1DE0A0"); showWave = true;  showPause = true  }
-        JarvisState.IDLE      -> { labelText = "NEXUS";      labelColor = android.graphics.Color.WHITE;                showWave = false; showPause = false }
+        JarvisState.LISTENING -> {
+            labelText = ""  //  Sin texto
+            labelColor = android.graphics.Color.parseColor("#4DEEE9")
+            showWave = false
+            showPause = false
+            barColors = BarColorMode.LISTENING
+            showPanel = false
+            serverProcessing = false
+        }
+        JarvisState.THINKING  -> {
+            labelText = ""
+            labelColor = android.graphics.Color.parseColor("#7BD7F8")
+            showWave = false
+            showPause = false
+            barColors = BarColorMode.THINKING
+        }
+        JarvisState.SPEAKING  -> {
+            labelText = ""
+            labelColor = android.graphics.Color.parseColor("#1DE0A0")
+            showWave = true
+            showPause = true
+            barColors = BarColorMode.SPEAKING
+        }
+        JarvisState.IDLE      -> {
+            //  RESETEO COMPLETO
+            labelText = "NEXUS"
+            labelColor = android.graphics.Color.WHITE
+            showWave = false
+            showPause = false
+            barColors = BarColorMode.IDLE
+            showPanel = false
+            serverProcessing = false
+            transcription = ""
+            typewriterText = ""
+            fullHtmlText = ""
+            imageUrls = emptyList()
+            sourceUrls = emptyList()
+            userTranscription = ""
+            processingSteps = emptyList()
+            showWhatsappPreview = false
+            pendingWhatsappContact = ""
+            pendingWhatsappMessage = ""
+            showSpotifyPlayer = false
+            spotifyTrackTitle = ""
+            spotifyTrackArtist = ""
+            spotifyIsPlaying = false
+
+        }
     }
 }
 

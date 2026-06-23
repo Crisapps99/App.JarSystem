@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hereda del estilo base definido en values/styles.xml -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:enforceNavigationBarContrast">false</item>
+    </style>
+</resources>

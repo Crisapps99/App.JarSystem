@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package nexus.v1;
+
+option java_package = "com.example.myapplication.grpc.nexus";
+option java_outer_classname = "NexusProto";
+option java_multiple_files = true;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ENUMS — Primero, antes de cualquier mensaje
+// ══════════════════════════════════════════════════════════════════════════════
+
+enum ProcessingStage {
+  STAGE_UNSPECIFIED = 0;
+  STAGE_LISTENING = 1;
+  STAGE_ASR = 2;
+  STAGE_CLASSIFYING = 3;
+  STAGE_REFINING = 4;
+  STAGE_PAYLOAD = 5;
+  STAGE_TTS = 6;
+  STAGE_READY = 7;
+}
+
+enum EventType {
+  EVENT_UNSPECIFIED = 0;
+  EVENT_PROGRESS = 1;
+  EVENT_TRANSCRIPT = 2;
+  EVENT_INTENT = 3;
+  EVENT_REFINED = 4;
+  EVENT_PAYLOAD = 5;
+  EVENT_TTS = 6;
+  EVENT_ERROR = 7;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MENSAJES DE ENTRADA (Cliente → Servidor)
+// ══════════════════════════════════════════════════════════════════════════════
+
+message AudioChunk {
+  bytes data = 1;
+  string format = 2;         // "pcm16", "opus", etc
+  int32 sample_rate = 3;
+  bool is_final = 4;
+}
+
+message ControlSignal {
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    PAUSE = 1;
+    CANCEL = 2;
+    RESET = 3;
+  }
+  Type type = 1;
+}
+
+message ClientMessage {
+  oneof content {
+    AudioChunk audio = 1;
+    string text = 2;
+    ControlSignal control = 3;
+  }
+  string session_id = 10;
+  int64 timestamp = 11;
+}
+
+message CancelRequest {
+  string session_id = 1;
+}
+
+message CancelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MENSAJES DE SALIDA (Servidor → Cliente)
+// ══════════════════════════════════════════════════════════════════════════════
+
+message ProgressUpdate {
+  string message = 1;
+  float percent = 2;
+}
+
+message TranscriptUpdate {
+  string partial = 1;
+  string final = 2;
+}
+
+message IntentUpdate {
+  string intent = 1;
+  string confidence = 2;
+  map<string, string> params = 3;
+}
+
+message RefinedIntentUpdate {
+  string intent = 1;
+  map<string, string> params = 2;
+  string tts_response = 3;
+}
+
+message ActionPayload {
+  string tipo = 1;
+  map<string, string> params = 2;
+}
+
+message PayloadReady {
+  repeated ActionPayload actions = 1;
+  string mode = 2;
+  string action = 3;
+  float confidence = 4;
+}
+
+message ErrorEvent {
+  string code = 1;
+  string message = 2;
+  bool recoverable = 3;
+}
+
+message ServerEvent {
+  string event_id = 1;
+  ProcessingStage stage = 2;
+  EventType type = 3;
+
+  oneof payload {
+    ProgressUpdate progress = 10;
+    TranscriptUpdate transcript = 11;
+    IntentUpdate intent = 12;
+    RefinedIntentUpdate refined = 13;
+    PayloadReady payload_ready = 14;
+    AudioChunk tts_audio = 15;
+    ErrorEvent error = 20;
+  }
+
+  int64 timestamp = 21;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SERVICIO PRINCIPAL
+// ══════════════════════════════════════════════════════════════════════════════
+
+service NexusVoiceAssistant {
+  rpc ProcessCommand(stream ClientMessage) returns (stream ServerEvent);
+  rpc Cancel(CancelRequest) returns (CancelResponse);
+}

@@ -9,7 +9,6 @@ import android.net.Uri
 import android.provider.ContactsContract
 import android.util.Log
 import java.text.Normalizer
-
 object ContactsManager {
 
     data class Contact(
@@ -75,7 +74,33 @@ object ContactsManager {
         Log.d("JARVIS_CONTACTS", "📒 ${contacts.size} contactos cargados")
         return contacts
     }
-
+    fun getAllContacts(context: Context): List<Contact> {
+        val contacts = mutableListOf<Contact>()
+        val contentResolver = context.contentResolver
+        val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER
+        )
+        val cursor = contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            projection,
+            null,
+            null,
+            null
+        )
+        cursor?.use {
+            val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+            val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            while (it.moveToNext()) {
+                val name = it.getString(nameIndex) ?: ""
+                val number = it.getString(numberIndex) ?: ""
+                if (name.isNotBlank() && number.isNotBlank()) {
+                    contacts.add(Contact(name, number))
+                }
+            }
+        }
+        return contacts
+    }
     // ─────────────────────────────────────────────────────────────────────────
     // BÚSQUEDA ROBUSTA (ignora emojis, tildes, mayúsculas)
     // ─────────────────────────────────────────────────────────────────────────
