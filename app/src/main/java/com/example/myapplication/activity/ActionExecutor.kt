@@ -20,6 +20,7 @@ import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import android.provider.ContactsContract
 
+
 object ActionExecutor {
 
     private val YOUTUBE_API_KEY = "AIzaSyDbkFoz0-6cj2AR8cXGJVci2RPK_0oAxos"
@@ -36,33 +37,33 @@ object ActionExecutor {
     private var pendingNavLat: Double = 0.0
     private var pendingNavLng: Double = 0.0
 
-    fun showPlaceAndConfirmNavigation(
-        context: Context,
-        name: String,
-        address: String,
-        lat: Double,
-        lng: Double,
-        placeId: String = ""
-    ) {
-        // 1. Abrir Maps en el punto exacto (solo vista, no navegación)
-        val uri = "geo:0,0?q=${lat},${lng}(${Uri.encode(name)})"
-        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
-            setPackage("com.google.android.apps.maps")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        try {
-            context.startActivity(mapIntent)
-        } catch (e: Exception) {
-            // Fallback: abrir en navegador
-            val webUri = "https://www.google.com/maps/search/?api=1&query=${lat},${lng}"
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webUri)))
-        }
-
-        // 2. Esperar 1.5s para que cargue Maps y luego pedir confirmación
-        Handler(Looper.getMainLooper()).postDelayed({
-            pedirConfirmacionNavegacion(context, name, lat, lng)
-        }, 1500)
-    }
+//    fun showPlaceAndConfirmNavigation(
+//        context: Context,
+//        name: String,
+//        address: String,
+//        lat: Double,
+//        lng: Double,
+//        placeId: String = ""
+//    ) {
+//        // 1. Abrir Maps en el punto exacto (solo vista, no navegación)
+//        val uri = "geo:0,0?q=${lat},${lng}(${Uri.encode(name)})"
+//        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+//            setPackage("com.google.android.apps.maps")
+//            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+//        }
+//        try {
+//            context.startActivity(mapIntent)
+//        } catch (e: Exception) {
+//            // Fallback: abrir en navegador
+//            val webUri = "https://www.google.com/maps/search/?api=1&query=${lat},${lng}"
+//            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webUri)))
+//        }
+//
+//        // 2. Esperar 1.5s para que cargue Maps y luego pedir confirmación
+//        Handler(Looper.getMainLooper()).postDelayed({
+//            pedirConfirmacionNavegacion(context, name, lat, lng)
+//        }, 1500)
+//    }
 
     private fun pedirConfirmacionNavegacion(
         context: Context,
@@ -658,45 +659,25 @@ object ActionExecutor {
             }
         }
     }
-    /**
-     * Reproduce música automáticamente en Spotify o YouTube Music.
-     * @param query Búsqueda (canción, artista, etc.)
-     * @param appPackage Paquete de la app (spotify o youtube music)
-     */
-    /**
-     * Reproduce música automáticamente en Spotify o YouTube Music.
-     * @param query Búsqueda (canción, artista, etc.)
-     * @param appPackage Paquete de la app (spotify o youtube music)
-     */
-    /**
-     * Reproduce música automáticamente en Spotify o YouTube Music.
-     * @param query Búsqueda (canción, artista, etc.)
-     * @param appPackage Paquete de la app (spotify o youtube music)
-     */
-    fun playMusic(context: Context, query: String, appPackage: String = "com.spotify.music") {
-        Log.d("ActionExecutor", "🎵 playMusic: query='$query', app='$appPackage'")
 
+    /**
+     * Reproduce música automáticamente en Spotify o YouTube Music.
+     * @param query Búsqueda (canción, artista, etc.)
+     * @param appPackage Paquete de la app (por defecto com.spotify.music)
+     */
+    fun playMusic(context: Context, query: String, packageName: String) {
         try {
-            // Usamos el Intent estándar de Android para "Buscar y Reproducir"
-            val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
-                putExtra(android.app.SearchManager.QUERY, query)
-                putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*")
-                setPackage(appPackage)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("https://open.spotify.com/search/$query")
+                setPackage(packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-
-            // Para Spotify específicamente, a veces necesita este extra
-            if (appPackage.contains("spotify")) {
-                intent.putExtra("android.intent.extra.title", query)
-            }
-
             context.startActivity(intent)
-            Log.d("ActionExecutor", "✅ Comando de reproducción enviado a $appPackage")
-
         } catch (e: Exception) {
-            Log.e("ActionExecutor", "❌ Error en playMusic: ${e.message}")
-            // Fallback: abrir la app si el intent de reproducción falla
-            openApp(context, appPackage)
+            // fallback: abrir con navegador
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/search/$query"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
         }
     }
     /**

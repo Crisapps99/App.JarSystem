@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.example.myapplication.core.ContinuousVoiceEngine
+
 import com.example.myapplication.service.JarvisOverlayService
 import com.example.myapplication.ui.screens.JarScreen
 import com.example.myapplication.viewmodel.JarPhase
@@ -43,6 +44,7 @@ class JarActivity : ComponentActivity() {
                 onOmitir = { omitirPresentacion() }
             )
         }
+
     }
 
     private fun setupTts() {

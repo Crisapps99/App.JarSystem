@@ -28,7 +28,6 @@
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
@@ -100,17 +99,7 @@
         <activity
             android:name=".activity.JarActivity"
             android:exported="true" />
-
-<!--        <activity-->
-<!--            android:name=".ui.JarvisOrbView"-->
-<!--            android:exported="false" />-->
-<!--        <activity-->
-<!--            android:name=".ui.ListeningBarView"-->
-<!--            android:exported="false" />-->
-
-        <!-- ── SERVICIOS ─────────────────────────────────────────────────── -->
-
-        <!-- Servicio de accesibilidad — controla la UI del dispositivo -->
+    <!-- Servicio de accesibilidad — controla la UI del dispositivo -->
         <service
             android:name=".service.MyAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
@@ -134,6 +123,7 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <!-- Añade esto dentro de <application> -->
 
         <!-- Overlay flotante con micrófono — asistente de voz -->
         <service
@@ -145,6 +135,7 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Voice assistant that controls the UI and provides accessibility feedback" />
         </service>
+
         <activity
             android:name=".ui.PreviewActivity"
             android:exported="true">
@@ -153,6 +144,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
     </application>
 
 </manifest>

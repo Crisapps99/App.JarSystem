@@ -15,13 +15,22 @@ android {
     if (propertiesFile.exists()) {
         properties.load(propertiesFile.inputStream())
     }
-
+    sourceSets {
+        named("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
     defaultConfig {
         applicationId = "com.example.myapplication"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        manifestPlaceholders.putAll(mapOf(
+            "redirectSchemeName" to "nexus",
+            "redirectHostName" to "auth"
+        ))
         val props = Properties()
         val localPropsFile = rootProject.file("local.properties")
         if (localPropsFile.exists()) {
@@ -81,7 +90,8 @@ android {
 }
 
 dependencies {
-    implementation ("com.acrcloud:acrcloud-android-sdk:1.8.1")
+
+    implementation("io.coil-kt:coil-compose:2.4.0")
     implementation("androidx.multidex:multidex:2.0.1")
     implementation("androidx.window:window:1.3.0")
     // gRPC

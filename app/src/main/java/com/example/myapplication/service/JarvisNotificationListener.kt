@@ -10,9 +10,10 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.example.myapplication.core.NotificationMemory
+import com.google.android.gms.common.config.GservicesValue.isInitialized
 
 class JarvisNotificationListener : NotificationListenerService() {
-
+    private var isInitialized = false
     companion object {
         private const val TAG = "JARVIS_NOTIF"
 
@@ -37,6 +38,13 @@ class JarvisNotificationListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        if (isInitialized) {
+            Log.d("JARVIS_NOTIF", "Ya estaba conectado, ignorando re-inicialización")
+            return
+        }
+
+        isInitialized = true
+        Log.d("JARVIS_NOTIF", "Conectado — cargando panel")
         instance = this
         Log.d(TAG, " Listener conectado — cargando panel")
         refrescarNotificacionesActivas()

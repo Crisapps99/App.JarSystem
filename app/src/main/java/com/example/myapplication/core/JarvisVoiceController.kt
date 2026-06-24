@@ -1,7 +1,6 @@
 package com.example.myapplication.core
 
 import android.Manifest
-import android.R.attr.port
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -10,12 +9,8 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -40,13 +35,13 @@ import android.os.Vibrator
 import android.os.VibrationEffect
 import android.os.Build
 import com.example.myapplication.model.ScreenElement
-import com.example.myapplication.service.JarvisNotificationListener
 import com.example.myapplication.ui.JarvisOverlayUiState
 import com.example.myapplication.ui.StepStatus
 import com.example.myapplication.ui.ProcessingStep
 import kotlinx.coroutines.withTimeoutOrNull
 import com.example.myapplication.grpc.NexusWebSocketClient
 import com.example.myapplication.ui.BarColorMode
+import com.example.myapplication.ui.applyJarvisState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 
@@ -167,14 +162,13 @@ class JarvisVoiceController(
     // ── Timeout para respuestas del servidor ──────────────────────────────────
     private var timeoutServidor: Runnable? = null
     private val TIMEOUT_SERVIDOR_MS = 15000L  // 15 segundos máximo
+    private var isRecognizingMusic = false
 
-    private var spotifyUpdateJob: Job? = null
     // ────────────────────────────────────────────────────────────────────────
     // INICIALIZACIÓN
     // ────────────────────────────────────────────────────────────────────────
 
     fun init() {
-        registrarReceptorSpotify()
         audioManager = AudioManager(context)
         configurarTts()
         inicializarWebSocket()
@@ -255,43 +249,24 @@ class JarvisVoiceController(
         Log.i(TAG, " Controlador inicializado")
     }
 
-    private fun startSpotifyPlayerUpdates() {
-        stopSpotifyPlayerUpdates() // evitar duplicados
-        spotifyUpdateJob = scope.launch {
-            while (uiState?.showSpotifyPlayer == true && coroutineContext.isActive) {
-                val title = SpotifyController.getTituloActual(context) ?: ""
-                val artist = SpotifyController.getArtistaActual(context) ?: ""
-                val isPlaying = SpotifyController.estaReproduciendo(context)
-                withContext(Dispatchers.Main) {
-                    uiState?.spotifyTrackTitle = title
-                    uiState?.spotifyTrackArtist = artist
-                    uiState?.spotifyIsPlaying = isPlaying
-                    // Si la canción ha terminado y no hay título, podríamos ocultar el reproductor
-                    if (title.isBlank() && artist.isBlank() && !isPlaying) {
-                        // no ocultamos automáticamente, el usuario puede cerrarlo
-                    }
-                }
-                delay(2000) // actualiza cada 2 segundos
-            }
-        }
-    }
 
-    private fun stopSpotifyPlayerUpdates() {
-        spotifyUpdateJob?.cancel()
-        spotifyUpdateJob = null
-    }
-
-    private fun ocultarReproductor() {
-        uiState?.showSpotifyPlayer = false
-        stopSpotifyPlayerUpdates()
-        // También resetear los textos
-        uiState?.spotifyTrackTitle = ""
-        uiState?.spotifyTrackArtist = ""
-        uiState?.spotifyIsPlaying = false
-    }
 
     private fun procesarTexto(texto: String) {
-
+        mainHandler.post {
+            uiState?.apply {
+                transcription = ""
+                typewriterText = ""
+                fullHtmlText = ""
+                imageUrls = emptyList()
+                sourceUrls = emptyList()
+                showMusicResult = false
+                musicTitle = ""
+                musicArtist = ""
+                musicCoverUrl = ""
+                musicExternalUrls = emptyList()
+                processingSteps = emptyList()
+            }
+        }
         val ahora = System.currentTimeMillis()
         val textoLimpio = texto.trim()
 
@@ -300,68 +275,75 @@ class JarvisVoiceController(
             detenerTTS()
             estaHablando = false
         }
+
         val tiempoDesdeTTS = ahora - ttsTerminoTimestamp
         if (tiempoDesdeTTS < 2000L) {
-            // Si el texto es muy corto o parece eco, ignorar
             if (textoLimpio.length < 15) {
                 Log.d(TAG, "⏭️ Posible eco post-TTS ignorado: '$texto'")
                 return
             }
         }
-        if (textoLimpio == ultimoComandoEnviado &&
-            (ahora - ultimoTimestampComando) < 3000L) {
+
+        if (textoLimpio == ultimoComandoEnviado && (ahora - ultimoTimestampComando) < 3000L) {
             Log.d(TAG, " Comando duplicado ignorado: '$texto'")
             return
         }
+
         if (esperandoConfirmacion) {
             Log.d(TAG, " Procesando respuesta de confirmación: '$texto'")
             procesarRespuestaConfirmacion(texto)
             return
         }
+
         if (estaEnviandoAlServidor) {
             Log.d(TAG, " Limpiando envío colgado antes de procesar nuevo texto")
             cancelarEnvioActual()
-            // Pequeña pausa para que se limpie todo
             Thread.sleep(100)
         }
-// Interceptor local: PANTALLA DIVIDIDA / MULTIVENTANA
-//        val textoLower = texto.lowercase().trim()
-//        if (textoLower.contains("en la misma pantalla") ||
-//            textoLower.contains("pantalla dividida") ||
-//            textoLower.contains("multiventana") ||
-//            textoLower.contains("doble pantalla")) {
-//
-//            val apps = extraerAppsParaSplitScreen(texto) // definido abajo
-//            if (apps.isNotEmpty()) {
-//                ActionExecutor.openAppsInSplitScreen(context, apps)
-//                hablar("Abriendo las aplicaciones en pantalla dividida.") {
-//                    isProcessing = false
-//                    if (sesionActiva) iniciarSRContinuo()
-//                }
-//            } else {
-//                hablar("No entendí qué aplicaciones quieres abrir.") {
-//                    isProcessing = false
-//                    if (sesionActiva) iniciarSRContinuo()
-//                }
-//            }
-//            return
-//        }
+
+        // ============================================================
+        // ⭐ PRIMERO: COMANDOS DE RECONOCIMIENTO DE MÚSICA (ACRCloud)
+        // ============================================================
+        val lowerText = textoLimpio.lowercase()
+        val comandosMusica = listOf(
+            "reconoce esta canción",
+            "qué canción es esta",
+            "qué música es",
+            "identifica esta canción",
+            "qué está sonando",
+            "qué tema es",
+            "qué canción suena",
+            "reconocé esta canción",
+            "descubre esta canción",
+            "cuál es la canción",
+            "shazam",
+            "qué canción",
+            "identificar canción"
+        )
+
+        if (comandosMusica.any { lowerText.contains(it) }) {
+            Log.d(TAG, "🎵 Comando de reconocimiento de música detectado")
+            startMusicRecognition()
+            return  // ✅ IMPORTANTE: salir aquí para que no siga procesando
+        }
+
+        // ============================================================
+        // INTERCEPTORES LOCALES (YouTube, imágenes, etc.)
+        // ============================================================
+
         when {
-            // Adelantar (ej: "adelanta 30 segundos")
             textoLimpio.contains("adelanta") || textoLimpio.contains("avanza") -> {
-                val segundos = extraerSegundos(textoLimpio) ?: 10 // 10s por defecto
+                val segundos = extraerSegundos(textoLimpio) ?: 10
                 ActionExecutor.controlYoutube(context, "adelantar", segundos)
                 hablar("Adelantando $segundos segundos")
+                return
             }
-
-            // Retroceder (ej: "retrocede 10 segundos")
             textoLimpio.contains("retrocede") || textoLimpio.contains("atrasa") -> {
                 val segundos = extraerSegundos(textoLimpio) ?: 10
                 ActionExecutor.controlYoutube(context, "retroceder", segundos)
                 hablar("Retrocediendo $segundos segundos")
+                return
             }
-
-            // Pantalla completa
             textoLimpio.contains("pantalla completa") -> {
                 if (textoLimpio.contains("salir") || textoLimpio.contains("quitar")) {
                     ActionExecutor.controlYoutube(context, "salir_pantalla_completa")
@@ -370,20 +352,19 @@ class JarvisVoiceController(
                     ActionExecutor.controlYoutube(context, "pantalla_completa")
                     hablar("Poniendo pantalla completa")
                 }
+                return
             }
-            // Pantalla dividida / multiventana
-
-
         }
+
         if (modoConversacionActivo || esperandoPostTTS) {
             mainHandler.removeCallbacks(timeoutRunnable)
             mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
             Log.d(TAG, "Comando recibido en modo conversación, timeout reiniciado")
         }
-        if (textoLimpio.contains("busca imágenes de") || textoLimpio.contains("muéstrame imágenes de") ||
-            textoLimpio.contains("buscar imágenes de") || textoLimpio.contains("busca fotos de")
-        ) {
 
+        // Búsqueda de imágenes
+        if (textoLimpio.contains("busca imágenes de") || textoLimpio.contains("muéstrame imágenes de") ||
+            textoLimpio.contains("buscar imágenes de") || textoLimpio.contains("busca fotos de")) {
             val busqueda = textoLimpio
                 .replace("busca imágenes de", "")
                 .replace("muéstrame imágenes de", "")
@@ -391,7 +372,6 @@ class JarvisVoiceController(
                 .replace("busca fotos de", "")
                 .replace("fotos de", "")
                 .replace("imágenes de", "").trim()
-
             if (busqueda.isNotBlank()) {
                 ejecutarBusquedaImagenes(busqueda)
             } else {
@@ -402,11 +382,10 @@ class JarvisVoiceController(
             }
             return
         }
-        // INTERCEPTOR DE COMANDO: COPIAR TEXTO
-        if (textoLimpio.contains("copiar texto") || textoLimpio.contains("copia el texto") || textoLimpio.contains(
-                "copia texto"
-            )
-        ) {
+
+        // Copiar texto
+        if (textoLimpio.contains("copiar texto") || textoLimpio.contains("copia el texto") ||
+            textoLimpio.contains("copia texto")) {
             val contenidoACopiar = ultimoResultadoBusqueda?.content ?: ui.getDisplayedText()
             if (contenidoACopiar.isNotBlank()) {
                 ejecutarCopiarTextoLocal(contenidoACopiar)
@@ -418,11 +397,10 @@ class JarvisVoiceController(
             }
             return
         }
-        // INTERCEPTOR DE COMANDO: VER MÁS FUENTES / LINKS
-        if (textoLimpio.contains("ver más") || textoLimpio.contains("ver mas") || textoLimpio.contains(
-                "abrir enlaces"
-            )
-        ) {
+
+        // Ver más fuentes
+        if (textoLimpio.contains("ver más") || textoLimpio.contains("ver mas") ||
+            textoLimpio.contains("abrir enlaces")) {
             val urls = ultimoResultadoBusqueda?.urls ?: emptyList()
             if (urls.isNotEmpty()) {
                 ejecutarAbrirNavegadorLocal(urls.first())
@@ -434,97 +412,36 @@ class JarvisVoiceController(
             }
             return
         }
+
+        // YouTube
         if (texto.lowercase().contains("youtube") &&
-            (texto.lowercase().contains("pon") || texto.lowercase().contains("reproduce"))
-        ) {
+            (texto.lowercase().contains("pon") || texto.lowercase().contains("reproduce"))) {
             Log.d(TAG, "🎬 Comando de YouTube detectado: '$texto'")
             ejecutarMusica(texto)
             return
         }
-        // Detectar comandos para cerrar búsqueda
+
+        // Cerrar búsqueda
         if (texto.lowercase().contains("cerrar búsqueda") ||
             texto.lowercase().contains("ocultar resultados") ||
-            texto.lowercase().contains("volver atrás")
-        ) {
-
+            texto.lowercase().contains("volver atrás")) {
             hablar("Resultados ocultados") {
                 isProcessing = false
                 if (sesionActiva) iniciarSRContinuo()
             }
             return
         }
-        // Interceptor control YouTube via MediaSession
-        val controlMedia = when {
-            textoLimpio.contains("pausa") || textoLimpio.contains("para la música") || textoLimpio.contains(
-                "para el video"
-            ) -> "pausa"
-
-            textoLimpio.contains("continúa") || textoLimpio.contains("continua") || textoLimpio.contains(
-                "reanuda"
-            ) || textoLimpio.contains("sigue") -> "play"
-
-            textoLimpio.contains("siguiente") || textoLimpio.contains("próxima") -> "siguiente"
-            textoLimpio.contains("qué suena") || textoLimpio.contains("que suena") || textoLimpio.contains(
-                "qué canción"
-            ) -> "titulo"
-
-            else -> null
-        }
-
-        if (controlMedia != null) {
-            val conSpotify = SpotifyController.estaReproduciendo(context)
-            val conYoutube = YoutubeController.estaReproduciendo(context)
-
-            val exito = when (controlMedia) {
-                "pausa" -> {
-                    if (conSpotify) SpotifyController.pausar(context)
-                    else if (conYoutube) YoutubeController.pausar(context)
-                    else false
-                }
-
-                "play" -> {
-                    if (conSpotify) SpotifyController.reproducir(context)
-                    else if (conYoutube) YoutubeController.reproducir(context)
-                    else false
-                }
-
-                "siguiente" -> {
-                    if (conSpotify) SpotifyController.siguienteCancion(context)
-                    else if (conYoutube) YoutubeController.siguienteCancion(context)
-                    else false
-                }
-
-                "anterior" -> {
-                    if (conSpotify) SpotifyController.cancionAnterior(context)
-                    else false
-                }
-
-                "titulo" -> {
-                    val titulo = SpotifyController.getTituloActual(context)
-                        ?: YoutubeController.getTituloActual(context)
-                    val artista = SpotifyController.getArtistaActual(context)
-                    val respuesta = when {
-                        titulo != null && artista != null -> "Está sonando $titulo de $artista"
-                        titulo != null -> "Está sonando $titulo"
-                        else -> "No hay nada reproduciéndose"
-                    }
-                    hablar(respuesta) {
-                        isProcessing = false
-                        if (sesionActiva) iniciarSRContinuo()
-                    }
-                    return
-                }
-
-                else -> false
-            }
-        }
+        // Cancelación
         if (esComandoCancelacion(texto)) {
             Log.d(TAG, "🛑 Comando de cancelación detectado: '$texto'")
             cancelarAccionActual()
             return
         }
+        processCommand(textoLimpio)
+        // ============================================================
+        // COMANDOS POR INTENCIÓN (CommandAnalyzer)
+        // ============================================================
         val intencion = CommandAnalyzer.clasificar(texto)
-
         Log.d(TAG, "Intención detectada: $intencion")
 
         when (intencion) {
@@ -535,7 +452,6 @@ class JarvisVoiceController(
                     isProcessing = false
                 }
             }
-
             CommandAnalyzer.Intent.SEND_MESSAGE -> {
                 val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
                 hablar("Enviando mensaje a $contacto") {
@@ -543,12 +459,9 @@ class JarvisVoiceController(
                     isProcessing = false
                 }
             }
-
             CommandAnalyzer.Intent.SEND_WHATSAPP -> {
-                // Extraer contacto y mensaje del comando
                 val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
                 val mensaje = extraerMensajeDelComando(texto)
-
                 if (contacto.isNotBlank() && mensaje.isNotBlank()) {
                     Log.d(TAG, "📱 [WHATSAPP] Mostrando preview para $contacto")
                     ActionExecutor.sendWhatsAppMessage(context, contacto, mensaje)
@@ -563,7 +476,6 @@ class JarvisVoiceController(
                     }
                 }
             }
-
             CommandAnalyzer.Intent.SEND_TELEGRAM -> {
                 val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
                 hablar("Enviando por Telegram a $contacto") {
@@ -571,67 +483,132 @@ class JarvisVoiceController(
                     isProcessing = false
                 }
             }
-
             CommandAnalyzer.Intent.PLAY_MUSIC -> {
                 val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
                 ejecutarMusica(busqueda)
             }
-
             CommandAnalyzer.Intent.OPEN_YOUTUBE -> {
                 hablar("Abriendo YouTube") {
-                    val intent = android.content.Intent(
-                        android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://www.youtube.com")
-                    )
-                    intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com"))
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     context.startActivity(intent)
                     isProcessing = false
                 }
             }
-
             CommandAnalyzer.Intent.OPEN_MAPS -> {
                 hablar("Abriendo Google Maps") {
-                    val intent = android.content.Intent(
-                        android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://maps.google.com")
-                    )
-                    intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://maps.google.com"))
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     context.startActivity(intent)
                     isProcessing = false
                 }
             }
-
             CommandAnalyzer.Intent.WEATHER -> {
                 ejecutarClima()
             }
-
             CommandAnalyzer.Intent.TIME -> {
                 ejecutarComandoHora()
             }
-
-
             CommandAnalyzer.Intent.UNKNOWN -> {
-                // Intentar con modo visual o servidor
                 if (interceptarComandoVisual(texto)) {
                     isProcessing = false
                     if (sesionActiva) iniciarSRContinuo()
                     return
                 }
-
                 if (esFraseDeSalida(texto)) {
                     terminarSesion()
                     return
                 }
-
-                // Enviar al servidor
                 enviarComandoAlServidor(texto)
             }
-
             else -> {
-                // Fallback: enviar al servidor
                 enviarComandoAlServidor(texto)
             }
         }
+    }
+    private fun processCommand(text: String) {
+        val lower = text.lowercase().trim()
+        when {
+            // Detectar comando de música
+            lower.contains("reconoce esta canción") ||
+                    lower.contains("qué canción es esta") ||
+                    lower.contains("qué música es") ||
+                    lower.contains("identifica esta canción") -> {
+                startMusicRecognition()
+            }
+
+            // ... otros comandos existentes
+        }
+    }
+
+    private fun startMusicRecognition() {
+        if (isRecognizingMusic) return
+        isRecognizingMusic = true
+
+        ui.showText("🎵 Reconociendo música... acercando el dispositivo")
+        ui.renderState(JarvisState.LISTENING)
+        ui.setOrbVisibility(true)
+
+        voiceEngine.iniciarReconocimientoMusica(
+            durationSegundos = 10,  // ✅ Solo 10 segundos
+            onResult = { musicResult ->
+                isRecognizingMusic = false
+                if (musicResult != null) {
+                    showMusicResult(musicResult)
+
+                } else {
+                    ui.showText("No pude identificar la canción")
+                    ui.renderState(JarvisState.IDLE)
+                }
+
+            }
+        )
+
+        scope.launch {
+            delay(12_000) // 12 segundos de timeout
+            if (isRecognizingMusic) {
+                isRecognizingMusic = false
+                voiceEngine.detenerReconocimientoMusica()
+                ui.showText("⏰ Tiempo agotado")
+                ui.renderState(JarvisState.IDLE)
+            }
+        }
+    }
+    private fun onMusicIdentified(music: MusicRecognizerRest.MusicResult) {
+        // Usamos el 'uiState' que ya tienes en el constructor de la clase
+        uiState?.let { state ->
+            state.musicTitle = music.title
+            state.musicArtist = music.artist
+            // Asegúrate de que tu modelo de datos tenga 'coverUrl'
+            state.musicCoverUrl = music.coverUrl ?: ""
+            state.musicExternalUrls = music.externalUrls
+
+            // Esto activa la tarjeta en tu UI
+            state.showMusicResult = true
+            state.showPanel = true
+        }
+    }
+    private fun showMusicResult(music: MusicRecognizerRest.MusicResult) {
+        Log.d(TAG, "🎵 Mostrando resultado: ${music.title} - ${music.artist}")
+        Log.d(TAG, "   Enlaces: ${music.externalUrls}")
+
+        uiState?.let { state ->
+            // ✅ Asignar TODOS los campos
+            state.musicTitle = music.title
+            state.musicArtist = music.artist
+            state.musicAlbum = music.album
+            state.musicGenre = music.genre
+            state.musicDurationMs = music.durationMs
+            state.musicCoverUrl = music.coverUrl
+            state.musicExternalUrls = music.externalUrls
+
+            // ✅ Mostrar en la UI
+            state.showMusicResult = true
+            state.showPanel = true
+        }
+
+        // ✅ Hablar el resultado
+        hablar("La canción es ${music.title} de ${music.artist}")
     }
     private fun extraerAppsParaSplitScreen(texto: String): List<String> {
         // Limpiar la frase
@@ -677,6 +654,9 @@ class JarvisVoiceController(
 
         return paquetes.take(2)
     }
+    // ContinuousVoiceEngine.kt - Añadir al final de la clase
+
+
     private fun extraerMensajeDelComando(texto: String): String {
         val patrones = listOf(
             "dile que (.+)$",
@@ -834,31 +814,37 @@ class JarvisVoiceController(
 
     private fun ejecutarMusica(texto: String) {
         val esYoutube = texto.contains("youtube", ignoreCase = true)
-
         var busqueda = texto.lowercase()
             .replace("reproduce", "").replace("pon la canción", "")
             .replace("pon música de", "").replace("pon a", "")
             .replace("en spotify", "").replace("en youtube", "")
             .replace("por youtube", "").replace("pon", "").trim()
 
-        if (busqueda.isEmpty()) {
-            busqueda = texto
-        }
+        if (busqueda.isEmpty()) busqueda = texto
 
-        val mensaje = if (esYoutube) "Buscando $busqueda en YouTube" else "Reproduciendo $busqueda"
-
-        hablar(mensaje) {
-            if (esYoutube) {
+        if (esYoutube) {
+            hablar("Buscando $busqueda en YouTube") {
                 ActionExecutor.playVideo(context, busqueda)
-            } else {
-                // Spotify
-                ActionExecutor.playMusic(context, busqueda, "com.spotify.music")
-                // Mostrar reproductor en el panel
-                uiState?.showSpotifyPlayer = true
-                startSpotifyPlayerUpdates()
+                isProcessing = false
+            }
+        } else {
+            // 🟢 Abrir Spotify sin setPackage
+            val queryEncoded = Uri.encode(busqueda)
+            val uri = Uri.parse("https://open.spotify.com/search/$queryEncoded")
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(intent)
+                hablar("Abriendo Spotify para $busqueda")
+            } catch (e: Exception) {
+                // Fallback a navegador
+                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$busqueda"))
+                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(fallbackIntent)
+                hablar("No encontré Spotify, abro búsqueda en Google")
             }
             isProcessing = false
-            if (sesionActiva) iniciarSRContinuo()
         }
     }
 
@@ -1556,7 +1542,7 @@ class JarvisVoiceController(
 
     private fun hablarElevenLabs(texto: String, alTerminar: (() -> Unit)? = null) {
         setState(JarvisState.SPEAKING)
-
+        estaHablando = true
         scope.launch(Dispatchers.IO) {
             try {
                 val client = OkHttpClient.Builder()
@@ -1602,7 +1588,9 @@ class JarvisVoiceController(
 
             } catch (e: Exception) {
                 Log.e(TAG, " ElevenLabs excepción: ${e.message} — fallback a Android TTS")
-                withContext(Dispatchers.Main) { hablarAndroid(texto, alTerminar) }
+                withContext(Dispatchers.Main) {
+                    estaHablando = false
+                    hablarAndroid(texto, alTerminar) }
             }
         }
     }
@@ -1634,6 +1622,7 @@ class JarvisVoiceController(
                 archivo.delete()
                 elMediaPlayer?.release()
                 elMediaPlayer = null // Libera la referencia
+                estaHablando = false
                 alTerminar?.invoke()
                 if (sesionActiva) {
                     mainHandler.postDelayed({
@@ -1648,6 +1637,7 @@ class JarvisVoiceController(
             elMediaPlayer?.release()
             elMediaPlayer = null
             hablarAndroid("", alTerminar)
+            estaHablando = false
             true
         }
 
@@ -1690,6 +1680,7 @@ class JarvisVoiceController(
             override fun onError(id: String?) {
                 Log.e(TAG, "Error en TTS")
                 mainHandler.post {
+                    estaHablando = false
                     alTerminar?.invoke()
                     if (sesionActiva) {
                         modoConversacionActivo = false
@@ -1705,7 +1696,6 @@ class JarvisVoiceController(
     private fun finalizarInteraccion() {
         Log.d(TAG, "Finalizando interacción, volviendo a modo IDLE")
         stopListeningCompletamente()   // sets sesionActiva = false, stops STT
-        ui.hideOverlayFromTimeout()
     }
 
     fun detenerAudio() {
@@ -1771,6 +1761,7 @@ class JarvisVoiceController(
             ui.updateORB(0f)
             ttsTerminoTimestamp = System.currentTimeMillis()
             isProcessing = false
+            estaHablando = false
             Log.d(TAG, " TTS detenido por interrupción")
         }
     }
@@ -1922,19 +1913,6 @@ class JarvisVoiceController(
         context.registerReceiver(confirmationDoneReceiver, IntentFilter("JARVIS.CONFIRMATION_DONE"), Context.RECEIVER_NOT_EXPORTED)
     }
 
-    private fun registrarReceptorSpotify() {
-        context.registerReceiver(
-            object : BroadcastReceiver() {
-                override fun onReceive(ctx: Context?, intent: Intent?) {
-                    if (intent?.action == "JARVIS.HIDE_SPOTIFY_PLAYER") {
-                        ocultarReproductor()
-                    }
-                }
-            },
-            IntentFilter("JARVIS.HIDE_SPOTIFY_PLAYER"),
-            Context.RECEIVER_NOT_EXPORTED
-        )
-    }
     /**
      * Procesa la respuesta del usuario a una confirmación.
      * Llamado desde transcribirYProcesar() cuando esperandoConfirmacion == true.
@@ -2391,24 +2369,17 @@ class JarvisVoiceController(
                     // RESETEO COMPLETO
                     uiState?.apply {
                         barColors = BarColorMode.IDLE
-                        showPanel = false
                         labelText = "NEXUS"
                         labelColor = android.graphics.Color.WHITE
                         showPause = false
                         showWave = false
                         showWhatsappPreview = false
                         serverProcessing = false
-                        transcription = ""
-                        typewriterText = "Como puedo Ayudarte"
-                        fullHtmlText = ""
                         userTranscription = ""
-                        imageUrls = emptyList()
-                        sourceUrls = emptyList()
                         processingSteps = emptyList()
                         pendingWhatsappContact = ""
                         pendingWhatsappMessage = ""
                     }
-                    ui.showText("")
                 }
             }
         }
@@ -2416,10 +2387,43 @@ class JarvisVoiceController(
     // ────────────────────────────────────────────────────────────────────────
     // LIFECYCLE
     // ────────────────────────────────────────────────────────────────────────
+    fun resetCompleto() {
+        Log.d(TAG, "🔄 Reset completo desde controlador")
 
+        // 1. Detener todo
+        stopListeningCompletamente()
+        detenerTTS()
+        detenerAudio()
+
+        // 2. Cancelar envíos pendientes
+        cancelarEnvioActual()
+        esperandoConfirmacion = false
+        isRecognizingMusic = false
+
+        // 3. Resetear UI
+        mainHandler.post {
+            uiState?.apply {
+                applyJarvisState(JarvisState.IDLE)
+
+                showWhatsappPreview = false
+
+                showPanel = false
+                userTranscription = ""
+                processingSteps = emptyList()
+                imageUrls = emptyList()
+                sourceUrls = emptyList()
+            }
+            ui.renderState(JarvisState.IDLE)
+            ui.setOrbVisibility(true)
+        }
+
+        // 4. Reanudar wake word
+        porcupineController?.reanudarPorcupine()
+
+        Log.d(TAG, "✅ Reset completo - Listo para wake word")
+    }
     fun destroy() {
-        stopSpotifyPlayerUpdates()
-//        stopListeningCompletamente()
+
         voiceEngine.stop()
         if (::tts.isInitialized && ttsListo) tts.shutdown()
 //        if (::audioEngine.isInitialized) audioEngine.stop()

@@ -49,7 +49,7 @@ class ContinuousVoiceEngine(
     }
 
     // ── Modos del motor ──────────────────────────────────────────────────────
-    private enum class EngineMode { WAKE_WORD, LISTENING, STOPPED }
+    private enum class EngineMode { WAKE_WORD,MUSIC_RECOGNITION, LISTENING, STOPPED }
 
     // ── Audio ────────────────────────────────────────────────────────────────
     private var audioRecord: AudioRecord? = null
@@ -74,7 +74,12 @@ class ContinuousVoiceEngine(
     // ── RMS suavizado ────────────────────────────────────────────────────────
     private var lastRms = 0f
     private val smoothing = 0.15f
-
+    // ── Music Recognition ──────────────────────────────────────────────────────
+    private var musicRecognizer: MusicRecognizerRest? = null
+    @Volatile private var musicRecognitionActive = false
+    private var onMusicResult: ((MusicRecognizerRest.MusicResult?) -> Unit)? = null
+    private var musicWaveJob: Job? = null  // ← AÑADE ESTA LÍNEA
+    private val musicScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     // ── Timeout para volver a WAKE_WORD ─────────────────────────────────────
     private val timeoutHandler = Handler(Looper.getMainLooper())
     private val TIMEOUT_SILENCIO_MS = 5000L  // 5 segundos sin hablar → wake word
@@ -179,6 +184,97 @@ class ContinuousVoiceEngine(
             }
         }
     }
+    /**
+     * Inicia el reconocimiento de música con ACRCloud
+     * @param durationSegundos Duración de grabación (default 30)
+     * @param onResult Callback con el resultado (null si no se reconoció)
+     */
+    fun iniciarReconocimientoMusica(
+        durationSegundos: Int = 30,
+        onResult: (MusicRecognizerRest.MusicResult?) -> Unit
+    ) {
+        if (musicRecognitionActive) {
+            Log.w(TAG, "⚠️ Ya hay un reconocimiento de música activo")
+            return
+        }
+        musicWaveJob = musicScope.launch {
+            var counter = 0f
+            while (musicRecognitionActive) {
+                // Si el RMS es muy bajo (silencio), simular ondas
+                if (lastRms < 0.05f) {
+                    val wave = 0.3f + 0.7f * (0.5f + 0.5f * kotlin.math.sin(counter))
+                    mainHandler.post { onRmsChanged(wave) }
+                    counter += 0.15f
+                }
+                delay(50)
+            }
+        }
+        // Guardar callback
+        onMusicResult = onResult
+
+        // Cambiar modo
+        engineMode = EngineMode.MUSIC_RECOGNITION
+        musicRecognitionActive = true
+
+        // Pausar Google Cloud STT si estaba activo
+        if (grpcActivo) {
+            grpcActivo = false
+            grpcRecognizer.stopStreaming()
+        }
+
+        // Crear el reconocedor de música
+        musicRecognizer = MusicRecognizerRest(
+            context = context,
+            onResult = { musicResult ->
+                // Resultado recibido
+                musicRecognitionActive = false
+                engineMode = EngineMode.WAKE_WORD
+                startVoskWakeWordMode()
+
+                // Notificar en el hilo principal
+                mainHandler.post {
+                    onResult(musicResult)
+                    // Volver a activar wake word
+                    onSpeechEnded()
+                }
+            },
+            onError = { error ->
+                Log.e(TAG, "❌ Error en reconocimiento de música: $error")
+                musicRecognitionActive = false
+                engineMode = EngineMode.WAKE_WORD
+                startVoskWakeWordMode()
+                mainHandler.post {
+                    onResult(null)
+                    onSpeechEnded()
+                }
+            },
+            onVolumeChanged = { volume ->
+                mainHandler.post { onRmsChanged(volume / 100f) }
+            }
+
+        )
+
+        // Iniciar reconocimiento con el SDK de ACRCloud (NO usa AudioRecord propio)
+        musicRecognizer?.start(durationSegundos)
+
+        mainHandler.post { onSpeechStarted() }
+        Log.d(TAG, "🎵 Reconocimiento de música iniciado por $durationSegundos segundos")
+    }
+
+    /**
+     * Detiene el reconocimiento de música manualmente
+     */
+    fun detenerReconocimientoMusica() {
+        if (!musicRecognitionActive) return
+        musicRecognizer?.stop()
+        musicRecognizer = null
+        musicRecognitionActive = false
+        musicWaveJob?.cancel()
+        engineMode = EngineMode.WAKE_WORD
+        startVoskWakeWordMode()
+        mainHandler.post { onSpeechEnded() }
+        Log.d(TAG, "⏹️ Reconocimiento de música detenido")
+    }
     private fun startAudioCapture() {
         if (!hasAudioPermission()) {
             Log.e(TAG, "❌ Permiso RECORD_AUDIO no concedido")
@@ -214,7 +310,7 @@ class ContinuousVoiceEngine(
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // LOOP DE CAPTURA — único loop que alimenta Vosk o Google Cloud STT
+    // LOOP DE CAPTURA — único loop que alimenta Vosk, Google Cloud STT, y a ACR
     // ────────────────────────────────────────────────────────────────────────
 
     private fun startCaptureLoop() {
@@ -250,6 +346,18 @@ class ContinuousVoiceEngine(
                             grpcRecognizer.sendAudioChunk(buffer.copyOf(read))
                         }
                     }
+                    EngineMode.MUSIC_RECOGNITION -> {  // ← NUEVO CASO
+                        // Enviar audio a ACRCloud
+                        if (musicRecognitionActive && musicRecognizer != null) {
+                            // El SDK de ACRCloud maneja su propia grabación,
+                            // así que NO enviamos el audio desde aquí.
+                            // Solo actualizamos el RMS para la UI
+                            val rms = calculateRMS(buffer, read)
+                            lastRms += (rms - lastRms) * smoothing
+                            mainHandler.post { onRmsChanged(lastRms) }
+                        }
+                    }
+
                     EngineMode.WAKE_WORD -> {
                         // ✅ Vosk (solo wake word)
                         if (voskListo) {
@@ -394,6 +502,11 @@ class ContinuousVoiceEngine(
         captureJob?.cancel()
         captureJob = null
 
+        musicWaveJob?.cancel()
+        musicWaveJob = null
+        musicRecognitionActive = false
+        musicRecognizer?.stop()
+        musicRecognizer = null
         timeoutHandler.removeCallbacks(timeoutRunnable)
         mainHandler.removeCallbacksAndMessages(null)
 
@@ -408,6 +521,7 @@ class ContinuousVoiceEngine(
 
         releaseAudioRecord()
         engineScope.cancel()
+        musicScope.cancel()
 
         Log.i(TAG, "✅ Motor detenido")
     }

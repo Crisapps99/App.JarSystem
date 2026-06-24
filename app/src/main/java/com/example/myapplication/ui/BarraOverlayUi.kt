@@ -1,5 +1,6 @@
 package com.example.myapplication.ui
 
+import MusicResultCard
 import kotlinx.coroutines.delay
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -11,12 +12,14 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -24,11 +27,12 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.myapplication.activity.ActionExecutor
 import com.example.myapplication.core.JarvisState
-import com.example.myapplication.core.SpotifyController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -65,13 +69,19 @@ class JarvisOverlayUiState {
     var barColors        by mutableStateOf(BarColorMode.IDLE)
     var serverProcessing by mutableStateOf(false)
 
-    var spotifyTrackTitle  by mutableStateOf("")
-    var spotifyTrackArtist by mutableStateOf("")
-    var spotifyIsPlaying   by mutableStateOf(false)
-    var showSpotifyPlayer  by mutableStateOf(false)
+    // RECONOCIMIENTO DE MÚSICA (Campos nuevos agregados exitosamente)
+    var showMusicResult by mutableStateOf(false)
+    var musicTitle by mutableStateOf("")
+    var musicArtist by mutableStateOf("")
+    var musicAlbum by mutableStateOf("")         // <--- NUEVO
+    var musicGenre by mutableStateOf("")         // <--- NUEVO
+    var musicDurationMs by mutableStateOf(0L)    // <--- NUEVO
+    var musicCoverUrl by mutableStateOf("")
+    var musicExternalUrls by mutableStateOf<List<String>>(emptyList())
+    var spotifyCoverUri by mutableStateOf("")
 }
 
-//mensaje whatsapp
+// Mensaje WhatsApp
 @Composable
 private fun WhatsAppMessagePreview(
     contactName: String,
@@ -82,14 +92,9 @@ private fun WhatsAppMessagePreview(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                ColorBgDark,
-                RoundedCornerShape(22.dp)
-            )
+            .background(ColorBgDark, RoundedCornerShape(22.dp))
             .padding(16.dp)
-
     ) {
-        // Encabezado
         Text(
             text = "Mensaje a $contactName",
             color = Color(0xFF4DEEE9),
@@ -98,7 +103,6 @@ private fun WhatsAppMessagePreview(
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        // Preview estilo WhatsApp
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -128,7 +132,6 @@ private fun WhatsAppMessagePreview(
             }
         }
 
-        // Pregunta
         Text(
             text = "¿Enviar este mensaje?",
             color = ColorTextMain,
@@ -136,7 +139,6 @@ private fun WhatsAppMessagePreview(
             modifier = Modifier.padding(top = 14.dp, bottom = 14.dp)
         )
 
-        // Botones
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -168,6 +170,7 @@ private fun WhatsAppMessagePreview(
         Spacer(modifier = Modifier.height(100.dp))
     }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Composable raíz
 // ─────────────────────────────────────────────────────────────────────────────
@@ -185,15 +188,19 @@ fun JarvisOverlayContent(
             .clickable(
                 onClick = onBackgroundClick,
                 indication = null,
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource()}
+                interactionSource = remember {
+                    androidx.compose.foundation.interaction.MutableInteractionSource()
+                }
             ),
         contentAlignment = Alignment.BottomCenter
     ) {
-        // ✅ Panel SOLO visible en SPEAKING o THINKING con serverProcessing
+        // ─── PANEL DE RESULTADOS ───
         AnimatedVisibility(
             visible = uiState.showPanel &&
                     uiState.jarvisState != JarvisState.LISTENING &&
-                    uiState.jarvisState != JarvisState.IDLE,
+                    (uiState.jarvisState != JarvisState.IDLE ||
+                            uiState.showMusicResult ||
+                            uiState.showWhatsappPreview),
             enter = fadeIn(tween(350)) + slideInVertically(
                 animationSpec = tween(450, easing = FastOutSlowInEasing),
                 initialOffsetY = { it }
@@ -207,7 +214,14 @@ fun JarvisOverlayContent(
                 .padding(horizontal = 12.dp)
                 .padding(bottom = 15.dp)
                 .align(Alignment.BottomCenter)
-                .clickable(enabled = true, onClick = {})
+                // ✅ IMPORTANTE: El panel captura el clic para no propagarlo al fondo
+                .clickable(
+                    onClick = { /* El panel captura el clic para no cerrarse */ },
+                    indication = null,
+                    interactionSource = remember {
+                        androidx.compose.foundation.interaction.MutableInteractionSource()
+                    }
+                )
         ) {
             ResultsPanel(
                 uiState = uiState,
@@ -216,7 +230,7 @@ fun JarvisOverlayContent(
             )
         }
 
-        // Barra siempre visible
+        // ─── BARRA INFERIOR (siempre visible) ───
         ListeningBarRow(
             uiState      = uiState,
             barState     = barState,
@@ -227,7 +241,14 @@ fun JarvisOverlayContent(
                 .wrapContentHeight()
                 .padding(bottom = 33.dp)
                 .align(Alignment.BottomCenter)
-                .clickable(enabled = true, onClick = {})
+                // ✅ La barra también captura clics para no propagarlos
+                .clickable(
+                    onClick = { /* La barra captura clics */ },
+                    indication = null,
+                    interactionSource = remember {
+                        androidx.compose.foundation.interaction.MutableInteractionSource()
+                    }
+                )
         )
     }
 }
@@ -236,8 +257,10 @@ private fun SpotifyPlayer(
     title: String,
     artist: String,
     isPlaying: Boolean,
+    coverUri: String = "",
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
+    onPrevious: () -> Unit = {},
     onClose: () -> Unit
 ) {
     Column(
@@ -246,73 +269,141 @@ private fun SpotifyPlayer(
             .background(ColorBgDark, RoundedCornerShape(22.dp))
             .padding(16.dp)
     ) {
+        // ─── HEADER ──────────────────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "🎵 Spotify",
-                color = Color(0xFF1DB954),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(Color(0xFF1DB954), CircleShape)
+                        .shadow(8.dp, spotColor = Color(0xFF1DB954))
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "SPOTIFY",
+                    color = Color(0xFF1DB954),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.5.sp
+                )
+            }
             Box(
                 modifier = Modifier
-                    .size(30.dp)
+                    .size(28.dp)
+                    .background(Color(0xFF3A3A50).copy(alpha = 0.4f), CircleShape)
                     .clickable { onClose() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("✕", color = Color.White.copy(alpha = 0.7f), fontSize = 18.sp)
+                Text("✕", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        if (title.isNotBlank()) {
-            Text(
-                text = title,
-                color = ColorTextMain,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-        } else {
-            Text(
-                text = "Esperando canción...",
-                color = Color(0xFF888899),
-                fontSize = 16.sp,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-        }
-        if (artist.isNotBlank()) {
-            Text(
-                text = artist,
-                color = Color(0xFFA0A0B0),
-                fontSize = 14.sp
-            )
-        }
+
         Spacer(modifier = Modifier.height(12.dp))
+
+        // ─── INFO DE CANCIÓN CON PORTADA ──────────────────────────────
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Portada
+            if (coverUri.isNotBlank()) {
+                AsyncImage(
+                    model = coverUri,
+                    contentDescription = "Portada",
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF2A2A3A)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🎵", fontSize = 24.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (title.isNotBlank()) title else "Esperando canción...",
+                    color = ColorTextMain,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (artist.isNotBlank()) artist else "",
+                    color = Color(0xFFA0A0B0),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // ─── CONTROLES ──────────────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            // Botón Anterior
             IconButton(
-                onClick = onPlayPause,
-                modifier = Modifier.size(48.dp)
+                onClick = onPrevious,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Text("⏮", fontSize = 22.sp, color = Color.White.copy(alpha = 0.7f))
+            }
+
+            // Botón Play/Pause (más grande)
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(Color(0xFF1DB954), CircleShape)
+                    .clickable { onPlayPause() },
+                contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = if (isPlaying) "⏸" else "▶️",
                     fontSize = 28.sp,
-                    color = Color.White
+                    color = Color.Black
                 )
             }
+
+            // Botón Siguiente
             IconButton(
                 onClick = onNext,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(44.dp)
             ) {
-                Text("⏭", fontSize = 28.sp, color = Color.White)
+                Text("⏭", fontSize = 22.sp, color = Color.White.copy(alpha = 0.7f))
             }
         }
     }
+}
+
+// Corrección: Ahora limpia las variables nuevas de música también
+fun JarvisOverlayUiState.clearMusicResult() {
+    showMusicResult = false
+    musicTitle = ""
+    musicArtist = ""
+    musicAlbum = ""         // <--- Limpieza
+    musicGenre = ""         // <--- Limpieza
+    musicDurationMs = 0L    // <--- Limpieza
+    musicCoverUrl = ""
+    musicExternalUrls = emptyList()
 }
 
 @Composable
@@ -324,6 +415,7 @@ private fun IconButton(onClick: () -> Unit, modifier: Modifier = Modifier, conte
         content()
     }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Barra inferior
 // ─────────────────────────────────────────────────────────────────────────────
@@ -349,20 +441,20 @@ private fun ListeningBarRow(
                 .padding(horizontal = 26.dp, vertical = 22.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-                JarvisOrb(
-                    modifier      = Modifier.size(52.dp, 42.dp),
-                    energy        = if (uiState.jarvisState == JarvisState.IDLE) 0f else barState.energy,
-                    maxRings      = 3,
-                    showLightCore = false,
-                    showParticles = false
-                )
+            JarvisOrb(
+                modifier      = Modifier.size(52.dp, 42.dp),
+                energy        = if (uiState.jarvisState == JarvisState.IDLE) 0f else barState.energy,
+                maxRings      = 3,
+                showLightCore = false,
+                showParticles = false
+            )
             Text(
                 text = when {
-                    uiState.jarvisState == JarvisState.IDLE -> "En que peudo Ayudarte"  //  Siempre "NEXUS" en IDLE
+                    uiState.jarvisState == JarvisState.IDLE -> "En que peudo Ayudarte"
                     uiState.userTranscription.isNotBlank() -> uiState.userTranscription
-                    uiState.jarvisState == JarvisState.LISTENING -> ""  //  Vacío en LISTENING
-                    uiState.jarvisState == JarvisState.THINKING -> ""   //  Vacío en THINKING
-                    uiState.jarvisState == JarvisState.SPEAKING -> ""   //  Vacío en SPEAKING
+                    uiState.jarvisState == JarvisState.LISTENING -> ""
+                    uiState.jarvisState == JarvisState.THINKING -> ""
+                    uiState.jarvisState == JarvisState.SPEAKING -> ""
                     else -> "¿Cómo puedo ayudarte?"
                 },
                 color = Color(uiState.labelColor),
@@ -372,7 +464,6 @@ private fun ListeningBarRow(
                 modifier = Modifier.weight(1f)
             )
 
-            // Pause solo visible en SPEAKING
             AnimatedVisibility(visible = uiState.showPause && uiState.jarvisState == JarvisState.SPEAKING) {
                 Box(
                     modifier = Modifier
@@ -385,7 +476,6 @@ private fun ListeningBarRow(
                 }
             }
 
-            // Mic button
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -404,7 +494,7 @@ private fun ListeningBarRow(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Panel de resultados
+// Panel de resultados (Modificado para mapear los nuevos campos)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun ResultsPanel(
@@ -417,7 +507,15 @@ private fun ResultsPanel(
         modifier = Modifier
             .fillMaxWidth()
             .background(ColorBgDark, RoundedCornerShape(22.dp))
-    ) {  //preview de whats
+            // ✅ El panel captura clics para no cerrarse
+            .clickable(
+                onClick = { /* Capturar clic - no hacer nada */ },
+                indication = null,
+                interactionSource = remember {
+                    androidx.compose.foundation.interaction.MutableInteractionSource()
+                }
+            )
+    ) {
         if (uiState.showWhatsappPreview && uiState.pendingWhatsappContact.isNotBlank()) {
             WhatsAppMessagePreview(
                 contactName = uiState.pendingWhatsappContact,
@@ -428,7 +526,6 @@ private fun ResultsPanel(
                     )
                     uiState.showWhatsappPreview = false
                     uiState.hidePanel()
-                    // Notificar al controller para que limpie esperandoConfirmacion
                     context.sendBroadcast(Intent("JARVIS.CONFIRMATION_DONE").apply {
                         setPackage(context.packageName)
                     })
@@ -440,33 +537,27 @@ private fun ResultsPanel(
                     onCancelWhatsapp()
                 }
             )
-            return  // No mostrar el resto del panel
+            return
         }
-        if (uiState.showSpotifyPlayer) {
-            SpotifyPlayer(
-                title = uiState.spotifyTrackTitle,
-                artist = uiState.spotifyTrackArtist,
-                isPlaying = uiState.spotifyIsPlaying,
-                onPlayPause = {
-                    if (uiState.spotifyIsPlaying) {
-                        SpotifyController.pausar(context)
-                    } else {
-                        SpotifyController.reproducir(context)
-                    }
-                },
-                onNext = {
-                    SpotifyController.siguienteCancion(context)
-                },
+
+        // Corrección aquí: Pasamos las variables correspondientes desde uiState
+        if (uiState.showMusicResult) {
+            MusicResultCard(
+                title = uiState.musicTitle,
+                artist = uiState.musicArtist,
+                album = uiState.musicAlbum,              // <--- PASADO
+                genre = uiState.musicGenre,              // <--- PASADO
+                durationMs = uiState.musicDurationMs,    // <--- PASADO
+                coverUrl = uiState.musicCoverUrl,
+                externalUrls = uiState.musicExternalUrls,
                 onClose = {
-                    // Enviar broadcast para que el controlador oculte y detenga actualizaciones
-                    context.sendBroadcast(
-                        Intent("JARVIS.HIDE_SPOTIFY_PLAYER").apply {
-                            setPackage(context.packageName)
-                        }
-                    )
+                    uiState.clearMusicResult()
+                    uiState.showPanel = false
                 }
             )
+            Spacer(modifier = Modifier.height(12.dp))
         }
+
         if (uiState.imageUrls.isNotEmpty()) {
             LazyRow(
                 modifier = Modifier
@@ -488,51 +579,48 @@ private fun ResultsPanel(
 
         val scrollState = rememberScrollState()
         val textKey     = uiState.transcription + uiState.typewriterText
-        var textVisible by remember(textKey) { mutableStateOf(false) }
 
-            Column {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 340.dp)
-                        .verticalScroll(scrollState)
-                        .padding(horizontal = 16.dp, vertical = 16.dp)
-                ) {
-                    val displayText = when {
-                        uiState.typewriterText.isNotEmpty() -> uiState.typewriterText
-                        uiState.fullHtmlText.isNotEmpty() -> {
-                            // Solo convertir si realmente tiene contenido
-                            Html.fromHtml(uiState.fullHtmlText, Html.FROM_HTML_MODE_LEGACY).toString()
-                        }
-                        else -> ""
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 340.dp)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+            ) {
+                val displayText = when {
+                    uiState.typewriterText.isNotEmpty() -> uiState.typewriterText
+                    uiState.fullHtmlText.isNotEmpty() -> {
+                        Html.fromHtml(uiState.fullHtmlText, Html.FROM_HTML_MODE_LEGACY).toString()
                     }
-                    if (displayText.isNotEmpty()) {
-                        Text(
-                            text       = displayText,
-                            color      = ColorTextMain,
-                            fontSize   = 15.sp,
-                            lineHeight = 20.sp,
-                            modifier   = Modifier.padding(bottom = 100.dp)
-                        )
-                    }
+                    else -> ""
                 }
-
-                if (uiState.sourceUrls.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp)
-                            .padding(top = 8.dp, bottom = 130.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        uiState.sourceUrls.forEach { url -> SourceChip(url = url) }
-                    }
+                if (displayText.isNotEmpty()) {
+                    Text(
+                        text       = displayText,
+                        color      = ColorTextMain,
+                        fontSize   = 15.sp,
+                        lineHeight = 20.sp,
+                        modifier   = Modifier.padding(bottom = 100.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.height(55.dp))
             }
+
+            if (uiState.sourceUrls.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 8.dp, bottom = 130.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    uiState.sourceUrls.forEach { url -> SourceChip(url = url) }
+                }
+            }
+            Spacer(modifier = Modifier.height(55.dp))
         }
     }
-
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NetworkImage
@@ -631,7 +719,7 @@ fun JarvisOverlayUiState.applyJarvisState(state: JarvisState) {
     jarvisState = state
     when (state) {
         JarvisState.LISTENING -> {
-            labelText = ""  //  Sin texto
+            labelText = ""
             labelColor = android.graphics.Color.parseColor("#4DEEE9")
             showWave = false
             showPause = false
@@ -654,28 +742,28 @@ fun JarvisOverlayUiState.applyJarvisState(state: JarvisState) {
             barColors = BarColorMode.SPEAKING
         }
         JarvisState.IDLE      -> {
-            //  RESETEO COMPLETO
             labelText = "NEXUS"
             labelColor = android.graphics.Color.WHITE
             showWave = false
             showPause = false
             barColors = BarColorMode.IDLE
-            showPanel = false
+
+            if (!showMusicResult &&
+                transcription.isBlank() && fullHtmlText.isBlank()) {
+                showPanel = false
+                imageUrls = emptyList()
+                sourceUrls = emptyList()
+            }
             serverProcessing = false
             transcription = ""
             typewriterText = ""
             fullHtmlText = ""
-            imageUrls = emptyList()
-            sourceUrls = emptyList()
+
             userTranscription = ""
             processingSteps = emptyList()
             showWhatsappPreview = false
             pendingWhatsappContact = ""
             pendingWhatsappMessage = ""
-            showSpotifyPlayer = false
-            spotifyTrackTitle = ""
-            spotifyTrackArtist = ""
-            spotifyIsPlaying = false
 
         }
     }
@@ -698,10 +786,9 @@ suspend fun JarvisOverlayUiState.startTypewriter(plainText: String, delayMs: Lon
     if (delayMs > 0) delay(delayMs)
     var index = 0
     while (index < plainText.length && kotlinx.coroutines.currentCoroutineContext().isActive) {
-        // Aumenta a 4 o 5 caracteres para que se vea rápido pero fluido
         index = minOf(index + 5, plainText.length)
         typewriterText = plainText.substring(0, index)
-        delay(10) // Un delay menor (10ms es lo mínimo que percibe el ojo como fluido)
+        delay(10)
     }
 }
 

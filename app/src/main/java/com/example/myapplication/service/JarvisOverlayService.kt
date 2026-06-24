@@ -28,6 +28,7 @@ import com.example.myapplication.core.*
 import com.example.myapplication.ui.*
 import kotlinx.coroutines.*
 
+
 class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
     // ── Ventana ──────────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             showOverlay()
             uiState.transcription = "Di 'Hey Nexus' para activarme"
         }, 900)
+
         registerReceiver(whatsappPreviewReceiver, IntentFilter("JARVIS.SHOW_WHATSAPP_PREVIEW"),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Context.RECEIVER_NOT_EXPORTED else 0)
     }
@@ -143,13 +145,23 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
                     JarvisOverlayContent(
                         uiState      = uiState,
                         barState     = barState,
-                        onMicClick   = {
+                        onMicClick = {
                             if (!::controller.isInitialized) return@JarvisOverlayContent
-                            if (uiState.jarvisState == com.example.myapplication.core.JarvisState.IDLE) {
-                                onWakeWordDetected()
-                            } else {
-                                controller.detenerSesionCompleta()
-                                renderState(com.example.myapplication.core.JarvisState.IDLE)
+
+                            when (uiState.jarvisState) {
+                                JarvisState.IDLE -> {
+                                    // ✅ Si está en IDLE, activar wake word
+                                    onWakeWordDetected()
+                                }
+                                else -> {
+                                    // ✅ Si está en cualquier otro estado, reset completo
+                                    handleBackgroundDismiss()
+                                    // Luego activar wake word
+                                    serviceScope.launch {
+                                        delay(300)
+                                        onWakeWordDetected()
+                                    }
+                                }
                             }
                         },
                         onPauseClick = {
@@ -199,21 +211,60 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             isOverlayReady = false
         }
     }
-    private fun handleBackgroundDismiss() {
-        Log.d(TAG, "Touch detectado fuera - Volviendo a Wake Word")
+    private val resetReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "JARVIS.RESET_COMPLETE") {
+                Log.d(TAG, "📡 Reset completo recibido por broadcast")
+                handleBackgroundDismiss()
+            }
+        }
+    }
 
-        // 1. Detener escucha/procesamiento
+    // En JarvisOverlayService.kt
+
+    private fun handleBackgroundDismiss() {
+        Log.d(TAG, "🔄 Reset completo por clic en fondo")
+
+        // 1. Detener cualquier sesión activa
         if (::controller.isInitialized) {
             controller.detenerSesionCompleta()
+            controller.detenerAudio()
         }
 
-        // 2. Limpiar estados de UI
-        renderState(JarvisState.IDLE)
-        uiState.userTranscription = ""
-        ocultarPanelResultados()
+        // 2. Resetear TODOS los estados de UI
+        mainHandler.post {
+            // Resetear estado a IDLE
+            uiState.applyJarvisState(JarvisState.IDLE)
 
-        // 3. Ocultar el overlay (la barra también)
-        hideOverlay()
+            // Limpiar todos los paneles y resultados
+            uiState.clearPanel()
+            uiState.clearMusicResult()
+            uiState.showWhatsappPreview = false
+
+            uiState.showPanel = false
+            uiState.userTranscription = ""
+            uiState.processingSteps = emptyList()
+            uiState.imageUrls = emptyList()
+            uiState.sourceUrls = emptyList()
+
+            uiState.pendingWhatsappContact = ""
+            uiState.pendingWhatsappMessage = ""
+
+            // Forzar estado IDLE en la barra
+            barState.updateProgress(0.15f)
+
+            // Asegurar que el overlay sea visible pero en modo wake word
+            showOverlay()
+
+            // Reanudar wake word si estaba pausado
+            resumeWakeWordDetection()
+        }
+
+        // 3. Cancelar cualquier timeout o job pendiente
+        mainHandler.removeCallbacksAndMessages(null)
+        serviceScope.coroutineContext.cancelChildren()
+
+        Log.d(TAG, "✅ Reset completo - Modo wake word activo")
     }
     // ────────────────────────────────────────────────────────────────────────
     // JarvisUi
@@ -252,6 +303,21 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     override fun renderState(state: JarvisState) {
         mainHandler.post {
             if (!isOverlayReady) return@post
+
+            // ✅ Si hay resultado de música, NO resetear el panel
+            if (uiState.showMusicResult && state == JarvisState.IDLE) {
+                // Mantener el panel visible con el resultado de música
+                uiState.showPanel = true
+                return@post
+            }
+
+            // ✅ Si hay WhatsApp preview, NO resetear
+            if (uiState.showWhatsappPreview && state == JarvisState.IDLE) {
+                uiState.showPanel = true
+                return@post
+            }
+
+            // Aplicar el estado normalmente
             uiState.applyJarvisState(state)
             barState.animateWithEnergy(when (state) {
                 JarvisState.LISTENING -> 0.7f
@@ -262,24 +328,19 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
             if (state == JarvisState.IDLE) {
                 resumeWakeWordDetection()
-                mainHandler.removeCallbacksAndMessages("HIDE_UI_IDLE")
-
-                mainHandler.postAtTime({
-                    if (uiState.jarvisState == JarvisState.IDLE && !uiState.showWhatsappPreview) {
-                        // Limpiamos la transcripción del usuario y el panel de resultados
-                        uiState.userTranscription = ""
-                        ocultarPanelResultados()
-                        Log.d(TAG, "Limpiando UI por inactividad en IDLE")
-                    }
-                }, "HIDE_UI_IDLE", android.os.SystemClock.uptimeMillis() + 5000L) // 5 segundos de espera
-            } else {
-                // Si el estado NO es IDLE (ej. empezó a escuchar), cancelamos el borrado
-                mainHandler.removeCallbacksAndMessages("HIDE_UI_IDLE")
+                // ✅ Si no hay resultados especiales, ocultar panel después de un tiempo
+                if (!uiState.showMusicResult && !uiState.showWhatsappPreview) {
+                    mainHandler.postDelayed({
+                        if (uiState.jarvisState == JarvisState.IDLE) {
+                            ocultarPanelResultados()
+                        }
+                    }, 5000L)
+                }
             }
+
+            mainHandler.removeCallbacksAndMessages("HIDE_UI_IDLE")
         }
     }
-
-
 
     override fun updateORB(rms: Float) {
         mainHandler.post {
@@ -291,19 +352,11 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     }
 
     override fun hideOverlayFromTimeout() {
-        if (uiState.showWhatsappPreview) return
         mainHandler.post {
-            if (!isOverlayReady || composeView?.visibility != View.VISIBLE) return@post
-            if (uiState.showPanel) {
-                Log.d(TAG, "Timeout con panel visible — manteniendo overlay abierto")
-                if (uiState.jarvisState != JarvisState.IDLE) renderState(JarvisState.IDLE)
-                return@post
+            if (!isOverlayReady) return@post
+            if (uiState.jarvisState != JarvisState.IDLE) {
+                renderState(JarvisState.IDLE)
             }
-            Log.d(TAG, "Ocultando overlay por timeout")
-            composeView?.animate()?.alpha(0f)?.setDuration(300)?.withEndAction {
-                composeView?.visibility = View.GONE
-                ocultarPanelResultados()
-            }?.start()
         }
     }
 
@@ -470,8 +523,16 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     // JarvisUi — stubs
     // ────────────────────────────────────────────────────────────────────────
 
-    override fun setOrbVisibility(visible: Boolean)  { if (visible) showOverlay() else hideOverlay() }
-    override fun onRecognizerReady()                 {}
+    override fun setOrbVisibility(visible: Boolean) {
+        if (visible) {
+            showOverlay()
+        } else {
+            // ✅ No ocultar si hay resultado de música activo
+            if (!uiState.showMusicResult) {
+                hideOverlay()
+            }
+        }
+    }override fun onRecognizerReady()                 {}
     override fun getCurrentScreenText(): List<String> = ScreenMemory.lastSeenTexts
     override fun showToast(text: String)             {}
     override fun getDisplayedText(): String          = uiState.transcription

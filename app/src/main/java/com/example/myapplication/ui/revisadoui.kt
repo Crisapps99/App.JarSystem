@@ -26,6 +26,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.GregorianCalendar.AD
 import java.util.concurrent.TimeUnit
 
 class PreviewActivity : ComponentActivity() {
@@ -34,6 +35,7 @@ class PreviewActivity : ComponentActivity() {
         setContent { PreviewScreen() }
     }
 }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PreviewScreen() {
@@ -43,6 +45,22 @@ private fun PreviewScreen() {
     var searchResponse by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
+    // ─── EJEMPLO DE MÚSICA PARA PRUEBA ───
+    val musicaEjemplo = remember {
+        mapOf(
+            "title" to "MIENTRAS DUERMES",
+            "artist" to "Junior H",
+            "album" to "$AD BOYZ 4 LIFE II",
+            "genre" to "Latin",
+            "durationMs" to 226000L,  // 3:46 minutos
+            "coverUrl" to "https://i.scdn.co/image/ab67616d0000b273d8f5b8e3a5c7f5b8e3a5c7f5",
+            "externalUrls" to listOf(
+                "https://open.spotify.com/track/4e76Ss3ji7HQZ4qwcPNkNA",
+                "https://music.youtube.com/watch?v=HJ9Mzq_wYSc"
+            )
+        )
+    }
 
     LaunchedEffect(Unit) {
         var t = 0f
@@ -58,9 +76,107 @@ private fun PreviewScreen() {
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0A0A0F))
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Text("🎵 Probar MusicResultCard:", color = Color.White, style = MaterialTheme.typography.labelLarge)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            // ─── BOTÓN: Mostrar tarjeta de música ───
+            Button(
+                onClick = {
+                    uiState.showWhatsappPreview = false
+                    uiState.clearPanel()
+
+                    // ✅ Asignar datos de ejemplo
+                    uiState.musicTitle = musicaEjemplo["title"] as String
+                    uiState.musicArtist = musicaEjemplo["artist"] as String
+                    uiState.musicAlbum = musicaEjemplo["album"] as String
+                    uiState.musicGenre = musicaEjemplo["genre"] as String
+                    uiState.musicDurationMs = musicaEjemplo["durationMs"] as Long
+                    uiState.musicCoverUrl = musicaEjemplo["coverUrl"] as String
+                    uiState.musicExternalUrls = musicaEjemplo["externalUrls"] as List<String>
+
+                    uiState.showMusicResult = true
+                    uiState.showPanel = true
+                    uiState.applyJarvisState(JarvisState.IDLE)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954)),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("🎵 Mostrar Música", color = Color.White)
+            }
+
+            // ─── BOTÓN: Ocultar tarjeta ───
+            Button(
+                onClick = {
+                    uiState.clearMusicResult()
+                    uiState.showPanel = false
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A)),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("✕ Ocultar", color = Color.White)
+            }
+        }
+
+        // ─── BOTÓN: Variante con solo Spotify ───
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = {
+                    uiState.showWhatsappPreview = false
+                    uiState.clearPanel()
+
+                    uiState.musicTitle = "Blinding Lights"
+                    uiState.musicArtist = "The Weeknd"
+                    uiState.musicAlbum = "After Hours"
+                    uiState.musicGenre = "Pop"
+                    uiState.musicDurationMs = 202000L
+                    uiState.musicCoverUrl = "https://i.scdn.co/image/ab67616d0000b273c4f5b8e3a5c7f5b8e3a5c7f5"
+                    uiState.musicExternalUrls = listOf(
+                        "https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b"
+                    )
+
+                    uiState.showMusicResult = true
+                    uiState.showPanel = true
+                    uiState.applyJarvisState(JarvisState.IDLE)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954).copy(alpha = 0.6f)),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("🎵 Solo Spotify", color = Color.White, fontSize = 12.sp)
+            }
+
+            Button(
+                onClick = {
+                    uiState.showWhatsappPreview = false
+                    uiState.clearPanel()
+
+                    uiState.musicTitle = "Dákiti"
+                    uiState.musicArtist = "Bad Bunny & Jhayco"
+                    uiState.musicAlbum = "El Último Tour Del Mundo"
+                    uiState.musicGenre = "Reggaeton"
+                    uiState.musicDurationMs = 185000L
+                    uiState.musicCoverUrl = "https://i.scdn.co/image/ab67616d0000b273f8b5e8b3a5c7f5b8e3a5c7f5"
+                    uiState.musicExternalUrls = listOf(
+                        "https://music.youtube.com/watch?v=HJ9Mzq_wYSc"
+                    )
+
+                    uiState.showMusicResult = true
+                    uiState.showPanel = true
+                    uiState.applyJarvisState(JarvisState.IDLE)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF0000).copy(alpha = 0.6f)),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("🎵 Solo YouTube", color = Color.White, fontSize = 12.sp)
+            }
+        }
+
+        Divider(color = Color(0xFF2C2C3A), thickness = 1.dp)
+
+        // ─── Resto de la UI existente ───
         Text("Probar API de Brave:", color = Color.White, style = MaterialTheme.typography.labelLarge)
 
         OutlinedTextField(
@@ -95,10 +211,10 @@ private fun PreviewScreen() {
                                     put("metadata", JSONObject().apply {
                                         put("lat", -0.266)
                                         put("lon", -78.512)
-                                        put("packageName", "com.android.test")  // opcional, ayuda al contexto
+                                        put("packageName", "com.android.test")
                                     })
-                                    put("contexto", JSONArray())               // obligatorio, lista vacía
-                                    put("contexto_detallado", JSONArray())     // obligatorio, lista vacía
+                                    put("contexto", JSONArray())
+                                    put("contexto_detallado", JSONArray())
                                 }
 
                                 val request = Request.Builder()
@@ -151,10 +267,10 @@ private fun PreviewScreen() {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             listOf(
-                JarvisState.IDLE      to "IDLE",
+                JarvisState.IDLE to "IDLE",
                 JarvisState.LISTENING to "LISTENING",
-                JarvisState.THINKING  to "THINKING",
-                JarvisState.SPEAKING  to "SPEAKING"
+                JarvisState.THINKING to "THINKING",
+                JarvisState.SPEAKING to "SPEAKING"
             ).forEach { (state, label) ->
                 Button(
                     onClick = { uiState.applyJarvisState(state) },
@@ -169,7 +285,7 @@ private fun PreviewScreen() {
 
         Text("Pruebas de Panel:", color = Color.White, style = MaterialTheme.typography.labelLarge)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             Button(onClick = {
                 uiState.showWhatsappPreview = false
                 uiState.applyText("Esta es una **respuesta de prueba** con formato.\n• Punto uno\n• Punto dos\n» Sección importante")
@@ -187,7 +303,7 @@ private fun PreviewScreen() {
             ) { Text("Test WhatsApp", color = Color.White) }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = { uiState.hidePanel() },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A))
@@ -226,9 +342,9 @@ private fun PreviewScreen() {
             }
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(16.dp))
 
-        // ── El Componente Real ──────────────────────────────────────────
+        // ─── El Componente Real ──────────────────────────────────────────
         JarvisOverlayContent(
             uiState      = uiState,
             barState     = barState,
