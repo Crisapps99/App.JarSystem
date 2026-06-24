@@ -84,7 +84,7 @@ object ElevenLabsConfig {
 }
 
 enum class TtsMode { ANDROID, ELEVEN_LABS }
-private val TTS_MODE = TtsMode.ELEVEN_LABS
+private val TTS_MODE = TtsMode.ANDROID
 
 class JarvisVoiceController(
     private val context: Context,
@@ -289,109 +289,9 @@ class JarvisVoiceController(
         uiState?.spotifyTrackArtist = ""
         uiState?.spotifyIsPlaying = false
     }
-    private fun solicitarAudioFocusSR() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val attrs = android.media.AudioAttributes.Builder()
-                .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
-                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
 
-            audioFocusRequest = android.media.AudioFocusRequest.Builder(
-                //  MAY_DUCK: el video baja volumen pero NO se pausa
-                // Si usas GAIN, el video se pausa completamente
-                android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
-            )
-                .setAudioAttributes(attrs)
-                .setAcceptsDelayedFocusGain(false)
-                .setOnAudioFocusChangeListener { focusChange ->
-                    Log.d(TAG, "🔊 AudioFocus cambió: $focusChange")
-                }
-                .build()
-
-            val result = audioManagerSystem.requestAudioFocus(audioFocusRequest!!)
-            Log.d(
-                TAG,
-                "🎙️ AudioFocus SR: ${if (result == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "CONCEDIDO" else "DENEGADO"}"
-            )
-        }
-    }
-
-    private fun liberarAudioFocusSR() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest?.let {
-                audioManagerSystem.abandonAudioFocusRequest(it)
-                audioFocusRequest = null
-                Log.d(TAG, "🔊 AudioFocus SR liberado")
-            }
-        }
-    }
-//    private fun inicializarHybridTranscriber() {
-//        hybridTranscriber = HybridSpeechTranscriber(context, scope)
-//        hybridListo = try {
-//            hybridTranscriber.init()
-//        } catch (e: Exception) {
-//            Log.e(TAG, " HybridTranscriber falló: ${e.message}")
-//            false
-//        }
-//        Log.i(TAG, if (hybridListo) " SR inicializado" else " SR no disponible")
-//    }
-
-
-    /**
-     * Inicializa el motor de audio.
-     * onFrameAvailable se llama con cada frame de 512 samples (~32ms).
-     */
-//    private fun inicializarAudioEngine() {
-//        audioEngine = ContinuousVoiceEngine(
-//            onFrameAvailable = { frame ->
-//            },
-//            onRmsChanged = { rms ->
-//                mainHandler.post { ui.updateORB(rms) }
-//            }
-//        )
-//        Log.i(TAG, " Motor de audio iniciado")
-//    }
-
-    /**
-     * Inicializa el gestor de sesión con los callbacks de VAD.
-     */
-//    private fun inicializarSessionManager() {
-//        sessionManager = VoiceSessionManager(
-//            scope = scope,
-//
-//            onSpeechStarted = {
-//                // Ya no usamos AudioEngine para grabar — SR maneja el micrófono
-//                // Dejamos vacío o solo log
-//                Log.d(TAG, " [VAD] Inicio de habla (informativo)")
-//            },
-//
-//            onSpeechEnded = {
-//                // Ya no hay audioData — SR entrega texto directamente
-//                Log.d(TAG, " [VAD] Fin de habla (informativo)")
-//            },
-//
-//            onInterruption = {
-//                Log.d(TAG, " Interrupción del usuario")
-//                detenerTTS()
-//            },
-//
-//            onSessionTimeout = {
-//                Log.d(TAG, " Timeout de sesión")
-//                stopListeningCompletamente()
-//                ui.showToast("Escucha detenida")
-//            }
-//        )
-//    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // FLUJO PRINCIPAL: TRANSCRIPCIÓN Y PROCESAMIENTO
-    // ────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Transcribe el audio con Whisper y luego procesa el texto resultante.
-     * Se ejecuta en IO para no bloquear el hilo principal.
-     */
     private fun procesarTexto(texto: String) {
+
         val ahora = System.currentTimeMillis()
         val textoLimpio = texto.trim()
 
@@ -425,27 +325,27 @@ class JarvisVoiceController(
             Thread.sleep(100)
         }
 // Interceptor local: PANTALLA DIVIDIDA / MULTIVENTANA
-        val textoLower = texto.lowercase().trim()
-        if (textoLower.contains("en la misma pantalla") ||
-            textoLower.contains("pantalla dividida") ||
-            textoLower.contains("multiventana") ||
-            textoLower.contains("doble pantalla")) {
-
-            val apps = extraerAppsParaSplitScreen(texto) // definido abajo
-            if (apps.isNotEmpty()) {
-                ActionExecutor.openAppsInSplitScreen(context, apps)
-                hablar("Abriendo las aplicaciones en pantalla dividida.") {
-                    isProcessing = false
-                    if (sesionActiva) iniciarSRContinuo()
-                }
-            } else {
-                hablar("No entendí qué aplicaciones quieres abrir.") {
-                    isProcessing = false
-                    if (sesionActiva) iniciarSRContinuo()
-                }
-            }
-            return
-        }
+//        val textoLower = texto.lowercase().trim()
+//        if (textoLower.contains("en la misma pantalla") ||
+//            textoLower.contains("pantalla dividida") ||
+//            textoLower.contains("multiventana") ||
+//            textoLower.contains("doble pantalla")) {
+//
+//            val apps = extraerAppsParaSplitScreen(texto) // definido abajo
+//            if (apps.isNotEmpty()) {
+//                ActionExecutor.openAppsInSplitScreen(context, apps)
+//                hablar("Abriendo las aplicaciones en pantalla dividida.") {
+//                    isProcessing = false
+//                    if (sesionActiva) iniciarSRContinuo()
+//                }
+//            } else {
+//                hablar("No entendí qué aplicaciones quieres abrir.") {
+//                    isProcessing = false
+//                    if (sesionActiva) iniciarSRContinuo()
+//                }
+//            }
+//            return
+//        }
         when {
             // Adelantar (ej: "adelanta 30 segundos")
             textoLimpio.contains("adelanta") || textoLimpio.contains("avanza") -> {
@@ -688,11 +588,6 @@ class JarvisVoiceController(
                     isProcessing = false
                 }
             }
-//
-//            CommandAnalyzer.Intent.GET_DIRECTIONS -> {
-//                val destino = CommandAnalyzer.detectarParametro(texto, intencion)
-//                ejecutarNavegacion(destino)
-//            }
 
             CommandAnalyzer.Intent.OPEN_MAPS -> {
                 hablar("Abriendo Google Maps") {
@@ -714,10 +609,6 @@ class JarvisVoiceController(
                 ejecutarComandoHora()
             }
 
-//            CommandAnalyzer.Intent.SEARCH_WEB -> {
-//                val busqueda = CommandAnalyzer.detectarParametro(texto, intencion)
-//                ejecutarBusquedaWeb(busqueda)
-//            }
 
             CommandAnalyzer.Intent.UNKNOWN -> {
                 // Intentar con modo visual o servidor
@@ -743,16 +634,48 @@ class JarvisVoiceController(
         }
     }
     private fun extraerAppsParaSplitScreen(texto: String): List<String> {
-        // Quitar la frase fija
+        // Limpiar la frase
         val limpio = texto.lowercase()
-            .replace(Regex("(en la misma pantalla|pantalla dividida|multiventana|doble pantalla)"), "")
-            .replace("abre", "").replace("abrir", "").trim()
+            .replace(Regex("(en la misma pantalla|pantalla dividida|multiventana|doble pantalla|abre|abrir|por favor)"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        // Si está vacío, intentar con el texto original
+        if (limpio.isEmpty()) {
+            // Intentar extraer nombres después de "abre" y antes de "en la misma"
+            val regex = Regex("abre\\s+(.+?)\\s+(?:y|e)\\s+(.+?)(?:\\s+en la misma pantalla|$)", RegexOption.IGNORE_CASE)
+            val match = regex.find(texto)
+            if (match != null) {
+                val app1 = match.groupValues[1].trim()
+                val app2 = match.groupValues[2].trim()
+                val pkg1 = ActionExecutor.getPackageNameFromAppName(app1, context)
+                val pkg2 = ActionExecutor.getPackageNameFromAppName(app2, context)
+                val result = mutableListOf<String>()
+                if (pkg1 != null) result.add(pkg1)
+                if (pkg2 != null) result.add(pkg2)
+                return result
+            }
+            return emptyList()
+        }
+
         // Separar por "y", "e", o coma
-        val partes = limpio.split(Regex(",\\s*| y | e "))
-        val paquetes = partes.mapNotNull { parte ->
-            ActionExecutor.getPackageNameFromAppName(parte.trim(), context)
-        }.distinct()
-        return paquetes.take(2) // máximo dos apps para pantalla dividida real
+        val partes = limpio.split(Regex(",\\s*| y | e | & "))
+
+        val paquetes = mutableListOf<String>()
+        for (parte in partes) {
+            val nombre = parte.trim()
+            if (nombre.isNotEmpty()) {
+                val pkg = ActionExecutor.getPackageNameFromAppName(nombre, context)
+                if (pkg != null) {
+                    paquetes.add(pkg)
+                    Log.d(TAG, "✅ App detectada: '$nombre' → $pkg")
+                } else {
+                    Log.w(TAG, "⚠️ App no encontrada: '$nombre'")
+                }
+            }
+        }
+
+        return paquetes.take(2)
     }
     private fun extraerMensajeDelComando(texto: String): String {
         val patrones = listOf(
@@ -773,25 +696,6 @@ class JarvisVoiceController(
         return ""
     }
 
-    private fun mostrarPreviewWhatsApp(contactName: String, message: String) {
-        Log.d(TAG, "📱 Preview: $contactName - $message")
-        esperandoConfirmacion = false
-        // Actualizar UI para mostrar preview
-        uiState?.apply {
-            pendingWhatsappContact = contactName
-            pendingWhatsappMessage = message
-            showWhatsappPreview = true
-            showPanel = true
-        }
-
-        hablar("¿Enviar: $message a $contactName?", alTerminar = {
-            isProcessing = false
-            esperandoConfirmacion = true
-            if (sesionActiva) {
-                mainHandler.postDelayed({ iniciarSRContinuo() }, 600L)
-            }
-        })
-    }
 
     // Función auxiliar para extraer números del texto
     private fun extraerSegundos(texto: String): Int? {
@@ -958,110 +862,6 @@ class JarvisVoiceController(
         }
     }
 
-    private fun ejecutarNavegacion(texto: String) {
-        val destino = texto.lowercase()
-            .replace("busca la mejor ruta a", "")
-            .replace("cómo llego a", "")
-            .replace("llévame a", "")
-            .replace("ruta a", "").trim()
-
-        hablar("Calculando la mejor ruta hacia $destino") {
-            val gmmIntentUri = Uri.parse("google.navigation:q=${Uri.encode(destino)}")
-            val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri).apply {
-                // Usamos setPackage para asegurar que abra Google Maps
-                setPackage("com.google.android.apps.maps")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-
-            try {
-                context.startActivity(mapIntent)
-            } catch (e: Exception) {
-                // Si no tiene Maps, abrimos en el navegador
-                val webMaps = Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse(
-                        "https://www.google.com/maps/dir/?api=1&destination=${
-                            Uri.encode(
-                                destino
-                            )
-                        }"
-                    )
-                )
-                webMaps.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(webMaps)
-            }
-            isProcessing = false
-        }
-    }
-
-
-    private fun ejecutarBusquedaWeb(texto: String) {
-        var busqueda = texto.lowercase()
-            .replace(
-                Regex("(busca|buscar|investiga|qué es|que es|quien es|qué significa|que significa|dime sobre|hablame de|cuéntame de)"),
-                ""
-            )
-            .replace(Regex("(en internet|en la web|en google|por favor)"), "")
-            .trim()
-
-        busqueda = busqueda.replace(Regex("^(el |la |los |las |un |una |unos |unas )"), "").trim()
-
-        if (busqueda.isEmpty()) {
-            hablar("¿Qué quieres que busque?") {
-                isProcessing = false
-                if (sesionActiva) iniciarSRContinuo()
-            }
-            return
-        }
-
-        ui.showText("🔍 Buscando: $busqueda")
-        setState(JarvisState.THINKING)
-
-        scope.launch {
-            try {
-                // Cambiado a searchAdvanced para obtener tanto texto como URLs asociadas
-                val resultado = TavilySearchService.searchAdvanced(busqueda)
-
-                if (resultado.content.isNotBlank() && resultado.content.length > 20) {
-                    // Guardamos el contexto estructurado en memoria
-                    ultimoResultadoBusqueda = resultado
-
-                    withContext(Dispatchers.Main) {
-                        ui.showText(resultado.content)
-                        if (resultado.imageUrls.isNotEmpty()) {
-                            ui.showImages(resultado.imageUrls)
-                        }
-                        hablar("Esto fue lo que encontré.") {
-                            isProcessing = false
-                            if (sesionActiva) {
-                                mainHandler.postDelayed({ iniciarSRContinuo() }, 500)
-                            }
-                        }
-                    }
-                } else {
-                    // Fallback a confirmación de Google existente en tu código...
-                    val mensaje = "No encontré información. ¿Quieres que busque en Google?"
-                    withContext(Dispatchers.Main) {
-                        ui.showText(mensaje)
-                        hablar(mensaje) {
-                            isProcessing = false
-                            if (sesionActiva) {
-                                mainHandler.postDelayed({
-                                    esperandoConfirmacionGoogle = true
-                                    busquedaPendienteGoogle = busqueda
-                                    iniciarSRContinuo()
-                                }, 500)
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error en búsqueda Tavily Avanzada: ${e.message}")
-                isProcessing = false
-            }
-        }
-    }
-
     // Función para dividir respuestas largas
     private fun dividirRespuesta(respuesta: String): List<String> {
         val partes = mutableListOf<String>()
@@ -1100,90 +900,6 @@ class JarvisVoiceController(
             }
         }
     }
-
-    private suspend fun realizarBusquedaDuckDuckGo(query: String): String {
-        return withContext(Dispatchers.IO) {
-            try {
-                val client = OkHttpClient.Builder()
-                    .connectTimeout(10, TimeUnit.SECONDS)
-                    .readTimeout(10, TimeUnit.SECONDS)
-                    .build()
-
-                val url =
-                    "https://api.duckduckgo.com/?q=${Uri.encode(query)}&format=json&no_html=1&skip_disambig=1"
-
-                val request = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", "JarvisAssistant/1.0")
-                    .build()
-
-                val response = client.newCall(request).execute()
-                val jsonString = response.body?.string()
-
-                if (response.isSuccessful && jsonString != null) {
-                    val json = JSONObject(jsonString)
-
-                    // Extraer respuesta directa
-                    val abstractText = json.optString("AbstractText", "")
-                    val answer = json.optString("Answer", "")
-                    val definition = json.optString("Definition", "")
-                    val heading = json.optString("Heading", "")
-
-                    // Construir respuesta amigable
-                    when {
-                        answer.isNotEmpty() -> {
-                            return@withContext answer
-                        }
-
-                        definition.isNotEmpty() -> {
-                            return@withContext "Según DuckDuckGo: $definition"
-                        }
-
-                        abstractText.isNotEmpty() -> {
-                            // Limitar a 500 caracteres para no ser muy largo
-                            val texto = if (abstractText.length > 500)
-                                abstractText.substring(0, 500) + "..."
-                            else abstractText
-                            return@withContext texto
-                        }
-
-                        heading.isNotEmpty() -> {
-                            val relatedTopics = json.optJSONArray("RelatedTopics")
-                            if (relatedTopics != null && relatedTopics.length() > 0) {
-                                val primerResultado = relatedTopics.getJSONObject(0)
-                                val texto = primerResultado.optString("Text", "")
-                                if (texto.isNotEmpty()) {
-                                    return@withContext "Sobre $heading: ${texto.take(400)}"
-                                }
-                            }
-                            return@withContext "Información sobre $heading. Puedes pedirme más detalles si lo deseas."
-                        }
-
-                        else -> {
-                            // Buscar en RelatedTopics
-                            val relatedTopics = json.optJSONArray("RelatedTopics")
-                            if (relatedTopics != null && relatedTopics.length() > 0) {
-                                for (i in 0 until minOf(3, relatedTopics.length())) {
-                                    val topic = relatedTopics.getJSONObject(i)
-                                    val text = topic.optString("Text", "")
-                                    if (text.isNotEmpty() && text.length > 20) {
-                                        return@withContext text.take(400)
-                                    }
-                                }
-                            }
-                            return@withContext "No encontré información detallada sobre '$query'. ¿Quieres que busque otra cosa?"
-                        }
-                    }
-                } else {
-                    return@withContext ""
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error en búsqueda DuckDuckGo: ${e.message}")
-                return@withContext ""
-            }
-        }
-    }
-
     private fun ejecutarClima() {
         hablar("Consultando el clima para ti") {
             val intent = Intent(
@@ -1196,22 +912,6 @@ class JarvisVoiceController(
             if (sesionActiva) iniciarSRContinuo()
         }
     }
-
-    private fun ejecutarResumenNotificaciones() {
-        // Obtenemos el texto de las notificaciones que ya tienes programado
-        val resumen = obtenerResumenNotificaciones()
-
-        hablar(resumen) {
-            isProcessing = false
-            if (sesionActiva) {
-                // Después de leerlas, Jarvis vuelve a escuchar por si quieres hacer algo más
-                mainHandler.postDelayed({ iniciarSRContinuo() }, 500)
-            }
-        }
-    }
-
-    // Agregar este método a JarvisVoiceController.kt
-
     private suspend fun obtenerDireccionGrpc(): Pair<String, Int>? {
         return withContext(Dispatchers.IO) {
             try {
@@ -1221,7 +921,7 @@ class JarvisVoiceController(
                     .build()
 
                 // 🔑 REEMPLAZA ESTO CON TU URL REAL DE MODAL
-                val url = "https://mausand2499--jarvoice-nexus-api-fastapi-server-dev.modal.run/grpc-endpoint"
+                val url = "wss://mausand2499--jarvoice-nexus-api-nexusserver-serve-dev.modal.run/ws/jarvis"
                 Log.d(TAG, "📡 Consultando: $url")
 
                 val request = Request.Builder()
@@ -1662,31 +1362,6 @@ class JarvisVoiceController(
             ProcessingStep(stepText, stepStatusMap[stepText] ?: StepStatus.PENDING)
         }
     }
-    private fun parseActionsFromJson(actionsArray: org.json.JSONArray): List<ActionDto> {
-        val actions = mutableListOf<ActionDto>()
-        for (i in 0 until actionsArray.length()) {
-            try {
-                val actionObj = actionsArray.getJSONObject(i)
-                val tipo = actionObj.getString("tipo")
-                val params = mutableMapOf<String, Any>()
-
-                val paramsObj = actionObj.optJSONObject("params")
-                if (paramsObj != null) {
-                    val keys = paramsObj.keys()
-                    while (keys.hasNext()) {
-                        val key = keys.next()
-                        params[key] = paramsObj.get(key)
-                    }
-                }
-
-                actions.add(ActionDto(tipo = tipo, params = params))
-            } catch (e: Exception) {
-                Log.e(TAG, "Error parseando acción: ${e.message}")
-            }
-        }
-        return actions
-    }
-    // API
     // ────────────────────────────────────────────────────────────────────────
 
     private fun enviarComandoAlServidor(texto: String) {
@@ -1859,55 +1534,6 @@ class JarvisVoiceController(
         }
 
         Log.d(TAG, " Envío al servidor cancelado/limpiado")
-    }
-    /**
-     * Obtiene un resumen de las notificaciones activas del dispositivo.
-     * Accede a NotificationMemory que ya está sincronizado con las notificaciones.
-     */
-    private fun obtenerResumenNotificaciones(): String {
-        val listener = JarvisNotificationListener.instance
-        if (listener == null) return "Lo siento, el servicio de notificaciones no está conectado."
-
-        listener.refrescarNotificacionesActivas()
-        val lista = NotificationMemory.getNotifications()
-
-        val filtradas = lista.filter { noti ->
-            val esSistema = noti.packageName.contains("android") || noti.packageName.contains("systemui")
-            val tieneContenido = noti.title.isNotBlank() || noti.body.isNotBlank()
-            val esCodigo = noti.body.matches(Regex(".*[0-9]{5,}.*"))
-            !esSistema && tieneContenido && !esCodigo
-        }
-
-        if (filtradas.isEmpty()) return "No tienes notificaciones importantes por ahora."
-
-        val agrupadas = filtradas.groupBy { it.appName }
-        val total = filtradas.size
-        val sb = StringBuilder()
-        sb.append("Tienes $total ${if (total == 1) "notificación" else "notificaciones"}. ")
-
-        agrupadas.forEach { (appName, notis) ->
-            val cantidad = notis.size
-            if (cantidad == 1) {
-                val n = notis[0]
-                val emisor = n.title.split(":").firstOrNull() ?: n.title
-                sb.append("En $appName, $emisor dice: ${n.body.take(40)}. ")
-            } else {
-                val emisores = notis.map { it.title }.distinct().take(3).joinToString(", ")
-                sb.append("En $appName tienes $cantidad mensajes, principalmente de $emisores. ")
-            }
-        }
-        return sb.toString()
-    }
-    // Función auxiliar para que no diga "com.whatsapp" sino "WhatsApp"
-    private fun cuandoSeaPaqueteDimeNombre(pkg: String): String {
-        return when {
-            pkg.contains("whatsapp") -> "WhatsApp"
-            pkg.contains("messenger") -> "Messenger"
-            pkg.contains("instagram") -> "Instagram"
-            pkg.contains("android.gm") -> "Gmail"
-            pkg.contains("telegram") -> "Telegram"
-            else -> "una aplicación"
-        }
     }
     // ────────────────────────────────────────────────────────────────────────
     // TTS
@@ -2279,20 +1905,6 @@ class JarvisVoiceController(
         }
     }
 
-    fun toggleMic() {
-        val granted =
-            ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                    PackageManager.PERMISSION_GRANTED
-        if (!granted) {
-            ui.showText("Permiso de micrófono denegado"); return
-        }
-        if (sesionActiva) stopListeningCompletamente() else startInteraction()
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // CONFIRMACIONES (lógica conservada, adaptada al nuevo flujo)
-    // ────────────────────────────────────────────────────────────────────────
-
     /**
      * Registra los receivers de broadcast.
      * La lógica de confirmación se conserva igual que antes.
@@ -2310,18 +1922,6 @@ class JarvisVoiceController(
         context.registerReceiver(confirmationDoneReceiver, IntentFilter("JARVIS.CONFIRMATION_DONE"), Context.RECEIVER_NOT_EXPORTED)
     }
 
-    private fun registrarReceptorWakeWord() {
-        wakeWordReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                if (intent?.action == "JARVIS.WAKE_WORD") activarDesdeWakeWord()
-            }
-        }
-        context.registerReceiver(
-            wakeWordReceiver,
-            IntentFilter("JARVIS.WAKE_WORD"),
-            Context.RECEIVER_NOT_EXPORTED
-        )
-    }
     private fun registrarReceptorSpotify() {
         context.registerReceiver(
             object : BroadcastReceiver() {
@@ -2335,73 +1935,6 @@ class JarvisVoiceController(
             Context.RECEIVER_NOT_EXPORTED
         )
     }
-    private fun registrarReceptorOrbe() {
-        orbHideReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                when (intent?.action) {
-                    "JARVIS.MESSAGE_READY_TO_SEND" -> {
-                        pendingMessagePackage = intent.getStringExtra("package") ?: ""
-                        orbOcultoPorMensaje = true
-                        mainHandler.post { ui.setOrbVisibility(false) }
-                    }
-
-                    "JARVIS.MESSAGE_SENT", "JARVIS.MESSAGE_CANCELLED" -> {
-                        orbOcultoPorMensaje = false
-                        pendingMessagePackage = ""
-                        mainHandler.post { ui.setOrbVisibility(true) }
-                    }
-                }
-            }
-        }
-        val filter = IntentFilter().apply {
-            addAction("JARVIS.MESSAGE_READY_TO_SEND")
-            addAction("JARVIS.MESSAGE_SENT")
-            addAction("JARVIS.MESSAGE_CANCELLED")
-        }
-        context.registerReceiver(orbHideReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-    }
-
-    private fun registrarReceptorConfirmacion() {
-        confirmacionReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                if (intent?.action != "JARVIS.PEDIR_CONFIRMACION") return
-                if (esperandoConfirmacion) return
-
-                val pregunta = intent.getStringExtra("pregunta") ?: "¿Enviar el mensaje?"
-                val pkg = intent.getStringExtra("package") ?: ""
-                Log.d(TAG, "📡 BROADCAST RECIBIDO: PEDIR_CONFIRMACION - pregunta='$pregunta'")
-                if (pkg.isNotEmpty()) pendingMessagePackage = pkg
-                esperandoConfirmacion = true
-                isProcessing = true
-
-                mainHandler.postDelayed({
-//                    hybridTranscriber.detenerSesion()
-
-                    // Otro delay para que el SR libere el micrófono completamente
-                    mainHandler.postDelayed({
-                        hablar(pregunta) {
-                            ttsTerminoTimestamp = System.currentTimeMillis()
-                            isProcessing = false
-                            esperandoConfirmacion = true
-
-                            mainHandler.postDelayed({
-                                if (sesionActiva) {
-                                    Log.d(TAG, " Escuchando respuesta de confirmación...")
-                                    iniciarSRContinuo()
-                                }
-                            }, 600L)
-                        }
-                    }, 400L)  // esperar que SR libere el micrófono
-                }, 200L)  // esperar que SR termine de iniciar
-            }
-        }
-        context.registerReceiver(
-            confirmacionReceiver,
-            IntentFilter("JARVIS.PEDIR_CONFIRMACION"),
-            Context.RECEIVER_NOT_EXPORTED
-        )
-    }
-
     /**
      * Procesa la respuesta del usuario a una confirmación.
      * Llamado desde transcribirYProcesar() cuando esperandoConfirmacion == true.
@@ -2428,15 +1961,6 @@ class JarvisVoiceController(
         }
     }
 
-    fun pausarEscuchaWakeWord() {
-        // Si necesitas pausar el ContinuousVoiceEngine temporalmente
-        // voiceEngine.pause() - si tienes ese método
-        Log.d(TAG, "Escucha wake word pausada")
-    }
-
-    fun reanudarEscuchaWakeWord() {
-        Log.d(TAG, "Escucha wake word reanudada")
-    }
     private fun procesarRespuestaConfirmacion(texto: String) {
         val t = texto.lowercase().trim()
         val tiempoDesdeFinTTS = System.currentTimeMillis() - ttsTerminoTimestamp
@@ -2559,10 +2083,7 @@ class JarvisVoiceController(
             }
         }
     }
-    fun resetConfirmacion() {
-        esperandoConfirmacion = false
-        isProcessing = false
-    }
+
     // ────────────────────────────────────────────────────────────────────────
     // MODO VISUAL (sin cambios en lógica)
     // ────────────────────────────────────────────────────────────────────────
@@ -2813,11 +2334,6 @@ class JarvisVoiceController(
         return listOf("salir", "adiós", "adios", "hasta luego", "chao", "bye").any { it == t }
     }
 
-    private fun calcularRMS(frame: ShortArray): Float {
-        var sum = 0.0
-        for (s in frame) sum += s.toDouble() * s.toDouble()
-        return (Math.sqrt(sum / frame.size).toFloat() / 400f).coerceIn(0f, 12f)
-    }
 
     private fun ejecutarAccionesTecnicas(actions: List<ActionDto>, textoOriginal: String, intencion: String) {
         Log.d("ACCESS_FLOW", " Enviando ${actions.size} acciones por broadcast...")
@@ -2836,16 +2352,6 @@ class JarvisVoiceController(
         Log.d("ACCESS_FLOW", " Broadcast enviado a MyAccessibilityService")
     }
 
-    private fun obtenerSaludoGemma(callback: (String?) -> Unit) {
-        scope.launch {
-            try {
-                val response = actionApiService.regards()
-                mainHandler.post { callback(response.saludo) }
-            } catch (e: Exception) {
-                mainHandler.post { callback(null) }
-            }
-        }
-    }
 
     private fun setState(s: JarvisState) {
         ui.renderState(s)
@@ -2907,23 +2413,6 @@ class JarvisVoiceController(
             }
         }
     }
-
-    fun procesarComandoExterno(comando: String) {
-        ui.showText(comando)
-        if (interceptarComandoVisual(comando)) return
-        enviarComandoAlServidor(comando)
-    }
-
-    /**
-     * Para uso de audio externo (ej: desde JarvisOverlayService).
-     * Ahora el audio va al AudioEngine directamente, no necesitas esto normalmente.
-     */
-    fun processAudioFrame(frame: ShortArray) {
-        // No-op: el AudioEngine maneja sus propios frames ahora
-    }
-
-    fun hablarDesdeActivity(texto: String, alTerminar: (() -> Unit)? = null) = hablar(texto, alTerminar)
-
     // ────────────────────────────────────────────────────────────────────────
     // LIFECYCLE
     // ────────────────────────────────────────────────────────────────────────
@@ -2945,4 +2434,5 @@ class JarvisVoiceController(
 
         Log.d(TAG, " Controlador destruido")
     }
+
 }

@@ -118,17 +118,16 @@ object ActionExecutor {
     // WHATSAPP - VERSIÓN MEJORADA CON CONFIRMACIÓN DE VOZ
     // ─────────────────────────────────────────────────────────────────────────
     // ActionExecutor.kt
+    // ActionExecutor.kt - MEJORAR sendWhatsAppMessage
     fun sendWhatsAppMessage(context: Context, contactName: String, message: String) {
         Log.d("JARVIS_ACTION", "📱 sendWhatsAppMessage: contacto='$contactName', mensaje='$message'")
 
-        // 1. Buscar contacto exacto
+        // 1. Buscar contacto
         var contact = ContactsManager.findContact(context, contactName)
-        // 2. Si no se encuentra, intentar búsqueda parcial (contiene el nombre)
         if (contact == null) {
             val allContacts = ContactsManager.getAllContacts(context)
             contact = allContacts.firstOrNull { it.name.lowercase().contains(contactName.lowercase()) }
             if (contact == null) {
-                // Si aún no se encuentra, quitar "mi " al inicio y probar de nuevo
                 val cleanedName = contactName.replace(Regex("^mi\\s+", RegexOption.IGNORE_CASE), "")
                 if (cleanedName != contactName) {
                     contact = allContacts.firstOrNull { it.name.lowercase().contains(cleanedName.lowercase()) }
@@ -137,23 +136,22 @@ object ActionExecutor {
         }
 
         if (contact == null) {
-            Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado. Abriendo WhatsApp sin mensaje.")
+            Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado. Abriendo WhatsApp.")
             openApp(context, "com.whatsapp")
             return
         }
 
         // Formatear número
         var numero = contact.phoneNumber.replace(Regex("[^0-9]"), "")
-        if (numero.startsWith("0")) numero = "593" + numero.substring(1) // Ajusta tu prefijo
+        if (numero.startsWith("0")) numero = "593" + numero.substring(1)
         if (numero.length == 10) numero = "593" + numero.substring(1)
 
         pendingWhatsappContact = contact.name
         pendingWhatsappMessage = message
 
-        // Abrir chat con mensaje predefinido
-        val url = "https://api.whatsapp.com/send?phone=$numero&text=${Uri.encode(message)}"
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-            action = Intent.ACTION_VIEW
+        // ✅ NUEVO: Usar el método directo de WhatsApp con Intent
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            data = Uri.parse("https://wa.me/$numero?text=${Uri.encode(message)}")
             setPackage("com.whatsapp")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
@@ -161,15 +159,118 @@ object ActionExecutor {
         try {
             context.startActivity(intent)
             Log.d("JARVIS_ACTION", "✅ Intent enviado para chat de: $numero")
-            // Enviar broadcast para presionar el botón "Enviar" después de que cargue el chat
-            val sendIntent = Intent("JARVIS.SEND_CURRENT_MESSAGE").apply {
-                setPackage(context.packageName)
-            }
+
+            // ✅ Esperar a que WhatsApp cargue y escribir el mensaje con Accessibility
             Handler(Looper.getMainLooper()).postDelayed({
-                context.sendBroadcast(sendIntent)
-            }, 2500) // Aumentamos a 2.5s para asegurar carga
+                Log.d("JARVIS_ACTION", "✏️ Escribiendo mensaje con Accessibility...")
+
+                // Enviar broadcast para escribir el mensaje y presionar enviar
+                val writeIntent = Intent("JARVIS.WRITE_MESSAGE_AND_SEND").apply {
+                    putExtra("mensaje", message)
+                    setPackage(context.packageName)
+                }
+                context.sendBroadcast(writeIntent)
+
+                // También el método antiguo como fallback
+                val sendIntent = Intent("JARVIS.SEND_CURRENT_MESSAGE").apply {
+                    setPackage(context.packageName)
+                }
+                Handler(Looper.getMainLooper()).postDelayed({
+                    context.sendBroadcast(sendIntent)
+                }, 3000)
+
+            }, 2500)
+
         } catch (e: Exception) {
             Log.e("JARVIS_ACTION", "❌ Error al abrir chat: ${e.message}")
+            openApp(context, "com.whatsapp")
+        }
+    }
+    // ActionExecutor.kt - Agregar esta función
+
+    fun callWhatsApp(context: Context, contactName: String) {
+        Log.d("JARVIS_ACTION", "📞 callWhatsApp: contacto='$contactName'")
+
+        // ─── 1. Buscar el contacto localmente ───────────────────────────────────
+        var contact = ContactsManager.findContact(context, contactName)
+        if (contact == null) {
+            val allContacts = ContactsManager.getAllContacts(context)
+            contact = allContacts.firstOrNull { it.name.lowercase().contains(contactName.lowercase()) }
+            if (contact == null) {
+                val cleanedName = contactName.replace(Regex("^mi\\s+", RegexOption.IGNORE_CASE), "")
+                if (cleanedName != contactName) {
+                    contact = allContacts.firstOrNull { it.name.lowercase().contains(cleanedName.lowercase()) }
+                }
+            }
+        }
+
+        if (contact == null) {
+            Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado")
+            speakText(context, "No encontré el contacto $contactName")
+            return
+        }
+
+        // ─── 2. Limpiar el número para buscar en la base de datos de Android ────
+        val numeroLimpio = contact.phoneNumber.replace(Regex("[^0-9]"), "")
+        if (numeroLimpio.isEmpty()) {
+            Log.w("JARVIS_ACTION", "⚠️ El contacto no tiene un número telefónico válido.")
+            speakText(context, "${contact.name} no tiene un número válido.")
+            return
+        }
+
+        // Tip: Extraemos los últimos 9 dígitos para asegurar compatibilidad en Ecuador
+        // (así coincide si está guardado con o sin el +593)
+        val subNumero = if (numeroLimpio.length >= 9) numeroLimpio.substring(numeroLimpio.length - 9) else numeroLimpio
+        Log.d("JARVIS_ACTION", "📱 Buscando registro de llamada WhatsApp para: ...$subNumero")
+
+        // ─── 3. MÉTODO DEFINITIVO: Buscar el Row ID de WhatsApp VoIP ───────────
+        try {
+            val resolver = context.contentResolver
+            val cursor = resolver.query(
+                ContactsContract.Data.CONTENT_URI,
+                arrayOf(ContactsContract.Data._ID),
+                "${ContactsContract.Data.MIMETYPE} = ? AND ${ContactsContract.Data.DATA1} LIKE ?",
+                arrayOf("vnd.android.cursor.item/vnd.com.whatsapp.voip.call", "%$subNumero%"),
+                null
+            )
+
+            if (cursor != null && cursor.moveToFirst()) {
+                val dataId = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.Data._ID))
+                cursor.close()
+
+                // Crear el Intent nativo que WhatsApp sí reconoce
+                val whatsappCallIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(
+                        Uri.parse("content://com.android.contacts/data/$dataId"),
+                        "vnd.android.cursor.item/vnd.com.whatsapp.voip.call"
+                    )
+                    setPackage("com.whatsapp")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+
+                context.startActivity(whatsappCallIntent)
+                Log.d("JARVIS_ACTION", "✅ Llamada directa de WhatsApp iniciada con éxito.")
+                speakText(context, "Llamando a ${contact.name} por WhatsApp")
+                return
+            }
+            cursor?.close()
+            Log.w("JARVIS_ACTION", "⚠️ No se encontró una cuenta de WhatsApp vinculada para este número en Contactos.")
+        } catch (e: Exception) {
+            Log.e("JARVIS_ACTION", "❌ Error al interactuar con el ContentResolver: ${e.message}")
+        }
+
+        // ─── 4. FALLBACK FINAL: Si el método nativo falla, abrir el chat ───────
+        try {
+            val chatIntent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("https://wa.me/$numeroLimpio")
+                setPackage("com.whatsapp")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chatIntent)
+            Log.d("JARVIS_ACTION", "✅ Chat de WhatsApp abierto como alternativa.")
+            speakText(context, "No pude iniciar la llamada directa. Te abro el chat de ${contact.name}")
+        } catch (e: Exception) {
+            Log.e("JARVIS_ACTION", "❌ Error crítico en el fallback: ${e.message}")
             openApp(context, "com.whatsapp")
         }
     }
@@ -183,6 +284,7 @@ object ActionExecutor {
         }
         context.sendBroadcast(intent)
     }
+
     // ─────────────────────────────────────────────────────────────────────────
     // TELEGRAM
     // ─────────────────────────────────────────────────────────────────────────
@@ -397,37 +499,53 @@ object ActionExecutor {
             context.startActivity(intent)
         }
     }
+
     // ActionExecutor.kt - Agregar esta función
-
-    // ActionExecutor.kt - Reemplazar con esta versión mejorada
-
-    fun openAppsInSplitScreen(
-        context: Context,
-        packageNames: List<String>
-    ) {
-
+    fun openAppsInSplitScreen(context: Context, packageNames: List<String>) {
         if (packageNames.size < 2) {
-            Log.e("ActionExecutor", "❌ Se requieren 2 apps")
+            Log.e("ActionExecutor", "❌ Se requieren 2 apps, recibidas: ${packageNames.size}")
             return
         }
 
         val pkg1 = packageNames[0]
         val pkg2 = packageNames[1]
 
-        Log.d(
-            "ActionExecutor",
-            "🚀 Solicitando Split Screen Accessibility: $pkg1 + $pkg2"
-        )
+        Log.d("ActionExecutor", "🚀 Solicitando split screen: $pkg1 + $pkg2")
 
-        val intent = Intent("JARVIS.START_SPLIT_SCREEN").apply {
-            putExtra("app1", pkg1)
-            putExtra("app2", pkg2)
-            setPackage(context.packageName)
+        // ✅ Verificar que las apps existen
+        val pm = context.packageManager
+        val intent1 = pm.getLaunchIntentForPackage(pkg1)
+        val intent2 = pm.getLaunchIntentForPackage(pkg2)
+
+        if (intent1 == null) {
+            Log.e("ActionExecutor", "❌ App no instalada: $pkg1")
+        }
+        if (intent2 == null) {
+            Log.e("ActionExecutor", "❌ App no instalada: $pkg2")
         }
 
-        context.sendBroadcast(intent)
-    }
+        if (intent1 == null || intent2 == null) {
+            // Intentar abrir las que existan
+            if (intent1 != null) {
+                intent1.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent1)
+            }
+            if (intent2 != null) {
+                intent2.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent2)
+            }
+            return
+        }
 
+        // Usar el mismo mecanismo de acciones en lugar de broadcast directo
+        val acciones = listOf(
+            ActionDto(
+                tipo = "open_apps_in_split_screen",
+                params = mapOf("apps" to listOf(pkg1, pkg2))
+            )
+        )
+        _ejecutarAccion(context, acciones, "split_screen")
+    }
     private fun abrirAppsSecuencialmente(context: Context, packageNames: List<String>) {
         try {
             val pm = context.packageManager
@@ -447,66 +565,41 @@ object ActionExecutor {
     }
 
     // ActionExecutor.kt - Agregar esta función
-
     fun getPackageNameFromAppName(appName: String, context: Context): String? {
         val packageManager = context.packageManager
         val appNameLower = appName.lowercase().trim()
 
-        // Mapa de nombres comunes a paquetes
+        // 🔥 Mapa de nombres comunes a paquetes (más completo)
         val appMap = mapOf(
             "facebook" to "com.facebook.katana",
+            "face" to "com.facebook.katana",
+            "fb" to "com.facebook.katana",
             "whatsapp" to "com.whatsapp",
+            "wa" to "com.whatsapp",
             "instagram" to "com.instagram.android",
+            "insta" to "com.instagram.android",
+            "ig" to "com.instagram.android",
             "youtube" to "com.google.android.youtube",
+            "yt" to "com.google.android.youtube",
             "spotify" to "com.spotify.music",
             "telegram" to "org.telegram.messenger",
             "twitter" to "com.twitter.android",
+            "x" to "com.twitter.android",
             "tiktok" to "com.zhiliaoapp.musically",
-            "reddit" to "com.reddit.frontpage",
             "netflix" to "com.netflix.mediaclient",
-            "prime video" to "com.amazon.avod.thirdpartyclient",
-            "disney" to "com.disney.disneyplus",
-            "hbo" to "com.hbo.hbonow",
             "maps" to "com.google.android.apps.maps",
             "gmail" to "com.google.android.gm",
             "chrome" to "com.android.chrome",
-            "firefox" to "org.mozilla.firefox",
-            "brave" to "com.brave.browser",
-            "edge" to "com.microsoft.emmx",
-            "opera" to "com.opera.browser",
-            "viber" to "com.viber.voip",
-            "skype" to "com.skype.raider",
-            "discord" to "com.discord",
-            "slack" to "com.Slack",
-            "outlook" to "com.microsoft.office.outlook",
-            "drive" to "com.google.android.apps.docs",
-            "photos" to "com.google.android.apps.photos",
-            "keep" to "com.google.android.keep",
-            "calendar" to "com.google.android.calendar",
-            "contacts" to "com.google.android.contacts",
-            "phone" to "com.google.android.dialer",
-            "messages" to "com.google.android.apps.messaging",
-            "clock" to "com.google.android.deskclock",
-            "calculator" to "com.google.android.calculator",
-            "camera" to "com.google.android.GoogleCamera",
-            "gallery" to "com.google.android.apps.photos",
-            "files" to "com.google.android.apps.nbu.files",
             "settings" to "com.android.settings",
             "play store" to "com.android.vending",
-            "google" to "com.google.android.googlequicksearchbox",
-            "assistant" to "com.google.android.apps.googleassistant",
-            "maps go" to "com.google.android.apps.mapslite",
-            "youtube music" to "com.google.android.apps.youtube.music",
-            "youtube kids" to "com.google.android.apps.youtube.kids",
-            "youtube tv" to "com.google.android.apps.youtube.tv",
-            "google tv" to "com.google.android.tvrecommendations",
-            "android tv" to "com.google.android.tvlauncher"
+            "google" to "com.google.android.googlequicksearchbox"
         )
 
-        // 1. Buscar en el mapa
-        appMap.keys.forEach { key ->
-            if (appNameLower.contains(key)) {
-                return appMap[key]
+        // 1. Buscar en el mapa (búsqueda exacta o parcial)
+        for ((key, pkg) in appMap) {
+            if (appNameLower == key || appNameLower.contains(key) || key.contains(appNameLower)) {
+                Log.d("ActionExecutor", "✅ Mapa: '$appName' → $pkg")
+                return pkg
             }
         }
 
@@ -515,7 +608,8 @@ object ActionExecutor {
             val installedApps = packageManager.getInstalledApplications(0)
             for (app in installedApps) {
                 val appLabel = packageManager.getApplicationLabel(app).toString().lowercase()
-                if (appNameLower in appLabel || appLabel in appNameLower) {
+                if (appLabel.contains(appNameLower) || appNameLower.contains(appLabel)) {
+                    Log.d("ActionExecutor", "✅ Instalada: '$appName' → ${app.packageName}")
                     return app.packageName
                 }
             }
@@ -523,6 +617,7 @@ object ActionExecutor {
             Log.e("ActionExecutor", "Error buscando apps: ${e.message}")
         }
 
+        Log.w("ActionExecutor", "❌ No se encontró app: '$appName'")
         return null
     }
 

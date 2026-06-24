@@ -81,6 +81,7 @@ android {
 }
 
 dependencies {
+    implementation ("com.acrcloud:acrcloud-android-sdk:1.8.1")
     implementation("androidx.multidex:multidex:2.0.1")
     implementation("androidx.window:window:1.3.0")
     // gRPC

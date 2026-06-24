@@ -66,15 +66,32 @@ class MyAccessibilityService : AccessibilityService() {
         var instance: MyAccessibilityService? = null
         private const val TAG = "JARVIS_ACCESSIBILITY"
     }
-
+    // Este receiver ya lo tienes en tu código (verifícalo)
+    private val writeMessageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "JARVIS.WRITE_MESSAGE_AND_SEND") {
+                val mensaje = intent.getStringExtra("mensaje") ?: ""
+                Log.d(TAG, "✏️ Escribiendo mensaje: '$mensaje'")
+                escribirMensajeYEnviar(mensaje)
+            }
+        }
+    }
     override fun onServiceConnected() {
         super.onServiceConnected()
         // Dentro de onServiceConnected
-        val filterSend = IntentFilter("JARVIS.SEND_CURRENT_MESSAGE","JARVIS.START_SPLIT_SCREEN")
+        val filterSend = IntentFilter().apply {
+            addAction("JARVIS.SEND_CURRENT_MESSAGE")
+            addAction("JARVIS.START_SPLIT_SCREEN")
+        }
         registerReceiver(sendMessageReceiver, filterSend, RECEIVER_NOT_EXPORTED)
         instance = this
         instance = this
+        val filterSplit = IntentFilter("JARVIS.TRIGGER_SPLIT_SCREEN")
+        registerReceiver(splitScreenReceiver, filterSplit, RECEIVER_NOT_EXPORTED)
 
+// También registra para "JARVIS.START_SPLIT_SCREEN" por si ActionExecutor lo envía
+        val filterStart = IntentFilter("JARVIS.START_SPLIT_SCREEN")
+        registerReceiver(splitScreenReceiver, filterStart, RECEIVER_NOT_EXPORTED)
         // FIX CRÍTICO: Registra el BroadcastReceiver aquí
         try {
             val filter = IntentFilter(ACTION_EXECUTE).apply{
@@ -86,6 +103,8 @@ class MyAccessibilityService : AccessibilityService() {
             Log.e(TAG, "❌ Error registrando BroadcastReceiver: ${e.message}", e)
         }
         verificarPermisosCamara()
+        val filterWrite = IntentFilter("JARVIS.WRITE_MESSAGE_AND_SEND")
+        registerReceiver(writeMessageReceiver, filterWrite, RECEIVER_NOT_EXPORTED)
         Log.d(TAG, "✅ AccessibilityService conectado y listo")
     }
 
@@ -97,37 +116,70 @@ class MyAccessibilityService : AccessibilityService() {
             }
         }
     }
-    private fun iniciarPantallaDividida(
-        paquete1: String,
-        paquete2: String
-    ) {
+    // MyAccessibilityService.kt - NUEVA FUNCIÓN
+    private fun escribirMensajeYEnviar(mensaje: String) {
+        handler.postDelayed({
+            val root = rootInActiveWindow
+            if (root == null) {
+                Log.e(TAG, "❌ Sin ventana activa")
+                return@postDelayed
+            }
 
-        Log.d(TAG, "🚀 Iniciando Split Screen Accessibility")
+            // 1. Buscar campo de texto (WhatsApp)
+            var campoTexto: AccessibilityNodeInfo? = null
 
-        // Abrir primera app
-        val intent = packageManager.getLaunchIntentForPackage(paquete1)
+            // Buscar por IDs de WhatsApp
+            val idsCampo = listOf(
+                "com.whatsapp:id/entry",
+                "com.whatsapp:id/entry_input",
+                "com.whatsapp:id/message_entry",
+                "com.whatsapp:id/conversation_entry"
+            )
+            for (id in idsCampo) {
+                val nodos = root.findAccessibilityNodeInfosByViewId(id)
+                if (nodos.isNotEmpty()) {
+                    campoTexto = nodos[0]
+                    Log.d(TAG, "🔍 Campo encontrado por ID: $id")
+                    break
+                }
+            }
 
-        if (intent == null) {
-            Log.e(TAG, "❌ No existe app: $paquete1")
-            return
-        }
+            // Si no por ID, buscar por clase EditText
+            if (campoTexto == null) {
+                fun buscarEditText(nodo: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+                    if (nodo == null) return null
+                    val className = nodo.className?.toString() ?: ""
+                    if (className.contains("EditText") && nodo.isEditable) {
+                        return nodo
+                    }
+                    for (i in 0 until nodo.childCount) {
+                        val resultado = buscarEditText(nodo.getChild(i))
+                        if (resultado != null) return resultado
+                    }
+                    return null
+                }
+                campoTexto = buscarEditText(root)
+            }
 
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
+            if (campoTexto != null) {
+                // 2. Dar foco al campo
+                campoTexto.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
 
-        Handler(mainLooper).postDelayed({
+                // 3. Escribir el mensaje
+                val args = Bundle()
+                args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, mensaje)
+                campoTexto.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                Log.d(TAG, "✅ Mensaje escrito: '$mensaje'")
 
-            Log.d(TAG, "📱 Abriendo recientes")
+                // 4. Presionar el botón "Enviar"
+                handler.postDelayed({
+                    presionarBotonEnviar()
+                }, 500)
 
-            performGlobalAction(GLOBAL_ACTION_RECENTS)
-
-            Handler(mainLooper).postDelayed({
-
-                seleccionarModoPantallaDividida(paquete2)
-
-            }, 1500)
-
-        }, 2000)
+            } else {
+                Log.e(TAG, "❌ No se encontró campo de texto")
+            }
+        }, 1500) // Esperar a que cargue el chat
     }
     private fun seleccionarModoPantallaDividida(
         paquete2: String
@@ -214,36 +266,66 @@ class MyAccessibilityService : AccessibilityService() {
             )
         }
     }
+    // MyAccessibilityService.kt - MEJORAR presionarBotonEnviar()
     private fun presionarBotonEnviar() {
         handler.postDelayed({
             val root = rootInActiveWindow ?: return@postDelayed
 
             // Candidatos de texto para el botón
-            val candidatos = listOf("Enviar", "Send", "send", "Enviar mensaje", "✓", "→")
+            val candidatos = listOf("Enviar", "Send", "send", "Enviar mensaje", "✓", "→", "▶", "➤")
+
+            // IDs de WhatsApp
+            val ids = listOf(
+                "com.whatsapp:id/send",
+                "com.whatsapp:id/conversation_send_button",
+                "com.whatsapp:id/entry_send"
+            )
+
             var nodoEncontrado: AccessibilityNodeInfo? = null
 
-            // Buscar por texto
+            // 1. Buscar por texto
             for (candidato in candidatos) {
                 nodoEncontrado = encontrarNodoPorTexto(root, candidato)
-                if (nodoEncontrado != null) break
+                if (nodoEncontrado != null) {
+                    Log.d(TAG, "🔍 Botón por texto: '$candidato'")
+                    break
+                }
             }
 
-            // Si no, buscar por ID de WhatsApp
+            // 2. Buscar por ID
             if (nodoEncontrado == null) {
-                val ids = listOf(
-                    "com.whatsapp:id/send",
-                    "com.whatsapp:id/conversation_send_button",
-                    "com.whatsapp:id/entry_send"
-                )
                 for (id in ids) {
                     val nodos = root.findAccessibilityNodeInfosByViewId(id)
                     if (nodos.isNotEmpty()) {
                         nodoEncontrado = nodos[0]
+                        Log.d(TAG, "🔍 Botón por ID: $id")
                         break
                     }
                 }
             }
 
+            // 3. Buscar por descripción
+            if (nodoEncontrado == null) {
+                fun buscarPorDesc(nodo: AccessibilityNodeInfo?): Boolean {
+                    if (nodo == null) return false
+                    val desc = nodo.contentDescription?.toString()?.lowercase() ?: ""
+                    if (desc.contains("enviar") || desc.contains("send") ||
+                        desc.contains("enviar mensaje")) {
+                        if (nodo.isClickable) {
+                            nodoEncontrado = nodo
+                            Log.d(TAG, "🔍 Botón por descripción: '$desc'")
+                            return true
+                        }
+                    }
+                    for (i in 0 until nodo.childCount) {
+                        if (buscarPorDesc(nodo.getChild(i))) return true
+                    }
+                    return false
+                }
+                buscarPorDesc(root)
+            }
+
+            // 4. Si encontramos el botón, hacer clic
             if (nodoEncontrado != null) {
                 var nodoClick = nodoEncontrado
                 while (nodoClick != null && !nodoClick.isClickable) {
@@ -253,7 +335,7 @@ class MyAccessibilityService : AccessibilityService() {
                     nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     Log.d(TAG, "✅ Botón enviar presionado")
                 } else {
-                    // Fallback: tap en coordenadas del nodo
+                    // Fallback: tap en coordenadas
                     val bounds = Rect()
                     nodoEncontrado.getBoundsInScreen(bounds)
                     if (!bounds.isEmpty) {
@@ -262,14 +344,18 @@ class MyAccessibilityService : AccessibilityService() {
                     }
                 }
             } else {
-                // Último recurso: tap en zona inferior derecha
+                // 5. Último recurso: tap en zona inferior derecha
                 Log.w(TAG, "⚠️ No se encontró botón enviar, tap en zona inferior derecha")
                 val metrics = resources.displayMetrics
                 val x = metrics.widthPixels * 0.85f
                 val y = metrics.heightPixels * 0.9f
                 tapCoordenadas(mapOf("x" to x, "y" to y))
+
+                // También intentar con ENTER (teclado)
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                Log.d(TAG, "✅ BACK presionado (fallback)")
             }
-        }, 1000) // espera para que el chat esté listo
+        }, 500) // Esperar a que el mensaje esté escrito
     }
     private val actionsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -508,7 +594,48 @@ class MyAccessibilityService : AccessibilityService() {
     private var currentActions: List<ActionDto>? = null
     private var currentIndex = 0
     private var retryCount = 0
+// En MyAccessibilityService.kt
 
+    private fun iniciarPantallaDivididaUnificado(pkg1: String, pkg2: String) {
+        Log.d(TAG, "🚀 Iniciando Split Screen unificado: $pkg1 + $pkg2")
+
+        // 1. Lanzar la primera app y asegurar que esté en primer plano
+        val intent1 = packageManager.getLaunchIntentForPackage(pkg1)
+        if (intent1 == null) {
+            Log.e(TAG, "❌ App '$pkg1' no encontrada")
+            return
+        }
+        intent1.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent1)
+
+        // 2. Esperar a que la primera app se dibuje
+        Handler(mainLooper).postDelayed({
+            Log.d(TAG, "💥 Activando split screen (GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)")
+            val exito = performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)
+            if (!exito) {
+                Log.e(TAG, "❌ El sistema no aceptó el comando de split screen. ¿Accesibilidad activa?")
+                return@postDelayed
+            }
+
+            // 3. Esperar a que el sistema prepare el espacio adyacente
+            Handler(mainLooper).postDelayed({
+                Log.d(TAG, "📱 Lanzando segunda app: $pkg2")
+                val intent2 = packageManager.getLaunchIntentForPackage(pkg2)
+                if (intent2 == null) {
+                    Log.e(TAG, "❌ App '$pkg2' no encontrada")
+                    return@postDelayed
+                }
+                // Flags críticos para que se acople en el espacio libre
+                intent2.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT or
+                            Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+                )
+                startActivity(intent2)
+                Log.d(TAG, "✅ Segunda app lanzada en el espacio dividido")
+            }, 800) // Ajustable según dispositivo
+        }, 1200) // Espera suficiente para que la primera app esté activa
+    }
     private val stepRunnable = object : Runnable {
         override fun run() {
             val actions = currentActions ?: return
@@ -566,34 +693,17 @@ class MyAccessibilityService : AccessibilityService() {
                     waitTime = 2000L
                 }
                 "open_apps_in_split_screen" -> {
-
-                    val appsArray =
-                        accion.params?.get("apps") as? List<*>
-
-                    if (
-                        appsArray != null &&
-                        appsArray.size >= 2
-                    ) {
-
+                    val appsArray = accion.params?.get("apps") as? List<*>
+                    if (appsArray != null && appsArray.size >= 2) {
                         val pkg1 = appsArray[0].toString()
                         val pkg2 = appsArray[1].toString()
-
-                        iniciarPantallaDividida(
-                            pkg1,
-                            pkg2
-                        )
-
-                        waitTime = 500L
+                        // Usar el método unificado en lugar de iniciarPantallaDividida
+                        iniciarPantallaDivididaUnificado(pkg1, pkg2)
+                        waitTime = 1500L
                         exitoAccion = true
-
                     } else {
-
                         exitoAccion = false
-
-                        Log.e(
-                            TAG,
-                            "❌ Parámetros inválidos"
-                        )
+                        detalleError = "Parámetros inválidos para split screen"
                     }
                 }
                 "android_intent" -> {
@@ -766,10 +876,10 @@ class MyAccessibilityService : AccessibilityService() {
                                 if (!isEnabled) {
                                     @Suppress("DEPRECATION")
                                     wifiManager.isWifiEnabled = true
-                                    Log.d(TAG, "│ ✅ WiFi ENCENDIDO")
+                                    Log.d(TAG, "│  WiFi ENCENDIDO")
                                     respuesta = "WiFi encendido."
                                 } else {
-                                    Log.d(TAG, "│ ⚠️ WiFi ya está encendido")
+                                    Log.d(TAG, "│ ⚠ WiFi ya está encendido")
                                     respuesta = "WiFi ya estaba encendido."
                                 }
                             }
@@ -777,10 +887,10 @@ class MyAccessibilityService : AccessibilityService() {
                                 if (isEnabled) {
                                     @Suppress("DEPRECATION")
                                     wifiManager.isWifiEnabled = false
-                                    Log.d(TAG, "│ ✅ WiFi APAGADO")
+                                    Log.d(TAG, "│  WiFi APAGADO")
                                     respuesta = "WiFi apagado."
                                 } else {
-                                    Log.d(TAG, "│ ⚠️ WiFi ya está apagado")
+                                    Log.d(TAG, "│  WiFi ya está apagado")
                                     respuesta = "WiFi ya estaba apagado."
                                 }
                             }
@@ -788,11 +898,11 @@ class MyAccessibilityService : AccessibilityService() {
                                 @Suppress("DEPRECATION")
                                 if (isEnabled) {
                                     wifiManager.isWifiEnabled = false
-                                    Log.d(TAG, "│ ✅ WiFi APAGADO (toggle)")
+                                    Log.d(TAG, "│  WiFi APAGADO (toggle)")
                                     respuesta = "WiFi apagado."
                                 } else {
                                     wifiManager.isWifiEnabled = true
-                                    Log.d(TAG, "│ ✅ WiFi ENCENDIDO (toggle)")
+                                    Log.d(TAG, "│  WiFi ENCENDIDO (toggle)")
                                     respuesta = "WiFi encendido."
                                 }
                             }
@@ -830,12 +940,12 @@ class MyAccessibilityService : AccessibilityService() {
                         when (shouldEnable) {
                             "on" -> {
                                 cameraManager.setTorchMode(cameraId, true)
-                                Log.d(TAG, "│ ✅ Linterna ENCENDIDA")
+                                Log.d(TAG, "│  Linterna ENCENDIDA")
                                 respuesta = "Linterna encendida."
                             }
                             "off" -> {
                                 cameraManager.setTorchMode(cameraId, false)
-                                Log.d(TAG, "│ ✅ Linterna APAGADA")
+                                Log.d(TAG, "│ Linterna APAGADA")
                                 respuesta = "Linterna apagada."
                             }
                             else -> {
@@ -853,7 +963,7 @@ class MyAccessibilityService : AccessibilityService() {
                         waitTime = 500L
 
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error toggling flashlight: ${e.message}", e)
+                        Log.e(TAG, "│  Error toggling flashlight: ${e.message}", e)
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -865,9 +975,9 @@ class MyAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "│ 📷 open_camera: modo='$modo' frontal=$frontal")
 
                     try {
-                        // ✅ NUEVO: Verificar permiso ANTES de abrir cámara
+                        //  NUEVO: Verificar permiso ANTES de abrir cámara
                         if (!PermissionHelper.hasCameraPermission(this@MyAccessibilityService)) {
-                            Log.e(TAG, "│ ❌ Permiso de cámara denegado")
+                            Log.e(TAG, "│  Permiso de cámara denegado")
                             val intent = Intent("JARVIS.SPEAK_TEXT").apply {
                                 putExtra("texto", "Necesito permiso de cámara. Ve a Ajustes > Aplicaciones > Permisos > Otorga cámara")
                                 setPackage(packageName)
@@ -906,7 +1016,7 @@ class MyAccessibilityService : AccessibilityService() {
                 "take_photo_auto" -> {
                     val frontal = accion.params?.get("frontal") as? Boolean ?: false
                     val portrait = accion.params?.get("portrait") as? Boolean ?: false
-                    val delay = (accion.params?.get("delay_seconds") as? Number)?.toInt() ?: 0
+                    val delay = (accion.params?.get("delay_seconds") as? Number)?.toInt() ?: 0  // 🔥 0 = sin temporizador
 
                     Log.d(TAG, "│ 📸 take_photo_auto: frontal=$frontal, portrait=$portrait, delay=$delay")
 
@@ -925,49 +1035,37 @@ class MyAccessibilityService : AccessibilityService() {
                             }
                             startActivity(intent)
                             exitoAccion = false
-                            detalleError = "Permiso de cámara denegado"
                             waitTime = 300L
                             return@run
                         }
 
-                        // 2. Crear archivo de destino para la foto usando MediaStore (Android 10+)
-                        val photoUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            val resolver = contentResolver
-                            val contentValues = ContentValues().apply {
-                                val prefix = if (frontal) "selfie" else "foto"
-                                put(MediaStore.Images.Media.DISPLAY_NAME, "${prefix}_${System.currentTimeMillis()}.jpg")
-                                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Nexus")
-                            }
-                            resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                        } else {
-                            val storageDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                            val prefix = if (frontal) "selfie" else "foto"
-                            val file = File(storageDir, "Nexus/${prefix}_${System.currentTimeMillis()}.jpg")
-                            file.parentFile?.mkdirs()
-                            Uri.fromFile(file)
-                        }
-
-                        if (photoUri == null) {
-                            Log.e(TAG, "│ ❌ No se pudo crear el URI para guardar la foto")
-                            exitoAccion = false
-                            waitTime = 300L
-                            return@run
-                        }
-
-                        // 3. Construir intent para abrir la cámara con URI de salida
+                        // ════════════════════════════════════════════════════════════════
+                        // 2. ABRIR CÁMARA - SIN TEMPORIZADOR
+                        // ════════════════════════════════════════════════════════════════
                         val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
+
+                            // 🔥 NO poner extras de temporizador
+
+                            // 📌 Cámara FRONTAL o TRASERA
                             if (frontal) {
                                 putExtra("android.intent.extras.CAMERA_FACING", 1)
                                 putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
                                 putExtra("CAMERA_FACING", 1)
                                 putExtra("front_camera", true)
+                                putExtra("isFrontCamera", true)
+                                putExtra("front", true)
+                                Log.d(TAG, "│ 📷 Cámara FRONTAL seleccionada")
+                            } else {
+                                Log.d(TAG, "│ 📷 Cámara TRASERA seleccionada")
                             }
+
                             if (portrait) {
                                 putExtra("portrait_mode", true)
+                                putExtra("MODE", "PORTRAIT")
                             }
+
+                            // ⚠️ IMPORTANTE: NO poner EXTRA_OUTPUT para que Samsung guarde automáticamente
                         }
 
                         if (intent.resolveActivity(packageManager) == null) {
@@ -977,60 +1075,50 @@ class MyAccessibilityService : AccessibilityService() {
                             return@run
                         }
 
-                        // 4. Abrir la cámara
+                        // 3. ABRIR LA CÁMARA
                         startActivity(intent)
+                        Log.d(TAG, "│ ✅ Cámara abierta (sin temporizador)")
 
-                        // 5. Si se pidió frontal, cambiar a la cámara frontal después de abrir
+                        // 4. NOTIFICACIÓN POR VOZ
+                        val mensaje = if (frontal) "Tomando selfie" else "Tomando foto"
+                        val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
+                            putExtra("texto", mensaje)
+                            setPackage(packageName)
+                        }
+                        sendBroadcast(speakIntent)
+
+                        // ════════════════════════════════════════════════════════════════
+                        // 5. FORZAR CÁMARA FRONTAL (si se pidió)
+                        // ════════════════════════════════════════════════════════════════
                         if (frontal) {
+                            // Esperar a que la cámara cargue y forzar cambio a frontal
                             handler.postDelayed({
+                                Log.d(TAG, "🔄 Forzando cambio a cámara frontal...")
                                 presionarBotonCambiarCamara()
-                            }, 1500)
+                            }, 1500) // 1.5 segundos para que cargue
                         }
 
-                        // 6. Delay y captura automática
-                        if (delay > 0) {
-                            val mensaje = if (frontal) "Selfie en $delay segundos" else "Foto en $delay segundos"
-                            val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
-                                putExtra("texto", mensaje)
-                                setPackage(packageName)
-                            }
-                            sendBroadcast(speakIntent)
+                        // ════════════════════════════════════════════════════════════════
+                        // 6. CAPTURAR FOTO MANUALMENTE (sin temporizador)
+                        // ════════════════════════════════════════════════════════════════
+                        // Esperar a que la cámara cargue y la frontal esté activa
+                        val tiempoCaptura = if (frontal) 3000L else 2000L // 3s si es frontal, 2s si es trasera
 
+                        handler.postDelayed({
+                            Log.d(TAG, "📸 Capturando foto...")
+                            buscarYPresionarBotonCaptura()
+
+                            // Cerrar diálogo de confirmación después de capturar
                             handler.postDelayed({
-                                buscarYPresionarBotonCaptura()
-                            }, delay * 1000L)
-
-                            handler.postDelayed({
-                                presionarBotonAceptarFoto()
-                            }, (delay * 1000L) + 1500L)
-
-                            exitoAccion = true
-                            waitTime = (delay * 1000L) + 2000L
-                        } else {
-                            //  CASO SIN DELAY: captura inmediata después de que la cámara cargue
-                            val mensaje = if (frontal) "Tomando selfie" else "Tomando foto"
-                            val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
-                                putExtra("texto", mensaje)
-                                setPackage(packageName)
-                            }
-                            sendBroadcast(speakIntent)
-
-                            // Esperar a que la cámara se estabilice (1.5s) y disparar
-                            handler.postDelayed({
-                                buscarYPresionarBotonCaptura()
+                                cerrarDialogoConfirmacionSamsung()
                             }, 1500)
+                        }, tiempoCaptura)
 
-                            // Después de la captura, presionar "Aceptar" (esperar 3s desde el inicio)
-                            handler.postDelayed({
-                                presionarBotonAceptarFoto()
-                            }, 3000)
-
-                            exitoAccion = true
-                            waitTime = 3500L
-                        }
+                        exitoAccion = true
+                        waitTime = tiempoCaptura + 4000L
 
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error: ${e.message}")
+                        Log.e(TAG, "│ ❌ Error en take_photo_auto: ${e.message}")
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -1040,48 +1128,25 @@ class MyAccessibilityService : AccessibilityService() {
                     // Siempre frontal
                     val frontal = true
                     val portrait = accion.params?.get("portrait") as? Boolean ?: false
-                    val delay = (accion.params?.get("delay_seconds") as? Number)?.toInt() ?: 3  // por defecto 3s
+                    val delay = 0 // 🔥 SIN temporizador
 
                     Log.d(TAG, "│ 📸 take_selfie: frontal=$frontal, portrait=$portrait, delay=$delay")
 
                     try {
-                        // Verificar permiso de cámara (igual que antes)
+                        // Verificar permiso de cámara
                         if (ContextCompat.checkSelfPermission(this@MyAccessibilityService, Manifest.permission.CAMERA)
                             != PackageManager.PERMISSION_GRANTED) {
-                            // ... notificar y abrir ajustes
                             exitoAccion = false
                             waitTime = 300L
                             return@run
                         }
 
-                        // Crear URI para guardar (nombre con "selfie_")
-                        val photoUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            val resolver = contentResolver
-                            val contentValues = ContentValues().apply {
-                                put(MediaStore.Images.Media.DISPLAY_NAME, "selfie_${System.currentTimeMillis()}.jpg")
-                                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Nexus")
-                            }
-                            resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                        } else {
-                            // Android < 10: archivo en almacenamiento externo
-                            val storageDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                            val file = File(storageDir, "Nexus/selfie_${System.currentTimeMillis()}.jpg")
-                            file.parentFile?.mkdirs()
-                            Uri.fromFile(file)
-                        }
-
-                        if (photoUri == null) {
-                            Log.e(TAG, "│ ❌ No se pudo crear el URI para guardar la foto")
-                            exitoAccion = false
-                            waitTime = 300L
-                            return@run
-                        }
-
-                        // Intent con URI de salida y forzando frontal
+                        // ════════════════════════════════════════════════════════════════
+                        // ABRIR CÁMARA - SIN TEMPORIZADOR
+                        // ════════════════════════════════════════════════════════════════
                         val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
+
                             // Frontal
                             putExtra("android.intent.extras.CAMERA_FACING", 1)
                             putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
@@ -1100,55 +1165,36 @@ class MyAccessibilityService : AccessibilityService() {
                         }
 
                         startActivity(intent)
+                        Log.d(TAG, "│ ✅ Cámara abierta para selfie (sin temporizador)")
 
-                        // Si la app de cámara no respeta los extras, intentamos cambiar manualmente
+                        // Notificar
+                        val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
+                            putExtra("texto", "Tomando selfie")
+                            setPackage(packageName)
+                        }
+                        sendBroadcast(speakIntent)
+
+                        // Forzar cambio a frontal
                         handler.postDelayed({
+                            Log.d(TAG, "🔄 Forzando cámara frontal para selfie...")
                             presionarBotonCambiarCamara()
                         }, 1500)
 
-                        // Delay y captura automática (igual que en take_photo_auto)
-                        if (delay > 0) {
-                            val mensaje = "Selfie en $delay segundos"
-                            val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
-                                putExtra("texto", mensaje)
-                                setPackage(packageName)
-                            }
-                            sendBroadcast(speakIntent)
-
+                        // Capturar
+                        handler.postDelayed({
+                            buscarYPresionarBotonCaptura()
                             handler.postDelayed({
-                                buscarYPresionarBotonCaptura()
-                            }, delay * 1000L)
-
-                            handler.postDelayed({
-                                presionarBotonAceptarFoto()
-                            }, (delay * 1000L) + 1500L)
-
-                            exitoAccion = true
-                            waitTime = (delay * 1000L) + 2000L
-                        } else {
-                            val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
-                                putExtra("texto", "Tomando selfie")
-                                setPackage(packageName)
-                            }
-                            sendBroadcast(speakIntent)
-
-                            handler.postDelayed({
-                                buscarYPresionarBotonCaptura()
+                                cerrarDialogoConfirmacionSamsung()
                             }, 1500)
+                        }, 3000)
 
-                            handler.postDelayed({
-                                presionarBotonAceptarFoto()
-                            }, (delay * 1000L) + 2000L)
-
-                            exitoAccion = true
-                            waitTime = 3500L
-                        }
+                        exitoAccion = true
+                        waitTime = 5000L
 
                     } catch (e: Exception) {
                         Log.e(TAG, "│ ❌ Error: ${e.message}")
                         exitoAccion = false
-                        detalleError = "Error: ${e.message}"
-                        waitTime = 400L
+                        waitTime = 300L
                     }
                 }
                 "take_photo" -> {
@@ -1548,93 +1594,151 @@ class MyAccessibilityService : AccessibilityService() {
                     sendBroadcast(intent)
                     waitTime = 500L   // tiempo para que el overlay reaccione
                 }
+                // MyAccessibilityService.kt - DENTRO de stepRunnable
+
+                "call_whatsapp" -> {
+                    val contact = accion.params?.get("contact") as? String ?: ""
+                    Log.d(TAG, "│ call_whatsapp: '$contact'")
+                    ActionExecutor.callWhatsApp(this@MyAccessibilityService, contact)
+                    waitTime = 2000L
+                }
 // En el stepRunnable, agregar los nuevos tipos de acciones:
 
                 "record_video_auto" -> {
                     val frontal = accion.params?.get("frontal") as? Boolean ?: false
                     val duracion = (accion.params?.get("duration") as? Number)?.toInt() ?: 0
+                    val delay = (accion.params?.get("delay_seconds") as? Number)?.toInt() ?: 0 // Por defecto 3s
 
-                    Log.d(TAG, "│ 🎥 record_video_auto: frontal=$frontal, duracion=${duracion}s")
+                    Log.d(TAG, "│ 🎥 record_video_auto: frontal=$frontal, duracion=${duracion}s, delay=${delay}s")
 
                     try {
-                        // Verificar permiso de cámara
+                        // 1. Verificar permiso de cámara
                         if (ContextCompat.checkSelfPermission(this@MyAccessibilityService, Manifest.permission.CAMERA)
                             != PackageManager.PERMISSION_GRANTED) {
-                            // Solicitar permiso...
-                            exitoAccion = false
-                            waitTime = 300L
-                            return@run
-                        }
-
-                        // Crear URI para guardar el video
-                        val videoUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            val contentValues = ContentValues().apply {
-                                val prefix = if (frontal) "selfie_video" else "video"
-                                put(MediaStore.Video.Media.DISPLAY_NAME, "${prefix}_${System.currentTimeMillis()}.mp4")
-                                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/Nexus")
-                            }
-                            contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
-                        } else {
-                            val storageDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-                            val prefix = if (frontal) "selfie_video" else "video"
-                            val file = File(storageDir, "Nexus/${prefix}_${System.currentTimeMillis()}.mp4")
-                            file.parentFile?.mkdirs()
-                            Uri.fromFile(file)
-                        }
-
-                        if (videoUri == null) {
-                            Log.e(TAG, "│ ❌ No se pudo crear URI para video")
-                            exitoAccion = false
-                            waitTime = 300L
-                            return@run
-                        }
-
-                        // Intent con ACTION_VIDEO_CAPTURE
-                        val intent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            putExtra(MediaStore.EXTRA_OUTPUT, videoUri)
-                            putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 1) // Alta calidad
-
-                            if (frontal) {
-                                putExtra("android.intent.extras.CAMERA_FACING", 1)
-                                putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
-                            }
-
-                            if (duracion > 0) {
-                                putExtra(MediaStore.EXTRA_DURATION_LIMIT, duracion)
-                            }
-                        }
-
-                        if (intent.resolveActivity(packageManager) != null) {
-                            startActivity(intent)
-
-                            // Si es frontal, intentar cambiar cámara
-                            if (frontal) {
-                                handler.postDelayed({
-                                    presionarBotonCambiarCamaraVideo()
-                                }, 1500)
-                            }
-
-                            // Iniciar grabación automáticamente después de un delay
-                            handler.postDelayed({
-                                buscarYPresionarBotonGrabar()
-                            }, 2000)
-
-                            val mensaje = if (frontal) "Grabando video con cámara frontal" else "Grabando video"
                             val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
-                                putExtra("texto", mensaje)
+                                putExtra("texto", "Necesito permiso de cámara. Ve a ajustes y actívalo.")
                                 setPackage(packageName)
                             }
                             sendBroadcast(speakIntent)
-
-                            exitoAccion = true
-                            waitTime = 3000L
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:$packageName")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            exitoAccion = false
+                            waitTime = 300L
+                            return@run
                         }
 
+                        // ════════════════════════════════════════════════════════════════
+                        // 2. ABRIR CÁMARA DE VIDEO CON TEMPORIZADOR NATIVO DE SAMSUNG
+                        // ════════════════════════════════════════════════════════════════
+                        val intent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+                            // 🔥 ACTIVAR TEMPORIZADOR NATIVO para video
+                            if (delay > 0) {
+                                putExtra("timer", delay)
+                                putExtra("selfie_timer", delay)
+                                putExtra("Timer", delay)
+                                putExtra("TIMER_VALUE", delay)
+                                putExtra("com.sec.android.app.camera.extra.TIMER", delay)
+                                putExtra("capture_timer", delay)
+                                Log.d(TAG, "│ ⏱️ Temporizador Samsung activado para video: ${delay}s")
+                            }
+
+                            // 📌 Cámara FRONTAL o TRASERA
+                            if (frontal) {
+                                putExtra("android.intent.extras.CAMERA_FACING", 1)
+                                putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+                                putExtra("CAMERA_FACING", 1)
+                                putExtra("front_camera", true)
+                                putExtra("isFrontCamera", true)
+                                putExtra("front", true)
+                                Log.d(TAG, "│ 📷 Cámara FRONTAL seleccionada para video")
+                            } else {
+                                Log.d(TAG, "│ 📷 Cámara TRASERA seleccionada para video")
+                            }
+
+                            // ⏱️ Duración límite (si se especificó)
+                            if (duracion > 0) {
+                                putExtra(MediaStore.EXTRA_DURATION_LIMIT, duracion)
+                                putExtra("android.intent.extra.DURATION_LIMIT", duracion)
+                                Log.d(TAG, "│ ⏱️ Límite de duración: ${duracion}s")
+                            }
+
+                            // 🔥 IMPORTANTE: NO poner EXTRA_OUTPUT
+                            // Samsung guarda automáticamente en su galería
+                        }
+
+                        if (intent.resolveActivity(packageManager) == null) {
+                            Log.e(TAG, "│ ❌ No hay app de cámara para video")
+                            exitoAccion = false
+                            waitTime = 300L
+                            return@run
+                        }
+
+                        // 3. ABRIR LA CÁMARA DE VIDEO
+                        startActivity(intent)
+                        Log.d(TAG, "│ ✅ Cámara de video abierta")
+
+                        // 4. NOTIFICACIÓN POR VOZ
+                        val mensaje = buildString {
+                            append(if (frontal) "Grabando con cámara frontal" else "Grabando video")
+                            if (delay > 0) append(" en $delay segundos")
+                            if (duracion > 0) append(" por $duracion segundos")
+                        }
+                        val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
+                            putExtra("texto", mensaje)
+                            setPackage(packageName)
+                        }
+                        sendBroadcast(speakIntent)
+
+                        // ════════════════════════════════════════════════════════════════
+                        // 5. 🚀 INICIAR GRABACIÓN AUTOMÁTICAMENTE (¡NUEVO!)
+                        // ════════════════════════════════════════════════════════════════
+
+                        // Calcular tiempo de espera según si hay temporizador
+                        val tiempoEspera = if (delay > 0) {
+                            // Si hay temporizador, esperar a que termine + 1s extra
+                            (delay * 1000L) + 2000L
+                        } else {
+                            // Sin temporizador, esperar 1.5s para que cargue la cámara
+                            1500L
+                        }
+
+                        // 🔥 Intentar iniciar la grabación después de que la cámara esté lista
+                        handler.postDelayed({
+                            Log.d(TAG, "⏺️ Intentando iniciar grabación automáticamente...")
+                            buscarYPresionarBotonGrabar()
+                            Log.d(TAG, "✅ Proceso de inicio de grabación completado")
+                        }, tiempoEspera)
+
+                        // ════════════════════════════════════════════════════════════════
+                        // 6. CIERRE AUTOMÁTICO DEL DIÁLOGO (si hay duración límite)
+                        // ════════════════════════════════════════════════════════════════
+                        if (duracion > 0) {
+                            val tiempoCierreDialogo = (delay * 1000L) + (duracion * 1000L) + 2500L
+
+                            handler.postDelayed({
+                                Log.d(TAG, "⏰ Cerrando diálogo de confirmación (video con duración límite)...")
+                                cerrarDialogoConfirmacionSamsung()
+                            }, tiempoCierreDialogo)
+
+                            waitTime = tiempoCierreDialogo + 3000L
+
+                        } else {
+                            // Grabación continua
+                            Log.d(TAG, "ℹ️ Grabación continua - di 'detener grabación' para parar")
+                            waitTime = 120000L // 2 minutos
+                        }
+
+                        exitoAccion = true
+
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error: ${e.message}")
+                        Log.e(TAG, "│ ❌ Error en record_video_auto: ${e.message}")
                         exitoAccion = false
+                        detalleError = "Error: ${e.message}"
                         waitTime = 300L
                     }
                 }
@@ -1980,24 +2084,23 @@ class MyAccessibilityService : AccessibilityService() {
         }
     }
     // Agrega esto dentro de tu clase MyAccessibilityService
-    private val splitScreenReceiver = object : android.content.BroadcastReceiver() {
+    private val splitScreenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "JARVIS.TRIGGER_SPLIT_SCREEN") {
-                val secondPackage = intent.getStringExtra("second_package") ?: return
+            val action = intent?.action
+            val pkg1 = intent?.getStringExtra("app1") ?: intent?.getStringExtra("first_package")
+            val pkg2 = intent?.getStringExtra("app2") ?: intent?.getStringExtra("second_package")
 
-                // Activar el modo pantalla dividida nativo del sistema operativo
-                performGlobalAction(AccessibilityService.GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)
-
-                // Esperar un momento corto a que el sistema minimice y prepare el dock adyacente
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    val intent2 = packageManager.getLaunchIntentForPackage(secondPackage)?.apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    if (intent2 != null) {
-                        startActivity(intent2)
-                        Log.d("AccessibilityService", "✅ Segunda app acoplada con éxito: $secondPackage")
-                    }
-                }, 600)
+            if (pkg1 != null && pkg2 != null) {
+                iniciarPantallaDivididaUnificado(pkg1, pkg2)
+            } else if (pkg2 != null) {
+                // Si solo llega la segunda, asumimos que la primera ya está abierta
+                // (caso de uso desde el overlay o comando rápido)
+                val currentPkg = rootInActiveWindow?.packageName?.toString()
+                if (currentPkg != null) {
+                    iniciarPantallaDivididaUnificado(currentPkg, pkg2)
+                } else {
+                    Log.e(TAG, "❌ No se conoce la primera app")
+                }
             }
         }
     }
@@ -2037,70 +2140,104 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     // Función para buscar y presionar botón de grabar
-    private fun buscarYPresionarBotonGrabar() {
+    private fun buscarYPresionarBotonGrabar(): Boolean {
+        var resultado = false
+
         val candidatos = listOf(
             "Grabar", "Record", "Iniciar", "⏺️", "●", "Start",
-            "Iniciar grabación", "Comenzar"
+            "Iniciar grabación", "Comenzar",
+            "Grabar video", "Iniciar grabación", "Comenzar grabación",
+            "Iniciar", "Comenzar", "graba un video",
+            // 🔥 Más variantes para Samsung
+            "Grabar vídeo", "Grabar video ahora", "Empezar",
+            "Start recording", "Record video", "Iniciar grabación de video"
         )
 
         val idsGrabar = listOf(
             "com.google.android.GoogleCamera:id/shutter_button",
             "com.android.camera2:id/shutter_button",
-            "com.sec.android.app.camera:id/record_button"
+            "com.sec.android.app.camera:id/record_button",
+            // 🔥 IDs extra de Samsung
+            "com.sec.android.app.camera:id/recording_button",
+            "com.sec.android.app.camera:id/video_record_button",
+            "com.sec.android.app.camera:id/start_recording",
+            "com.sec.android.camera:id/record_button"
         )
 
         handler.postDelayed({
-            val root = rootInActiveWindow ?: return@postDelayed
+            val root = rootInActiveWindow ?: run {
+                Log.w(TAG, "❌ rootInActiveWindow es NULL")
+                return@postDelayed
+            }
 
             var botonEncontrado: AccessibilityNodeInfo? = null
 
-            // Buscar por texto
+            // 1. Buscar por texto
             for (candidato in candidatos) {
                 botonEncontrado = encontrarNodoPorTexto(root, candidato)
-                if (botonEncontrado != null) break
+                if (botonEncontrado != null) {
+                    Log.d(TAG, "🔍 Botón 'Grabar' encontrado por texto: '$candidato'")
+                    break
+                }
             }
 
-            // Buscar por IDs
+            // 2. Buscar por IDs
             if (botonEncontrado == null) {
                 for (id in idsGrabar) {
                     val nodos = root.findAccessibilityNodeInfosByViewId(id)
                     if (nodos.isNotEmpty()) {
                         botonEncontrado = nodos.firstOrNull { it.isClickable }
-                        if (botonEncontrado != null) break
+                        if (botonEncontrado != null) {
+                            Log.d(TAG, "🔍 Botón 'Grabar' encontrado por ID: $id")
+                            break
+                        }
                     }
                 }
             }
 
+            // 3. Buscar por descripción de contenido
+            if (botonEncontrado == null) {
+                fun buscarPorDesc(nodo: AccessibilityNodeInfo?): Boolean {
+                    if (nodo == null) return false
+                    val desc = nodo.contentDescription?.toString()?.lowercase() ?: ""
+                    if (desc.contains("grabar") || desc.contains("record") ||
+                        desc.contains("iniciar") || desc.contains("start")) {
+                        if (nodo.isClickable) {
+                            botonEncontrado = nodo
+                            Log.d(TAG, "🔍 Botón 'Grabar' encontrado por descripción: '$desc'")
+                            return true
+                        }
+                    }
+                    for (i in 0 until nodo.childCount) {
+                        if (buscarPorDesc(nodo.getChild(i))) return true
+                    }
+                    return false
+                }
+                buscarPorDesc(root)
+            }
+
+            // 4. Si encontramos el botón, hacer clic
             if (botonEncontrado != null) {
                 hacerClicEnNodoOAncestros(botonEncontrado)
-                Log.d(TAG, "✅ Grabación iniciada")
+                Log.d(TAG, "✅ Grabación iniciada (clic en botón)")
+                resultado = true
             } else {
-                // Fallback: tap en centro-inferior
+                // 5. Fallback: tap en centro-inferior
+                Log.w(TAG, "⚠️ No se encontró botón Grabar, usando tap en centro-inferior")
                 val metrics = resources.displayMetrics
                 tapCoordenadas(mapOf(
                     "x" to (metrics.widthPixels / 2f),
-                    "y" to (metrics.heightPixels * 0.85f)
+                    "y" to (metrics.heightPixels * 0.78f)
                 ))
-                Log.d(TAG, "⚠️ Usando coordenadas fallback para grabar")
+                Log.d(TAG, "✅ Tap en centro-inferior (fallback)")
+                resultado = true
             }
+
         }, 500)
+
+        return resultado
     }
 
-    // Función para detener grabación
-    private fun detenerGrabacion() {
-        val candidatos = listOf("Detener", "Stop", "Parar", "■", "⏹️")
-
-        val root = rootInActiveWindow ?: return
-
-        for (candidato in candidatos) {
-            val nodo = encontrarNodoPorTexto(root, candidato)
-            if (nodo != null) {
-                hacerClicEnNodoOAncestros(nodo)
-                Log.d(TAG, "✅ Grabación detenida")
-                return
-            }
-        }
-    }
     private fun presionarBotonAceptarFoto() {
         val candidatos = listOf(
             "Aceptar", "Guardar", "OK", "✓", "✔", "Listo", "Done",
@@ -2269,67 +2406,64 @@ class MyAccessibilityService : AccessibilityService() {
         buscarPorDescripcion(root)
     }
     private fun presionarBotonCambiarCamara() {
-        // Buscar el botón de intercambio de cámara (frontal/trasera)
-        // Suelen tener descripciones como "Cambiar cámara", "Girar cámara", "Switch camera", "Flip"
         val candidatos = listOf(
             "Cambiar cámara", "Girar cámara", "Switch camera", "Flip",
-            "Cámara frontal", "Cámara trasera", "Selfie", "Frontal"
+            "Cámara frontal", "Cámara trasera", "Selfie", "Frontal",
+            "Cambiar", "Intercambiar", "Girar", "Voltear",
+            "Cámara delantera", "Cámara trasera", "Delantera", "Trasera"
+        )
+
+        val idsSamsung = listOf(
+            "com.sec.android.app.camera:id/button_switch_camera",
+            "com.sec.android.app.camera:id/switch_camera_button",
+            "com.sec.android.app.camera:id/camera_switch_button",
+            "com.sec.android.app.camera:id/btn_switch_camera"
         )
 
         handler.postDelayed({
-            val root = rootInActiveWindow
-            if (root == null) {
-                Log.w(TAG, "❌ No se puede acceder a la ventana activa para cambiar cámara")
-                return@postDelayed
-            }
-
+            val root = rootInActiveWindow ?: return@postDelayed
             var nodoEncontrado: AccessibilityNodeInfo? = null
+
+            // Buscar por texto
             for (candidato in candidatos) {
                 nodoEncontrado = encontrarNodoPorTexto(root, candidato)
-                if (nodoEncontrado != null) break
+                if (nodoEncontrado != null) {
+                    Log.d(TAG, "🔍 Encontrado por texto: '$candidato'")
+                    break
+                }
             }
 
-            // Si no se encuentra por texto, buscar por IDs comunes
+            // Buscar por IDs
             if (nodoEncontrado == null) {
-                val ids = listOf(
-                    "com.google.android.GoogleCamera:id/switch_camera_button",
-                    "com.sec.android.app.camera:id/button_switch_camera",
-                    "com.android.camera2:id/switch_camera",
-                    "com.oppo.camera:id/switch_camera_button"
-                )
-                for (id in ids) {
+                for (id in idsSamsung) {
                     val nodos = root.findAccessibilityNodeInfosByViewId(id)
                     if (nodos.isNotEmpty()) {
                         nodoEncontrado = nodos[0]
+                        Log.d(TAG, "🔍 Encontrado por ID: $id")
                         break
                     }
                 }
             }
 
             if (nodoEncontrado != null) {
-                // Intentar clic en el nodo o su ancestro clickable
                 var nodoClick = nodoEncontrado
                 while (nodoClick != null && !nodoClick.isClickable) {
                     nodoClick = nodoClick.parent
                 }
                 if (nodoClick != null && nodoClick.isClickable) {
                     nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d(TAG, "✅ Botón de cambio de cámara presionado (frontal activada)")
-                } else {
-                    // Fallback: tap en coordenadas del nodo
-                    val bounds = Rect()
-                    nodoEncontrado.getBoundsInScreen(bounds)
-                    if (!bounds.isEmpty) {
-                        tapCoordenadas(mapOf("x" to bounds.centerX(), "y" to bounds.centerY()))
-                        Log.d(TAG, "✅ Tap en coordenadas del botón de cambio")
-                    } else {
-                        Log.w(TAG, "⚠️ No se pudo hacer clic en el botón de cambio")
-                    }
+                    Log.d(TAG, "✅ Cámara frontal activada")
                 }
             } else {
-                Log.w(TAG, "⚠️ No se encontró el botón de cambio de cámara. Se usará la cámara por defecto.")
+                // Fallback: tap en esquina superior derecha
+                val metrics = resources.displayMetrics
+                tapCoordenadas(mapOf(
+                    "x" to (metrics.widthPixels * 0.88f),
+                    "y" to (metrics.heightPixels * 0.08f)
+                ))
+                Log.d(TAG, "✅ Tap en esquina superior derecha (fallback)")
             }
-        }, 500) // esperar medio segundo más después de abrir la cámara
+        }, 800)
     }
     private fun isAccessibilityServiceEnabled(): Boolean {
         val enabledServices = Settings.Secure.getString(
@@ -2687,7 +2821,101 @@ class MyAccessibilityService : AccessibilityService() {
         }
         return dp[s1.length][s2.length]
     }
+    private fun cerrarDialogoConfirmacionSamsung() {
+        // ════════════════════════════════════════════════════════════
+        // 🔥 CERRAR DIÁLOGO DE CONFIRMACIÓN DE SAMSUNG (VERSIÓN ULTRA COMPLETA)
+        // ════════════════════════════════════════════════════════════
 
+        val candidatos = listOf(
+            "Aceptar", "Guardar", "OK", "✓", "✔", "Listo", "Done",
+            "Aceptar foto", "Guardar foto", "Confirmar", "Continuar",
+            // Samsung One UI
+            "Guardar en la galería", "Guardar en Galería", "Guardar",
+            "Aceptar y guardar", "Hecho", "Finalizar",
+            "Guardar en galería", "Galería",
+            "Reintentar", "Reintentar foto", "Tomar de nuevo", "Cancelar",
+            // 🔥 NUEVOS (Samsung A/M series)
+            "Aceptar y guardar en galería", "Guardar en dispositivo",
+            "Guardar en la tarjeta SD", "Guardar ahora",
+            "Sí", "Si", "Confirmar foto"  // Algunas versiones usan estos
+        )
+
+        handler.postDelayed({
+            val root = rootInActiveWindow
+            if (root == null) {
+                Log.d(TAG, "ℹ️ No hay ventana activa, probablemente ya se cerró el diálogo.")
+                return@postDelayed
+            }
+
+            var nodoEncontrado: AccessibilityNodeInfo? = null
+
+            // 1. Buscar por TEXTO
+            for (candidato in candidatos) {
+                nodoEncontrado = encontrarNodoPorTexto(root, candidato)
+                if (nodoEncontrado != null) {
+                    Log.d(TAG, "🔍 Encontrado por texto: '$candidato'")
+                    break
+                }
+            }
+
+            // 2. Buscar por IDs de Samsung (MÁS COMPLETO)
+            if (nodoEncontrado == null) {
+                val idsSamsung = listOf(
+                    "com.sec.android.app.camera:id/ok_button",
+                    "com.sec.android.app.camera:id/done_button",
+                    "com.sec.android.app.camera:id/btn_done",
+                    "com.sec.android.app.camera:id/button_confirm",
+                    "com.sec.android.app.camera:id/confirm_button",
+                    "com.sec.android.app.camera:id/save_button",
+                    "com.sec.android.app.camera:id/okay_button",        // 🔥 Nuevo
+                    "com.sec.android.app.camera:id/btn_ok",             // 🔥 Nuevo
+                    "com.sec.android.app.camera:id/positive_button",    // 🔥 Nuevo
+                    "com.google.android.GoogleCamera:id/done_button",
+                    "com.android.camera2:id/done_button"
+                )
+                for (id in idsSamsung) {
+                    val nodos = root.findAccessibilityNodeInfosByViewId(id)
+                    if (nodos.isNotEmpty()) {
+                        nodoEncontrado = nodos[0]
+                        Log.d(TAG, "🔍 Encontrado por ID: $id")
+                        break
+                    }
+                }
+            }
+
+            // 3. Si encontramos el botón, hacer clic
+            if (nodoEncontrado != null) {
+                var nodoClick = nodoEncontrado
+                while (nodoClick != null && !nodoClick.isClickable) {
+                    nodoClick = nodoClick.parent
+                }
+                if (nodoClick != null && nodoClick.isClickable) {
+                    nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    Log.d(TAG, "✅ Diálogo de confirmación cerrado (clic en botón)")
+                } else {
+                    val bounds = Rect()
+                    nodoEncontrado.getBoundsInScreen(bounds)
+                    if (!bounds.isEmpty) {
+                        tapCoordenadas(mapOf("x" to bounds.centerX(), "y" to bounds.centerY()))
+                        Log.d(TAG, "✅ Tap en coordenadas del botón (fallback)")
+                    }
+                }
+            } else {
+                // 4. ÚLTIMO RECURSO: Presionar BACK (solo si estamos seguros de que es un diálogo)
+                // Verificamos si el paquete activo es la cámara para no cerrar la app
+                if (root.packageName?.contains("camera") == true) {
+                    Log.d(TAG, "ℹ️ No se encontró botón, presionando BACK para cerrar diálogo")
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    Log.d(TAG, "✅ BACK presionado")
+                } else {
+                    Log.d(TAG, "ℹ️ No hay diálogo de confirmación visible. Foto guardada automáticamente.")
+                }
+            }
+
+            // ✅ La cámara queda abierta para más fotos
+
+        }, 600) // esperar 600ms para que el diálogo aparezca
+    }
     private fun actualizarSnapDePantalla(force: Boolean = false) {
         val root = rootInActiveWindow ?: return
 
@@ -2839,6 +3067,8 @@ class MyAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         try { unregisterReceiver(sendMessageReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(splitScreenReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(writeMessageReceiver) } catch (_: Exception) {}
         try {
             unregisterReceiver(actionsReceiver)
             Log.d(TAG, "✅ BroadcastReceiver desregistrado")

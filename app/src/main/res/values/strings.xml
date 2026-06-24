@@ -1,4 +1,3 @@
 <resources>
     <string name="app_name">My Application</string>
-    <string name="accessibility_description">Este servicio permite a Jarvis interactuar con las aplicaciones para ayudarte por voz.</string>
-</resources>
+    <string name="accessibility_service_description">Permite a Nexus controlar la pantalla, leer elementos y ejecutar comandos por voz como abrir apps en pantalla dividida.</string></resources>
