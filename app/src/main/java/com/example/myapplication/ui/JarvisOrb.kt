@@ -155,27 +155,27 @@ private fun generate3DSegments(
     val px = FloatArray(points + 1)
     val py = FloatArray(points + 1)
     val pz = FloatArray(points + 1)
-
-    for (i in 0..points) {
-        val angle = i.toFloat() / points * 2 * PI.toFloat()
-        val rOrg = rBase * (1f + (0.12f * sin(3.0 * angle).toFloat() + 0.08f * cos(2.0 * angle).toFloat())) * (1f - blobPhase) +
-                rBase * (1f + (0.10f * sin(2.0 * angle + PI).toFloat() + 0.10f * cos(3.0 * angle).toFloat())) * blobPhase
-
-        val r = rOrg // Aquí podrías añadir ondas adicionales
-        val lx = r * cos(angle + rS)
-        val ly = r * sin(angle + rS)
-
-        val ryX = lx * cos(rY)
-        val ryZ = lx * sin(rY)
-        val fX = ryX
-        val fY = ly * cos(rX) - ryZ * sin(rX)
-        val fZ = ly * sin(rX) + ryZ * cos(rX)
-
-        val pers = (baseRadius * 2.5f) / (baseRadius * 2.5f - fZ)
-        px[i] = cx + fX * pers
-        py[i] = cy + fY * pers
-        pz[i] = fZ
-    }
+//
+//    for (i in 0..points) {
+//        val angle = i.toFloat() / points * 2 * PI.toFloat()
+////        val rOrg = rBase * (1f + (0.12f * sin(3.0 * angle).toFloat() + 0.08f * cos(2.0 * angle).toFloat())) * (1f - blobPhase) +
+////                rBase * (1f + (0.10f * sin(2.0 * angle + PI).toFloat() + 0.10f * cos(3.0 * angle).toFloat())) * blobPhase
+//
+////        val r = rOrg // Aquí podrías añadir ondas adicionales
+////        val lx = r * cos(angle + rS)
+////        val ly = r * sin(angle + rS)
+//
+////        val ryX = lx * cos(rY)
+////        val ryZ = lx * sin(rY)
+////        val fX = ryX
+////        val fY = ly * cos(rX) - ryZ * sin(rX)
+////        val fZ = ly * sin(rX) + ryZ * cos(rX)
+////
+////        val pers = (baseRadius * 2.5f) / (baseRadius * 2.5f - fZ)
+////        px[i] = cx + fX * pers
+////        py[i] = cy + fY * pers
+////        pz[i] = fZ
+//    }
 
     for (i in 0 until points) {
         val zMid = (pz[i] + pz[i+1]) / 2f

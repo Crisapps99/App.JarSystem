@@ -1062,6 +1062,26 @@ class JarvisVoiceController(
                                 val accion = actionsArray.getJSONObject(i)
                                 val tipo = accion.getString("tipo")
                                 when (tipo) {
+                                    "open_uber" -> {
+                                        val params = accion.optJSONObject("params") ?: continue
+                                        val pickupLat = params.optDouble("pickup_lat", 0.0)
+                                        val pickupLng = params.optDouble("pickup_lng", 0.0)
+                                        val dropoffLat = params.optDouble("dropoff_lat", 0.0)
+                                        val dropoffLng = params.optDouble("dropoff_lng", 0.0)
+                                        val dropoffName = params.optString("dropoff_name", "Destino")
+                                        val deeplink = params.optString("deeplink", "")
+
+                                        // Llamamos a ActionExecutor para abrir Uber
+                                        ActionExecutor.openUber(
+                                            context = context,
+                                            pickupLat = pickupLat,
+                                            pickupLng = pickupLng,
+                                            dropoffLat = dropoffLat,
+                                            dropoffLng = dropoffLng,
+                                            dropoffName = dropoffName,
+                                            deeplink = deeplink
+                                        )
+                                    }
                                     "navigate" -> {
                                         val params = accion.optJSONObject("params") ?: continue
                                         val lat = params.getDouble("destination_lat")

@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
 fun MainComposeScreen(energy: Float, sliderKey: Int = 0) {
     val context = LocalContext.current
     var isTransitioning by remember { mutableStateOf(false) }
-    val animScale = remember { Animatable(0f) }
+    val animScale = remember { Animatable(1f) }
     val animAlpha = remember { Animatable(0f) }
     // Colores exactos de tu ejemplo ListeningBarView
     val neonColors = listOf(
@@ -114,8 +114,6 @@ fun MainComposeScreen(energy: Float, sliderKey: Int = 0) {
 
     LaunchedEffect(Unit) {
         animAlpha.animateTo(1f, tween(1500))
-        animScale.animateTo(1.2f, tween(1200, easing = FastOutSlowInEasing))
-        animScale.animateTo(1f, tween(800, easing = OvershootEasing(1.5f)))
     }
 
     Box(modifier = Modifier.fillMaxSize().padding(WindowInsets.systemBars.asPaddingValues())) {

@@ -188,7 +188,72 @@ object ActionExecutor {
         }
     }
     // ActionExecutor.kt - Agregar esta función
+// ActionExecutor.kt
 
+    /**
+     * Abre la app de Uber con origen y destino precargados.
+     * Si el deep link falla, abre la versión web.
+     */
+    fun openUber(
+        context: Context,
+        pickupLat: Double,
+        pickupLng: Double,
+        dropoffLat: Double,
+        dropoffLng: Double,
+        dropoffName: String,
+        deeplink: String = ""
+    ) {
+        Log.d("ActionExecutor", "🚗 Abriendo Uber: $dropoffName ($dropoffLat, $dropoffLng)")
+
+        try {
+            // 1. Intentar con el deep link recibido del servidor
+            if (deeplink.isNotBlank()) {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(deeplink)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                Log.d("ActionExecutor", "✅ Uber abierto con deep link")
+                return
+            }
+
+            // 2. Si no vino deep link, construirlo localmente con el client_id
+            // (debes tener tu client_id de Uber Developer)
+            val clientId = "-bgm1W1aZztFFGNDFPnAcvVNhLlRxHNQ" // ⚠️ Reemplazar con el real
+            val params = mapOf(
+                "client_id" to clientId,
+                "action" to "setPickup",
+                "pickup[latitude]" to pickupLat.toString(),
+                "pickup[longitude]" to pickupLng.toString(),
+                "dropoff[latitude]" to dropoffLat.toString(),
+                "dropoff[longitude]" to dropoffLng.toString(),
+                "dropoff[nickname]" to dropoffName
+            )
+            val query = params.map { "${it.key}=${Uri.encode(it.value)}" }.joinToString("&")
+            val fallbackDeeplink = "uber://?$query"
+
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(fallbackDeeplink)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            Log.d("ActionExecutor", "✅ Uber abierto con fallback deep link")
+
+        } catch (e: Exception) {
+            // 3. Si no está instalada la app, abrir versión web
+            Log.e("ActionExecutor", "❌ Error abriendo Uber: ${e.message}")
+            try {
+                val webUrl = "https://m.uber.com/ul/?client_id=${Uri.encode("TU_CLIENT_ID_DE_UBER")}" +
+                        "&action=setPickup&pickup[latitude]=$pickupLat&pickup[longitude]=$pickupLng" +
+                        "&dropoff[latitude]=$dropoffLat&dropoff[longitude]=$dropoffLng&dropoff[nickname]=${Uri.encode(dropoffName)}"
+                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(webUrl)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(webIntent)
+                Log.d("ActionExecutor", "✅ Uber abierto en navegador (fallback)")
+            } catch (e2: Exception) {
+                Log.e("ActionExecutor", "❌ Fallback web también falló: ${e2.message}")
+            }
+        }
+    }
     fun callWhatsApp(context: Context, contactName: String) {
         Log.d("JARVIS_ACTION", "📞 callWhatsApp: contacto='$contactName'")
 
