@@ -98,6 +98,7 @@
 
         <activity
             android:name=".activity.JarActivity"
+            android:launchMode="singleTop"
             android:exported="true" />
     <!-- Servicio de accesibilidad — controla la UI del dispositivo -->
         <service

@@ -15,9 +15,12 @@ import androidx.compose.ui.unit.sp
 import com.example.myapplication.core.JarvisState
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.ui.text.TextStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -26,7 +29,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.GregorianCalendar.AD
 import java.util.concurrent.TimeUnit
 
 class PreviewActivity : ComponentActivity() {
@@ -46,14 +48,19 @@ private fun PreviewScreen() {
     var isLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
+    // --- Estado para el modo conversación ---
+    var isConversationMode by remember { mutableStateOf(false) }
+    var inputText by remember { mutableStateOf("") }
+    var chatMessages by remember { mutableStateOf(listOf<Pair<String, Boolean>>()) } // text, isUser
+
     // ─── EJEMPLO DE MÚSICA PARA PRUEBA ───
     val musicaEjemplo = remember {
         mapOf(
             "title" to "MIENTRAS DUERMES",
             "artist" to "Junior H",
-            "album" to "$AD BOYZ 4 LIFE II",
+            "album" to "AD BOYZ 4 LIFE II",
             "genre" to "Latin",
-            "durationMs" to 226000L,  // 3:46 minutos
+            "durationMs" to 226000L,
             "coverUrl" to "https://i.scdn.co/image/ab67616d0000b273d8f5b8e3a5c7f5b8e3a5c7f5",
             "externalUrls" to listOf(
                 "https://open.spotify.com/track/4e76Ss3ji7HQZ4qwcPNkNA",
@@ -62,6 +69,7 @@ private fun PreviewScreen() {
         )
     }
 
+    // Simulación de la barra de energía
     LaunchedEffect(Unit) {
         var t = 0f
         while (true) {
@@ -80,16 +88,69 @@ private fun PreviewScreen() {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("🎵 Probar MusicResultCard:", color = Color.White, style = MaterialTheme.typography.labelLarge)
+        // ─── TÍTULO ───
+        Text(
+            "🎨 Vista Previa - Barra Nexus",
+            color = Color.White,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
 
+        // ─── CONTROLES DE MODO ───
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Botón para alternar modo conversación
+            Button(
+                onClick = {
+                    isConversationMode = !isConversationMode
+                    uiState.showConversation = isConversationMode
+                    if (isConversationMode) {
+                        uiState.showPanel = true
+                        // Agregar mensaje de bienvenida si está vacío
+                        if (chatMessages.isEmpty()) {
+                            chatMessages = listOf(
+                                "¡Hola! Soy Nexus. ¿En qué puedo ayudarte?" to false
+                            )
+                        }
+                    } else {
+                        uiState.showPanel = false
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isConversationMode) Color(0xFF4DEEE9) else Color(0xFF2C2C3A)
+                ),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    if (isConversationMode) "💬 Modo Conversación ON" else "💬 Activar Conversación",
+                    color = if (isConversationMode) Color.Black else Color.White,
+                    fontSize = 12.sp
+                )
+            }
+
+            // Botón para limpiar mensajes
+            Button(
+                onClick = {
+                    chatMessages = emptyList()
+                    uiState.showConversation = false
+                    isConversationMode = false
+                    uiState.showPanel = false
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A)),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("🗑 Limpiar", color = Color.White, fontSize = 12.sp)
+            }
+        }
+
+        // ─── BOTONES DE PRUEBA DE MÚSICA ───
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            // ─── BOTÓN: Mostrar tarjeta de música ───
             Button(
                 onClick = {
                     uiState.showWhatsappPreview = false
                     uiState.clearPanel()
-
-                    // ✅ Asignar datos de ejemplo
                     uiState.musicTitle = musicaEjemplo["title"] as String
                     uiState.musicArtist = musicaEjemplo["artist"] as String
                     uiState.musicAlbum = musicaEjemplo["album"] as String
@@ -97,7 +158,6 @@ private fun PreviewScreen() {
                     uiState.musicDurationMs = musicaEjemplo["durationMs"] as Long
                     uiState.musicCoverUrl = musicaEjemplo["coverUrl"] as String
                     uiState.musicExternalUrls = musicaEjemplo["externalUrls"] as List<String>
-
                     uiState.showMusicResult = true
                     uiState.showPanel = true
                     uiState.applyJarvisState(JarvisState.IDLE)
@@ -105,10 +165,9 @@ private fun PreviewScreen() {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954)),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("🎵 Mostrar Música", color = Color.White)
+                Text("🎵 Mostrar Música", color = Color.White, fontSize = 11.sp)
             }
 
-            // ─── BOTÓN: Ocultar tarjeta ───
             Button(
                 onClick = {
                     uiState.clearMusicResult()
@@ -117,243 +176,274 @@ private fun PreviewScreen() {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A)),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("✕ Ocultar", color = Color.White)
+                Text("✕ Ocultar", color = Color.White, fontSize = 11.sp)
             }
         }
 
-        // ─── BOTÓN: Variante con solo Spotify ───
+        // ─── BOTONES DE PRUEBA DE WHATSAPP ───
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = {
-                    uiState.showWhatsappPreview = false
-                    uiState.clearPanel()
-
-                    uiState.musicTitle = "Blinding Lights"
-                    uiState.musicArtist = "The Weeknd"
-                    uiState.musicAlbum = "After Hours"
-                    uiState.musicGenre = "Pop"
-                    uiState.musicDurationMs = 202000L
-                    uiState.musicCoverUrl = "https://i.scdn.co/image/ab67616d0000b273c4f5b8e3a5c7f5b8e3a5c7f5"
-                    uiState.musicExternalUrls = listOf(
-                        "https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b"
-                    )
-
-                    uiState.showMusicResult = true
-                    uiState.showPanel = true
-                    uiState.applyJarvisState(JarvisState.IDLE)
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954).copy(alpha = 0.6f)),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("🎵 Solo Spotify", color = Color.White, fontSize = 12.sp)
-            }
-
-            Button(
-                onClick = {
-                    uiState.showWhatsappPreview = false
-                    uiState.clearPanel()
-
-                    uiState.musicTitle = "Dákiti"
-                    uiState.musicArtist = "Bad Bunny & Jhayco"
-                    uiState.musicAlbum = "El Último Tour Del Mundo"
-                    uiState.musicGenre = "Reggaeton"
-                    uiState.musicDurationMs = 185000L
-                    uiState.musicCoverUrl = "https://i.scdn.co/image/ab67616d0000b273f8b5e8b3a5c7f5b8e3a5c7f5"
-                    uiState.musicExternalUrls = listOf(
-                        "https://music.youtube.com/watch?v=HJ9Mzq_wYSc"
-                    )
-
-                    uiState.showMusicResult = true
-                    uiState.showPanel = true
-                    uiState.applyJarvisState(JarvisState.IDLE)
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF0000).copy(alpha = 0.6f)),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("🎵 Solo YouTube", color = Color.White, fontSize = 12.sp)
-            }
-        }
-
-        Divider(color = Color(0xFF2C2C3A), thickness = 1.dp)
-
-        // ─── Resto de la UI existente ───
-        Text("Probar API de Brave:", color = Color.White, style = MaterialTheme.typography.labelLarge)
-
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            label = { Text("Buscar...", color = Color.Gray) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = TextFieldDefaults.outlinedTextFieldColors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF4DEEE9),
-                unfocusedBorderColor = Color(0xFF2C2C3A)
-            ),
-            singleLine = true
-        )
-
-        Button(
-            onClick = {
-                if (searchQuery.isNotBlank() && !isLoading) {
-                    coroutineScope.launch {
-                        isLoading = true
-                        searchResponse = "Consultando..."
-                        searchResponse = withContext(Dispatchers.IO) {
-                            try {
-                                val client = OkHttpClient.Builder()
-                                    .connectTimeout(8, TimeUnit.SECONDS)
-                                    .readTimeout(8, TimeUnit.SECONDS)
-                                    .build()
-
-                                val json = JSONObject().apply {
-                                    put("texto", searchQuery.trim())
-                                    put("metadata", JSONObject().apply {
-                                        put("lat", -0.266)
-                                        put("lon", -78.512)
-                                        put("packageName", "com.android.test")
-                                    })
-                                    put("contexto", JSONArray())
-                                    put("contexto_detallado", JSONArray())
-                                }
-
-                                val request = Request.Builder()
-                                    .url("https://mausand2499--jarvoice-nexus-api-fastapi-server-dev.modal.run/jarvis")
-                                    .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-                                    .build()
-
-                                val response = client.newCall(request).execute()
-                                if (response.isSuccessful) {
-                                    val body = response.body?.string() ?: "Vacío"
-                                    val jsonResp = JSONObject(body)
-                                    jsonResp.optString("response_text", body).trim()
-                                } else {
-                                    "Error HTTP ${response.code}"
-                                }
-                            } catch (e: Exception) {
-                                "Error: ${e.localizedMessage}"
-                            }
-                        }
-                        isLoading = false
-                    }
-                }
-            },
-            enabled = searchQuery.isNotBlank() && !isLoading,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0d2e2e))
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = Color(0xFF4DEEE9),
-                    strokeWidth = 2.dp
-                )
-            } else {
-                Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF4DEEE9))
-            }
-            Spacer(Modifier.width(8.dp))
-            Text("Buscar", color = Color.White)
-        }
-
-        if (searchResponse.isNotEmpty()) {
-            Text(
-                text = searchResponse,
-                color = Color(0xFFB0BEC5),
-                fontSize = 14.sp,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-
-        Text("Estado Global:", color = Color.White, style = MaterialTheme.typography.labelLarge)
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            listOf(
-                JarvisState.IDLE to "IDLE",
-                JarvisState.LISTENING to "LISTENING",
-                JarvisState.THINKING to "THINKING",
-                JarvisState.SPEAKING to "SPEAKING"
-            ).forEach { (state, label) ->
-                Button(
-                    onClick = { uiState.applyJarvisState(state) },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(4.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (uiState.jarvisState == state) Color(0xFF4DEEE9) else Color(0xFF2C2C3A)
-                    )
-                ) { Text(label, color = if (uiState.jarvisState == state) Color.Black else Color.White, fontSize = 10.sp) }
-            }
-        }
-
-        Text("Pruebas de Panel:", color = Color.White, style = MaterialTheme.typography.labelLarge)
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = {
-                uiState.showWhatsappPreview = false
-                uiState.applyText("Esta es una **respuesta de prueba** con formato.\n• Punto uno\n• Punto dos\n» Sección importante")
-            }) { Text("Texto/HTML") }
-
-            Button(
-                onClick = {
+                    uiState.clearMusicResult()
                     uiState.clearPanel()
                     uiState.pendingWhatsappContact = "Juan Pérez"
                     uiState.pendingWhatsappMessage = "Hola, ¿cómo estás? Te envío este mensaje desde Nexus."
                     uiState.showWhatsappPreview = true
                     uiState.showPanel = true
+                    uiState.applyJarvisState(JarvisState.IDLE)
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
-            ) { Text("Test WhatsApp", color = Color.White) }
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("💬 WhatsApp Preview", color = Color.White, fontSize = 11.sp)
+            }
+
+            Button(
+                onClick = {
+                    uiState.showWhatsappPreview = false
+                    uiState.hidePanel()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A)),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("✕ Cerrar", color = Color.White, fontSize = 11.sp)
+            }
         }
 
+        Divider(color = Color(0xFF2C2C3A), thickness = 1.dp)
+
+        // ─── CONTROLES DE ESTADO ───
+        Text("Estado Global:", color = Color.White, style = MaterialTheme.typography.labelSmall)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf(
+                JarvisState.IDLE to "IDLE",
+                JarvisState.LISTENING to "🎤",
+                JarvisState.THINKING to "💭",
+                JarvisState.SPEAKING to "🔊"
+            ).forEach { (state, label) ->
+                Button(
+                    onClick = {
+                        uiState.applyJarvisState(state)
+                        if (state == JarvisState.IDLE && isConversationMode) {
+                            uiState.showConversation = true
+                            uiState.showPanel = true
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(4.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (uiState.jarvisState == state) Color(0xFF4DEEE9) else Color(0xFF2C2C3A)
+                    )
+                ) {
+                    Text(label, color = if (uiState.jarvisState == state) Color.Black else Color.White, fontSize = 10.sp)
+                }
+            }
+        }
+
+        // ─── PANEL DE RESULTADOS DE PRUEBA ───
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = {
+                    uiState.showWhatsappPreview = false
+                    uiState.clearMusicResult()
+                    uiState.applyText("Esta es una **respuesta de prueba** con formato.\n• Punto uno\n• Punto dos\n» Sección importante")
+                    uiState.showPanel = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0d2e2e))
+            ) {
+                Text("📄 Texto/HTML", color = Color(0xFF4DEEE9), fontSize = 11.sp)
+            }
+
             Button(
                 onClick = { uiState.hidePanel() },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A))
-            ) { Text("Ocultar panel") }
+            ) {
+                Text("✕ Ocultar panel", color = Color.White, fontSize = 11.sp)
+            }
+        }
 
-            var simulando by remember { mutableStateOf(false) }
-            Button(
-                onClick = { if (!simulando) simulando = true },
-                enabled = !simulando,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0d2e2e))
-            ) { Text("▶ Simular Proceso", color = Color(0xFF4DEEE9)) }
+        Spacer(Modifier.height(8.dp))
 
-            LaunchedEffect(simulando) {
-                if (!simulando) return@LaunchedEffect
-                uiState.showWhatsappPreview = false
-                uiState.clearPanel()
-                uiState.showPanel = true
-                uiState.applyJarvisState(JarvisState.THINKING)
+        // ─── MENSAJES DE CHAT (Vista previa) ───
+        if (isConversationMode && chatMessages.isNotEmpty()) {
+            Text(
+                "💬 Mensajes de prueba:",
+                color = Color(0xFF888899),
+                fontSize = 12.sp,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
 
-                val steps = listOf("Escuchando...", "Analizando...", "Consultando...", "Respondiendo...")
-                steps.forEachIndexed { index, s ->
-                    uiState.processingSteps = steps.mapIndexed { i, stepStr ->
-                        ProcessingStep(stepStr, when {
-                            i < index -> StepStatus.DONE
-                            i == index -> StepStatus.ACTIVE
-                            else -> StepStatus.PENDING
-                        })
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 150.dp)
+                    .background(Color(0xFF1C1C1E), RoundedCornerShape(8.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                chatMessages.takeLast(5).forEach { (text, isUser) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (isUser) Color(0xFF2A2A3A) else Color(0xFF3A3A50),
+                                    RoundedCornerShape(
+                                        topStart = 12.dp,
+                                        topEnd = 12.dp,
+                                        bottomStart = if (isUser) 12.dp else 4.dp,
+                                        bottomEnd = if (isUser) 4.dp else 12.dp
+                                    )
+                                )
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .widthIn(max = 200.dp)
+                        ) {
+                            Text(
+                                text = text,
+                                color = ColorTextMain,
+                                fontSize = 12.sp
+                            )
+                        }
                     }
-                    delay(800)
                 }
+            }
 
-                uiState.processingSteps = emptyList()
-                uiState.applyJarvisState(JarvisState.SPEAKING)
-                uiState.applyText("**Simulación terminada.**\nTodo se ejecutó correctamente.")
-                simulando = false
+            // Input de prueba para chat
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    placeholder = { Text("Escribe un mensaje...", color = Color.Gray, fontSize = 12.sp) },
+                    modifier = Modifier.weight(1f),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF4DEEE9),
+                        unfocusedBorderColor = Color(0xFF2C2C3A)
+                    ),
+                    singleLine = true,
+                    textStyle = TextStyle(color = Color.White, fontSize = 12.sp)
+                )
+
+                Button(
+                    onClick = {
+                        if (inputText.isNotBlank()) {
+                            // Agregar mensaje del usuario
+                            chatMessages = chatMessages + (inputText to true)
+                            // Simular respuesta del asistente después de un momento
+                            coroutineScope.launch {
+                                delay(500)
+                                val responses = listOf(
+                                    "¡Excelente pregunta! Déjame pensar...",
+                                    "Entendido, procesando tu solicitud...",
+                                    "Aquí tienes la información que necesitas.",
+                                    "Interesante, ¿puedes darme más detalles?",
+                                    "¡Genial! Voy a ayudarte con eso."
+                                )
+                                val response = responses.random()
+                                chatMessages = chatMessages + (response to false)
+                            }
+                            inputText = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4DEEE9))
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = "Enviar", tint = Color.Black)
+                }
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        // ─── El Componente Real ──────────────────────────────────────────
-        JarvisOverlayContent(
-            uiState      = uiState,
-            barState     = barState,
-            onMicClick   = {
-                if (uiState.jarvisState == JarvisState.IDLE) uiState.applyJarvisState(JarvisState.LISTENING)
-                else uiState.applyJarvisState(JarvisState.IDLE)
-            },
-            onPauseClick = { uiState.applyJarvisState(JarvisState.IDLE) },
-            onBackgroundClick = { uiState.hidePanel() }
+        // ─── LA BARRA NEXUS COMPLETA ───
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .background(Color(0xFF0A0A0F))
+        ) {
+            UnifiedNexusBottomBar(
+                uiState = uiState,
+                barState = barState,
+                inputText = inputText,
+                onInputChange = { inputText = it },
+                onMicClick = {
+                    if (uiState.jarvisState == JarvisState.IDLE) {
+                        uiState.applyJarvisState(JarvisState.LISTENING)
+                    } else {
+                        uiState.applyJarvisState(JarvisState.IDLE)
+                    }
+                },
+                onPauseClick = {
+                    uiState.applyJarvisState(JarvisState.IDLE)
+                },
+                onOrbClick = {
+                    // Simular acción del orbe
+                    uiState.applyJarvisState(JarvisState.LISTENING)
+                },
+                onSendClick = {
+                    if (inputText.isNotBlank()) {
+                        // Enviar mensaje en modo conversación
+                        chatMessages = chatMessages + (inputText to true)
+                        coroutineScope.launch {
+                            delay(500)
+                            val responses = listOf(
+                                "¡Excelente pregunta! Déjame pensar...",
+                                "Entendido, procesando tu solicitud...",
+                                "Aquí tienes la información que necesitas.",
+                                "Interesante, ¿puedes darme más detalles?",
+                                "¡Genial! Voy a ayudarte con eso."
+                            )
+                            val response = responses.random()
+                            chatMessages = chatMessages + (response to false)
+                        }
+                        inputText = ""
+                    }
+                },
+                onConversationToggle = {
+                    isConversationMode = !isConversationMode
+                    uiState.showConversation = isConversationMode
+                    if (isConversationMode && chatMessages.isEmpty()) {
+                        chatMessages = listOf(
+                            "¡Hola! Soy Nexus. ¿En qué puedo ayudarte?" to false
+                        )
+                    }
+                    if (isConversationMode) {
+                        uiState.showPanel = true
+                    } else {
+                        uiState.showPanel = false
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ─── INFORMACIÓN DE DEBUG ───
+        Text(
+            text = """
+                Debug:
+                - Modo: ${if (isConversationMode) "Conversación" else "Normal"}
+                - Estado: ${uiState.jarvisState}
+                - Panel: ${if (uiState.showPanel) "Visible" else "Oculto"}
+                - Mensajes: ${chatMessages.size}
+                - Input: "${inputText}"
+            """.trimIndent(),
+            color = Color(0xFF666677),
+            fontSize = 10.sp,
+            modifier = Modifier.padding(top = 8.dp)
         )
     }
 }
+
+// ─── ColorTextMain definido localmente para la preview ──────────────────
+private val ColorTextMain = Color(0xFFE8E8F0)

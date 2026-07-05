@@ -24,6 +24,8 @@ class GrpcVoiceRecognizer(
     private val context: Context,
     private val onPartialResult: (String) -> Unit,
     private val onFinalResult: (String) -> Unit,
+    private val onSpeechStarted: () -> Unit = {},  // <-- NUEVO
+    private val onSpeechEnded: () -> Unit = {},
     private val onError: (String) -> Unit
 ) {
     companion object {

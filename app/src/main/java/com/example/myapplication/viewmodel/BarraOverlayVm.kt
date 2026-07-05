@@ -51,8 +51,7 @@ fun ListeningBar(
     barColorMode: BarColorMode = BarColorMode.IDLE
 ) {
     val density      = LocalDensity.current.density
-    val glowMargin   = 16f * density
-    val cornerRadius = 22f * density
+    val cornerRadius = 50f * density  // ✅ Más redondeado
     val infiniteTransition = rememberInfiniteTransition(label = "listening")
     // ✅ Colores según modo
     val activeColors = remember(barColorMode) {
@@ -124,7 +123,8 @@ fun ListeningBar(
             val centerX = w / 2f
             val centerY = h / 2f
             val energy  = state.energy
-            val rectBox = RectF(glowMargin, glowMargin, w - glowMargin, h - glowMargin)
+            val margin  = h * 0.06f   // 6% del alto — se adapta a cualquier altura
+            val rectBox = RectF(margin, margin, w - margin, h - margin)
 
             if (jarvisState != JarvisState.IDLE) {
                 // ✅ Borde exterior con SweepGradient usando los colores del modo
@@ -135,7 +135,7 @@ fun ListeningBar(
                 glowPaintOuter.apply {
                     shader      = shaderOuter
                     maskFilter  = BlurMaskFilter(blurO, BlurMaskFilter.Blur.NORMAL)
-                    strokeWidth = (12f + energy * 18f) * density
+                    strokeWidth = h * 0.08f + energy * h * 0.10f
                     alpha       = (160 + (energy * 90) + (12 * sin(wavePhase))).toInt().coerceIn(0, 255)
                 }
                 nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, glowPaintOuter)
@@ -154,7 +154,7 @@ fun ListeningBar(
                 nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, glowPaintInner)
             }
 
-            // ✅ Fondo oscuro siempre
+            val cr = minOf(w, h) * 0.5f
             nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, darkBoxPaint)
         }
     }

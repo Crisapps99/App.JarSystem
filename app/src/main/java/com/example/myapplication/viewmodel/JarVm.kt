@@ -5,7 +5,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-enum class JarPhase { INTRO, WAITING_WAKEWORD, DETECTED }
+enum class JarPhase {
+                    INTRO,
+    WAITING_WAKEWORD,
+    LISTENING,
+    THINKING,
+    SPEAKING }
 
 data class JarState(
     val phase: JarPhase = JarPhase.INTRO,

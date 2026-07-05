@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.isActive
 import kotlin.math.*
 
+
 // Estructuras de datos internas
 private data class RingSegment(
     val x1: Float, val y1: Float, val x2: Float, val y2: Float,

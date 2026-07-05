@@ -34,6 +34,7 @@ import kotlinx.coroutines.delay
 import android.os.Vibrator
 import android.os.VibrationEffect
 import android.os.Build
+import com.example.myapplication.data.ChatRepository
 import com.example.myapplication.model.ScreenElement
 import com.example.myapplication.ui.JarvisOverlayUiState
 import com.example.myapplication.ui.StepStatus
@@ -86,7 +87,9 @@ class JarvisVoiceController(
     private val ui: JarvisUi,
     private val scope: CoroutineScope,
     private val porcupineController: PorcupineController? = null,
-    private val uiState: JarvisOverlayUiState? = null
+    private val uiState: JarvisOverlayUiState? = null,
+    private val chatRepository: ChatRepository? = null
+
 ) {
     companion object {
         private const val TAG = "JARVIS_CTRL"
@@ -101,15 +104,7 @@ class JarvisVoiceController(
     private var ttsListo = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var elMediaPlayer: MediaPlayer? = null
-    // ── NUEVO: Motor de audio unificado ─────────────────────────────────────
-//    private lateinit var audioEngine: ContinuousVoiceEngine
-//
-////    // ── NUEVO: Transcriptor Whisper local ───────────────────────────────────
-////    private lateinit var whisperTranscriber: WhisperTranscriber
-////    private var whisperListo = false
-//
-//    // ── NUEVO: Gestor de sesión y VAD ───────────────────────────────────────
-//    private lateinit var sessionManager: VoiceSessionManager
+
 
     // ── Estado de la sesión ─────────────────────────────────────────────────
     private var sesionActiva = false
@@ -163,6 +158,8 @@ class JarvisVoiceController(
     private var timeoutServidor: Runnable? = null
     private val TIMEOUT_SERVIDOR_MS = 15000L  // 15 segundos máximo
     private var isRecognizingMusic = false
+    private val TIMEOUT_CONVERSACIONAL_MS = 5000L // 5 segundos
+    private var timeoutConversacional: Runnable? = null
 
     // ────────────────────────────────────────────────────────────────────────
     // INICIALIZACIÓN
@@ -240,6 +237,8 @@ class JarvisVoiceController(
                 // Iniciar timeout después de que termine de hablar
                 mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
             },
+
+
 //            onSrCycle = {
 //                Log.d(TAG, "Timeout reseteado por ciclo SR")
 //            }
@@ -249,9 +248,65 @@ class JarvisVoiceController(
         Log.i(TAG, " Controlador inicializado")
     }
 
+    private fun iniciarModoConversacional() {
+        Log.d(TAG, "💬 Iniciando modo conversacional - esperando 5 segundos")
 
+        // Cancelar timeout anterior si existe
+        timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
+
+        // Pausar wake word
+        porcupineController?.pausarPorcupine()
+
+        // Iniciar escucha continua si no está activa
+        if (!voiceEngine.isSrSessionActive()) {
+            voiceEngine.iniciarSesionContinua("es")
+        }
+
+        // Configurar timeout para volver a modo wake word
+        timeoutConversacional = Runnable {
+            Log.d(TAG, "⏰ 5 segundos sin actividad - volviendo a modo wake word")
+            finalizarSesionConversacional()
+        }
+        mainHandler.postDelayed(timeoutConversacional!!, TIMEOUT_CONVERSACIONAL_MS)
+
+        // Reiniciar timeout cada vez que el usuario habla
+        // Esto se hará desde onSpeechStarted o onFinalResult
+    }
+
+    private fun reiniciarTimeoutConversacional() {
+        timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
+        timeoutConversacional = Runnable {
+            Log.d(TAG, "⏰ 5 segundos sin actividad - volviendo a modo wake word")
+            finalizarSesionConversacional()
+        }
+        mainHandler.postDelayed(timeoutConversacional!!, TIMEOUT_CONVERSACIONAL_MS)
+    }
+
+    private fun finalizarSesionConversacional() {
+        Log.d(TAG, "🔇 Finalizando modo conversacional")
+        timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
+        timeoutConversacional = null
+        modoConversacionActivo = false
+
+        // ✅ Detener la sesión de escucha
+        voiceEngine.detenerSesion()
+
+        // ✅ Reanudar wake word
+        porcupineController?.reanudarPorcupine()
+
+        // ✅ Cerrar el panel de conversación
+        uiState?.showConversation = false
+
+        // ✅ Resetear estado
+        setState(JarvisState.IDLE)
+    }
 
     private fun procesarTexto(texto: String) {
+        if (modoConversacionActivo) {
+            reiniciarTimeoutConversacional()
+            Log.d(TAG, "🔄 Timeout conversacional reiniciado por actividad del usuario")
+        }
+
         mainHandler.post {
             uiState?.apply {
                 transcription = ""
@@ -269,7 +324,14 @@ class JarvisVoiceController(
         }
         val ahora = System.currentTimeMillis()
         val textoLimpio = texto.trim()
-
+        // 🆕 Guardar mensaje del usuario LOCALMENTE inmediatamente
+        // ✅ CORRECTO
+        if (chatRepository != null) {
+            scope.launch {
+                chatRepository.addUserMessage(texto)
+                // La UI se actualiza automáticamente via Flow en ConversationViewInsideOverlay
+            }
+        }
         if (estaHablando) {
             Log.d(TAG, " Ignorando comando porque el asistente está hablando: '$texto'")
             detenerTTS()
@@ -300,7 +362,24 @@ class JarvisVoiceController(
             cancelarEnvioActual()
             Thread.sleep(100)
         }
+// En procesarTexto(), cuando el comando es un saludo local
+        if (texto.contains("hola", ignoreCase = true) && texto.length < 10) {
+            val respuesta = "¡Hola! ¿Qué necesitas?"
+            hablar(respuesta)
 
+            // 🆕 Guardar en Room
+            chatRepository?.let { repo ->
+                scope.launch {
+                    repo.addUserMessage(texto)
+                    repo.addAssistantMessage(
+                        content = respuesta,
+                        tag = "conversation",
+                        displayText = respuesta
+                    )
+                }
+            }
+            return
+        }
         // ============================================================
         // ⭐ PRIMERO: COMANDOS DE RECONOCIMIENTO DE MÚSICA (ACRCloud)
         // ============================================================
@@ -1018,12 +1097,47 @@ class JarvisVoiceController(
 
                     val payloadObj = root.getJSONObject("payload")
                     val actionsArray = payloadObj.optJSONArray("payload")
-                    val responseText = payloadObj.optString("response", "")
+                    var responseText = payloadObj.optString("response", "")
                     val action = payloadObj.optString("action", "")
+                    val mode = payloadObj.optString("mode", "")
+                    // 🆕 DETECTAR SI ES CONVERSACIONAL
+                    val esConversacional = mode == "conversacional" || action == "conversational" || action == "greet"
+                    //  GUARDAR RESPUESTA DEL ASISTENTE EN ROOM
+                    if (responseText.isNotBlank() && chatRepository != null) {
+                        val tag = when {
+                            action == "conversational" || action == "greet" -> "conversation"
+                            action == "search" -> "search"
+                            else -> "action"
+                        }
+                        scope.launch {
+                            chatRepository.addAssistantMessage(
+                                content = responseText,
+                                tag = tag,
+                                displayText = responseText
+                            )
+                            Log.d(TAG, "💾 Respuesta guardada en Room: $responseText")
+                        }
+                    }
+                    // 🆕 SI ES CONVERSACIONAL, ABRIR EL PANEL DE CONVERSACIÓN
+                    if (esConversacional && responseText.isNotBlank()) {
+                        mainHandler.post {
+                            uiState?.showConversation = true
+                            uiState?.showPanel = true
+                            uiState?.transcription = responseText
+                            // Cargar mensajes de Room automáticamente
+                        }
+                        // ✅ Hablar la respuesta y después iniciar modo conversacional
+                        hablar(responseText) {
+                            // 🆕 Después de TTS, iniciar modo conversacional (esperar 5 segundos)
+                            iniciarModoConversacional()
+                        }
+                        return
+                    }
                     Log.d(TAG, " PAYLOAD recibido:")
                     Log.d(TAG, "  - response: $responseText")
                     Log.d(TAG, "  - action: $action")
                     Log.d(TAG, "  - actions: ${actionsArray?.length() ?: 0}")
+                    var finalResponse = responseText
 
                     mainHandler.post {
                         uiState?.serverProcessing = false
@@ -1036,24 +1150,6 @@ class JarvisVoiceController(
                                 fullHtmlText = responseText
                             }
                             ui.showText(responseText)
-                        }
-
-                        // HABLAR LA RESPUESTA (TTS)
-                        if (responseText.isNotBlank()){
-                            Log.d(TAG, "Hablando: $responseText")
-                            hablar(responseText) {
-                                finalizarInteraccion()
-                            }
-                        } else if (responseText.isNotBlank()) {
-                            // Respuesta larga - dividir en partes
-                            val partes = dividirRespuesta(responseText)
-                            hablarPartes(partes)
-                        } else {
-                            // No hay respuesta de texto, solo ejecutar acciones
-                            isProcessing = false
-                            if (sesionActiva) {
-                                mainHandler.postDelayed({ iniciarSRContinuo() }, 500)
-                            }
                         }
 
                         if (actionsArray != null && actionsArray.length() > 0) {
@@ -1090,14 +1186,34 @@ class JarvisVoiceController(
                                         ActionExecutor.navigateTo(context, lat, lng, name)
                                     }
                                     "show_search_result" -> {
-                                        // (tu código existente para mostrar resultados de búsqueda)
                                         val params = accion.optJSONObject("params")
                                         if (params != null) {
+                                            //  EXTRAER 'answer', 'sources' e 'images' del JSON
                                             val answer = params.optString("answer", responseText)
+
+                                            // Si hay una respuesta actualizamos responseText
+                                            if (answer.isNotBlank()) {
+                                                responseText = answer  // ✅ Ahora es var, así que funciona
+                                            }
+
+                                            // CREAR LAS LISTAS VACIAS Y LLENARLAS CON LOS DATOS DEL JSON
                                             val sources = mutableListOf<String>()
                                             val images = mutableListOf<String>()
-                                            // ... etc.
-                                            ui.showSearchResult(answer, sources, images, emptyList())
+
+                                            params.optJSONArray("sources")?.let { array ->
+                                                for (j in 0 until array.length()) {
+                                                    sources.add(array.getString(j))
+                                                }
+                                            }
+                                            params.optJSONArray("images")?.let { array ->
+                                                for (j in 0 until array.length()) {
+                                                    images.add(array.getString(j))
+                                                }
+                                            }
+
+                                            mainHandler.post {
+                                                ui.showSearchResult(answer, sources, images, emptyList())
+                                            }
                                         }
                                     }
                                     // ═══════ NUEVOS CASOS ═══════
@@ -1162,6 +1278,20 @@ class JarvisVoiceController(
                             if (broadcastActions.isNotEmpty()) {
                                 Log.d(TAG, "🎯 Ejecutando ${broadcastActions.size} acciones")
                                 ejecutarAccionesTecnicas(broadcastActions, responseText, "websocket_payload")
+                            }
+                        }
+                        // Después de procesar acciones y actualizar la UI
+                        if (responseText.isNotBlank()) {
+                            Log.d(TAG, " Hablando respuesta: $responseText")
+                            hablar(responseText) {
+                                if (!esConversacional) {
+                                    finalizarInteraccion()
+                                }
+                            }
+                        } else {
+                            isProcessing = false
+                            if (sesionActiva) {
+                                mainHandler.postDelayed({ iniciarSRContinuo() }, 500)
                             }
                         }
                     }
@@ -1370,7 +1500,7 @@ class JarvisVoiceController(
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    private fun enviarComandoAlServidor(texto: String) {
+    fun enviarComandoAlServidor(texto: String) {
         if (estaEnviandoAlServidor) {
             Log.d(TAG, "Había un envío en curso, cancelando para procesar nuevo comando")
             cancelarEnvioActual()
@@ -1753,6 +1883,7 @@ class JarvisVoiceController(
 
     // ── Router TTS — cambia TTS_MODE arriba del archivo para alternar ────────
     fun hablar(texto: String, alTerminar: (() -> Unit)? = null) {
+        Log.d(TAG, " hablar() llamado con: '$texto'")
         // Si el texto está vacío o es un comando interno, no usar TTS
         if (texto.isBlank() || texto.startsWith("JARVIS.")) {
             alTerminar?.invoke()

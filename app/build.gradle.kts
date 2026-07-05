@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.protobuf") version "0.9.4"
+    kotlin("kapt")
 }
 
 android {
@@ -90,7 +91,16 @@ android {
 }
 
 dependencies {
+    // Room Database
+    val roomVersion = "2.6.1" //
+    implementation("androidx.room:room-runtime:$roomVersion")
+    kapt("androidx.room:room-compiler:$roomVersion") // Ya no dará error gracias al plugin kapt
+    implementation("androidx.room:room-ktx:$roomVersion")
 
+
+        // ... otras dependencias
+    debugImplementation ("androidx.compose.ui:ui-tooling")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-compose:2.4.0")
     implementation("androidx.multidex:multidex:2.0.1")
     implementation("androidx.window:window:1.3.0")

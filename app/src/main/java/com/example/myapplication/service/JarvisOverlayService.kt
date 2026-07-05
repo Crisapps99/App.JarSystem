@@ -24,9 +24,13 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.core.app.NotificationCompat
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.example.myapplication.activity.JarActivity
 import com.example.myapplication.core.*
+import com.example.myapplication.data.ChatDatabase
+import com.example.myapplication.data.ChatRepository
 import com.example.myapplication.ui.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.firstOrNull
 
 
 class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
@@ -58,7 +62,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID   = "nexus_overlay"
     }
-
+    private val chatRepository by lazy { ChatRepository(this) }
     // ── Lifecycle owner para ComposeView (requerido fuera de Activity) ───────
     private val lifecycleOwner = ServiceLifecycleOwner()
 
@@ -95,8 +99,10 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
                 ui                   = this,
                 scope                = serviceScope,
                 porcupineController  = this,
-                uiState = uiState
+                uiState = uiState,
+                chatRepository = chatRepository
             )
+            forceOpenDatabase()
             controller.init()
             showOverlay()
             uiState.transcription = "Di 'Hey Nexus' para activarme"
@@ -121,7 +127,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-    // Dentro de JarvisOverlayService, junto a los otros override de JarvisUi
+
     override fun updateUserTranscription(text: String) {
         mainHandler.post {
             if (!isOverlayReady) return@post
@@ -132,6 +138,26 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             }
         }
     }
+    private fun forceOpenDatabase() {
+        try {
+            val db = ChatDatabase.getDatabase(this)
+            val dao = db.chatMessageDao()
+            serviceScope.launch {
+                val sessionId = chatRepository.getSessionId()
+                val count = dao.getMessagesForSession(sessionId).firstOrNull()?.size ?: 0
+                Log.d(TAG, "📊 Base de datos abierta, mensajes: $count")
+
+                // ✅ También imprime los mensajes para verlos en logs
+                val messages = dao.getMessagesForSession(sessionId).firstOrNull()
+                messages?.forEach { msg ->
+                    Log.d(TAG, "💬 [${msg.sender}] ${msg.content}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error abriendo BD: ${e.message}")
+        }
+    }
+
     // ────────────────────────────────────────────────────────────────────────
     // CREAR OVERLAY
     // ────────────────────────────────────────────────────────────────────────
@@ -145,24 +171,9 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
                     JarvisOverlayContent(
                         uiState      = uiState,
                         barState     = barState,
+                        chatRepository = chatRepository,
                         onMicClick = {
-                            if (!::controller.isInitialized) return@JarvisOverlayContent
-
-                            when (uiState.jarvisState) {
-                                JarvisState.IDLE -> {
-                                    // ✅ Si está en IDLE, activar wake word
-                                    onWakeWordDetected()
-                                }
-                                else -> {
-                                    // ✅ Si está en cualquier otro estado, reset completo
-                                    handleBackgroundDismiss()
-                                    // Luego activar wake word
-                                    serviceScope.launch {
-                                        delay(300)
-                                        onWakeWordDetected()
-                                    }
-                                }
-                            }
+                            // Acción al hacer clic en el micrófono (puedes implementar)
                         },
                         onPauseClick = {
                             if (::controller.isInitialized) {
@@ -171,8 +182,29 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
                             }
                         },
                         onBackgroundClick = {
-                            // Ejecutar el reset total
                             handleBackgroundDismiss()
+                        },
+                        onOrbClick = {
+                            // Oculta el overlay de inmediato (sin animación)
+                            composeView?.apply {
+                                visibility = View.GONE
+                                alpha = 0f
+                            }
+                            if (::controller.isInitialized) {
+                                controller.detenerSesionCompleta()
+                            }
+                            // Abre la actividad principal con flag de reinicio
+                            val intent = Intent(this@JarvisOverlayService, JarActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                                putExtra("reset_to_wakeword", true)
+                            }
+                            startActivity(intent)
+                        },
+                        onSendMessage = { text ->
+                            // ✅ Enviar mensaje escrito al servidor
+                            if (::controller.isInitialized) {
+                                controller.enviarComandoAlServidor(text)
+                            }
                         }
                     )
                 }
@@ -223,7 +255,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     // En JarvisOverlayService.kt
 
     private fun handleBackgroundDismiss() {
-        Log.d(TAG, "🔄 Reset completo por clic en fondo")
+        Log.d(TAG, " Reset completo por clic en fondo")
 
         // 1. Detener cualquier sesión activa
         if (::controller.isInitialized) {
@@ -240,21 +272,22 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             uiState.clearPanel()
             uiState.clearMusicResult()
             uiState.showWhatsappPreview = false
-
             uiState.showPanel = false
             uiState.userTranscription = ""
             uiState.processingSteps = emptyList()
             uiState.imageUrls = emptyList()
             uiState.sourceUrls = emptyList()
-
             uiState.pendingWhatsappContact = ""
             uiState.pendingWhatsappMessage = ""
 
             // Forzar estado IDLE en la barra
             barState.updateProgress(0.15f)
 
-            // Asegurar que el overlay sea visible pero en modo wake word
-            showOverlay()
+            // OCULTAR EL OVERLAY
+            composeView?.apply {
+                visibility = View.GONE
+                alpha = 0f
+            }
 
             // Reanudar wake word si estaba pausado
             resumeWakeWordDetection()
@@ -409,6 +442,8 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     // ────────────────────────────────────────────────────────────────────────
     // WAKE WORD / SESIÓN
     // ────────────────────────────────────────────────────────────────────────
+
+
 
     private fun onWakeWordDetected() {
         showOverlay()

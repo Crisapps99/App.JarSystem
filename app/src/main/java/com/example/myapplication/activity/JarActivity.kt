@@ -15,9 +15,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.example.myapplication.core.ContinuousVoiceEngine
-
 import com.example.myapplication.service.JarvisOverlayService
-import com.example.myapplication.ui.screens.JarScreen
+import com.example.myapplication.ui.screens.MainScreen
 import com.example.myapplication.viewmodel.JarPhase
 import com.example.myapplication.viewmodel.JarVm
 import kotlinx.coroutines.*
@@ -31,22 +30,70 @@ class JarActivity : ComponentActivity() {
     private var audioVisualizer: Visualizer? = null
     private var pulseJob: Job? = null
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        setupTts()
-        startIdlePulse()
-
-        setContent {
-            JarScreen(
-                vm = vm,
-                onStart = { startPresentacion() },
-                onOmitir = { omitirPresentacion() }
-            )
+    // ─── onNewIntent corregido ──────────────────────────────────────────
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleResetIntent(intent)
+    }
+    private fun handleResetIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("reset_to_wakeword", false) == true) {
+            resetToWakeWord()
+            intent.removeExtra("reset_to_wakeword") // limpia el extra para que no se repita
         }
-
+    }
+    // ─── Reseteo a modo wake word ──────────────────────────────────────
+    private fun resetToWakeWord() {
+        matarVoiceEngine()
+        stopPulse()
+        vm.setPhase(JarPhase.WAITING_WAKEWORD)
+        vm.updateUi(
+            status = "ESPERANDO",
+            color = "#8E939E",
+            transcription = "", // Vacío para que MainScreen muestre "Da clic en el micrófono..."
+            instruction = "",
+            omitir = false
+        )
+        vm.updateRms(0f)
+        startIdlePulse()
     }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleResetIntent(intent)
+        setupTts()
+
+        // Determinar si es la primera ejecución (solo una vez)
+        val isFirstRun = true // cámbialo según prefieras
+
+        // Si el intent contiene el extra "reset_to_wakeword", forzar modo wake word
+        if (intent?.getBooleanExtra("reset_to_wakeword", false) == true) {
+            resetToWakeWord()
+        } else {
+            // Flujo normal
+            if (isFirstRun) {
+                startPresentacion()
+            } else {
+                startWakeWordPhase()
+            }
+        }
+
+        setContent {
+            MainScreen(
+                vm = vm,
+                onMicClick = {
+                    if (vm.state.value.phase == JarPhase.WAITING_WAKEWORD ||
+                        vm.state.value.phase == JarPhase.INTRO) {
+                        startManualListening()
+                    }
+                },
+                onStopListening = {
+                    stopManualListening()
+                }
+            )
+        }
+    }
+
+    // ─────────── CONFIGURACIÓN TTS ───────────
     private fun setupTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -56,6 +103,7 @@ class JarActivity : ComponentActivity() {
         }
     }
 
+    // ─────────── FLUJO DE INTRODUCCIÓN ───────────
     private fun startPresentacion() {
         vm.setPhase(JarPhase.INTRO)
         stopPulse()
@@ -65,13 +113,11 @@ class JarActivity : ComponentActivity() {
         vm.updateUi(transcription = intro1)
 
         speak(intro1, "intro_1") {
-            // VERIFICACIÓN: ¿Seguimos en la fase INTRO? Si no, no hagas nada.
             if (vm.state.value.phase == JarPhase.INTRO) {
                 val intro2 = "Puedo ayudarte..."
                 vm.updateUi(transcription = intro2)
 
                 speak(intro2, "intro_2") {
-                    // VERIFICACIÓN: ¿Seguimos en la fase INTRO?
                     if (vm.state.value.phase == JarPhase.INTRO) {
                         lifecycleScope.launch {
                             delay(400)
@@ -83,53 +129,52 @@ class JarActivity : ComponentActivity() {
         }
     }
 
-    private fun omitirPresentacion() {
-        // 1. Detener el habla inmediatamente para que no se superponga con la siguiente fase
-        if (::tts.isInitialized) {
-            tts.stop()
-        }
+    // ─────────── ESPERAR PALABRA CLAVE ───────────
+    private fun startWakeWordPhase() {
+        voiceEngine?.detenerSesion()
+        stopPulse()
+        vm.setPhase(JarPhase.WAITING_WAKEWORD)
+        vm.updateUi(
+            status = "ESPERANDO",
+            color = "#8E939E",
+            transcription = "", // Permite que se dibuje el texto base adaptativo
+            instruction = "",
+            omitir = false
+        )
+        startIdlePulse()
+    }
 
-        // 2. IMPORTANTE: Cambiamos el estado del ViewModel PRIMERO
-        // Esto hace que en JarUi.kt desaparezca el botón Omitir y el botón Comenzar
+    // ─────────── ESCUCHA MANUAL ───────────
+    // ACTIVAR: Enciende el hardware desde cero de forma segura
+    private fun startManualListening() {
+        vm.setPhase(JarPhase.LISTENING)
         vm.updateUi(
             status = "ESCUCHANDO",
-            color = "#4DEEE9", // Color aqua para escucha
-            transcription = "Di 'Hey Nexus' para comenzar",
-            instruction = "\"Hey Nexus\"",
-            omitir = false // Esto oculta el botón que acabas de presionar
+            color = "#3DF2FF",
+            transcription = ""
         )
 
-        // 3. Cambiamos la fase a nivel lógico
-        // Esto es vital porque los callbacks de los "speak" anteriores
-        // deben tener un check: if (phase != Phase.INTRO) return
-        vm.setPhase(JarPhase.WAITING_WAKEWORD)
-
-        // 4. Activamos los motores de audio
-        // Detenemos cualquier proceso previo y arrancamos el motor de escucha
-        voiceEngine?.stop()
         iniciarVoiceEngine()
-
-        // Iniciamos la animación visual de "escucha" (pulso más rápido)
+        voiceEngine?.iniciarSesionContinua("es")
         startListeningPulse()
     }
 
-    private fun startWakeWordPhase() {
+    private fun stopManualListening() {
+        matarVoiceEngine() // ← Cambiado de detenerSesion() a matarVoiceEngine()
+        stopPulse()
         vm.setPhase(JarPhase.WAITING_WAKEWORD)
         vm.updateUi(
-            status = "ESCUCHANDO",
-            color = "#4DEEE9",
-            transcription = "Di 'Hey Nexus' para comenzar",
-            instruction = "\"Hey Nexus\"",
-            omitir = false
+            status = "ESPERANDO",
+            color = "#8E939E",
+            transcription = ""
         )
-
-        speak("Para activarme, di: Hey Nexus", "prompt") {
-            iniciarVoiceEngine()
-            startListeningPulse()
-        }
+        vm.updateRms(0f)
+        startIdlePulse()
     }
 
+    // ─────────── MOTOR DE VOZ CONTINUA ───────────
     private fun iniciarVoiceEngine() {
+        matarVoiceEngine() // Nos aseguramos de que no haya duplicados residuales
         voiceEngine = ContinuousVoiceEngine(
             context = this,
             onWakeWordDetected = {
@@ -140,10 +185,20 @@ class JarActivity : ComponentActivity() {
             onRmsChanged = { rms -> vm.updateRms(rms) }
         )
     }
-
+    // Método helper para limpiar y destruir el reconocedor de voz por completo
+    private fun matarVoiceEngine() {
+        try {
+            voiceEngine?.detenerSesion()
+            voiceEngine?.stop() // Cierra canales de audio e hilos nativos
+        } catch (e: Exception) {
+            Log.e("JAR_ACTIVITY", "Error al destruir el motor de voz: ${e.message}")
+        } finally {
+            voiceEngine = null // Liberación de memoria
+        }
+    }
     private fun onWakeWordDetected() {
         stopPulse()
-        voiceEngine?.stop()
+        matarVoiceEngine()
         vibrar(120)
 
         vm.updateUi(status = "ACTIVADO", color = "#1DE0A0", transcription = "¡Hey Nexus! Iniciando...")
@@ -151,7 +206,7 @@ class JarActivity : ComponentActivity() {
         speak("Listo.", "final") {
             lifecycleScope.launch {
                 delay(200)
-                vm.hideScreen() // Inicia fade out de Compose
+                vm.hideScreen()
                 delay(400)
                 lanzarOverlayYCerrar()
             }
@@ -167,8 +222,7 @@ class JarActivity : ComponentActivity() {
         finishAffinity()
     }
 
-    // --- Lógica de Audio y Pulsos ---
-
+    // ─────────── TTS ───────────
     private fun speak(text: String, id: String, onDone: () -> Unit) {
         if (!ttsReady) { onDone(); return }
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -179,6 +233,7 @@ class JarActivity : ComponentActivity() {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
     }
 
+    // ─────────── PULSOS PARA EL ORBE ───────────
     private fun startIdlePulse() = startPulseAnimation(3000, 3f)
     private fun startListeningPulse() = startPulseAnimation(1800, 5f)
 
@@ -202,17 +257,21 @@ class JarActivity : ComponentActivity() {
         vm.updateRms(0f)
     }
 
+    // ─────────── VIBRACIÓN ───────────
     private fun vibrar(ms: Long) {
         val v = getSystemService(VIBRATOR_SERVICE) as Vibrator
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             v.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
         } else v.vibrate(ms)
     }
+
+    // ─────────── NAVEGACIÓN ───────────
     override fun onBackPressed() {
         super.onBackPressed()
         startActivity(Intent(this, LoginActivity::class.java))
         finish()
     }
+
     override fun onDestroy() {
         tts.shutdown()
         voiceEngine?.stop()
