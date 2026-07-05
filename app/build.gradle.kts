@@ -39,6 +39,28 @@ android {
         }
         val geminiKey = props.getProperty("GEMINI_API_KEY") ?: ""
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
+
+        val youtubeKey = props.getProperty("YOUTUBE_API_KEY") ?: ""
+        buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeKey\"")
+
+        val tavilyKey = props.getProperty("TAVILY_API_KEY") ?: ""
+        buildConfigField("String", "TAVILY_API_KEY", "\"$tavilyKey\"")
+
+        val elevenLabsKey = props.getProperty("ELEVENLABS_API_KEY") ?: ""
+        buildConfigField("String", "ELEVENLABS_API_KEY", "\"$elevenLabsKey\"")
+
+        val acrCloudAccessKey = props.getProperty("ACRCLOUD_ACCESS_KEY") ?: ""
+        buildConfigField("String", "ACRCLOUD_ACCESS_KEY", "\"$acrCloudAccessKey\"")
+
+        val acrCloudAccessSecret = props.getProperty("ACRCLOUD_ACCESS_SECRET") ?: ""
+        buildConfigField("String", "ACRCLOUD_ACCESS_SECRET", "\"$acrCloudAccessSecret\"")
+
+        val nexusBaseUrl = props.getProperty("NEXUS_BASE_URL") ?: "https://mausand2499--jarvoice-nexus-api-nexusserver-serve-dev.modal.run"
+        buildConfigField("String", "NEXUS_BASE_URL", "\"$nexusBaseUrl\"")
+
+        val nexusWsHost = props.getProperty("NEXUS_WS_HOST") ?: "mausand2499--jarvoice-nexus-api-fastapi-server-dev.modal.run"
+        buildConfigField("String", "NEXUS_WS_HOST", "\"$nexusWsHost\"")
+
         multiDexEnabled = true
     }
 

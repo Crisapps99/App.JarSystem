@@ -20,7 +20,7 @@ data class SearchResult(
 object TavilySearchService {
 
     private const val TAG = "TAVILY_SEARCH"
-    private const val API_KEY = "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"
+    private val API_KEY = com.example.myapplication.BuildConfig.TAVILY_API_KEY
     private const val BASE_URL = "https://api.tavily.com/search"
 
     private val client = OkHttpClient.Builder()
