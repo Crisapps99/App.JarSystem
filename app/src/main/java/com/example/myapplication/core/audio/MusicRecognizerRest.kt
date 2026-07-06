@@ -40,7 +40,7 @@ class MusicRecognizerRest(
         private const val FRAME_LENGTH = 1024
     }
 
-    // ✅ DATA CLASS COMPLETA con todos los campos
+    //  DATA CLASS COMPLETA con todos los campos
     data class MusicResult(
         val title: String,
         val artist: String,
@@ -69,7 +69,7 @@ class MusicRecognizerRest(
         }
 
         isRecognizing = true
-        Log.d(TAG, "🎵 Iniciando grabación para reconocimiento...")
+        Log.d(TAG, " Iniciando grabación para reconocimiento...")
         startRecording(durationSeconds)
     }
 
@@ -102,7 +102,7 @@ class MusicRecognizerRest(
             }
 
             audioRecord?.startRecording()
-            Log.d(TAG, "🎙️ Grabando durante $durationSeconds segundos a ${SAMPLE_RATE}Hz...")
+            Log.d(TAG, " Grabando durante $durationSeconds segundos a ${SAMPLE_RATE}Hz...")
 
             val audioBuffer = ByteArrayOutputStream()
             val buffer = ShortArray(FRAME_LENGTH)
@@ -129,7 +129,7 @@ class MusicRecognizerRest(
                         onVolumeChanged(rms)
 
                         if (samplesRead % (SAMPLE_RATE * 2) == 0) {
-                            Log.d(TAG, "🔊 Volumen: max=$maxRms, min=$minRms, actual=$rms")
+                            Log.d(TAG, " Volumen: max=$maxRms, min=$minRms, actual=$rms")
                         }
 
                         samplesRead += read
@@ -138,10 +138,10 @@ class MusicRecognizerRest(
                 }
 
                 if (isRecognizing) {
-                    Log.d(TAG, "⏹️ Grabación completa. Volumen máximo: $maxRms")
+                    Log.d(TAG, " Grabación completa. Volumen máximo: $maxRms")
 
                     if (maxRms < 0.5f) {
-                        onError("🔇 No se detectó audio. ¿La música está sonando?")
+                        onError(" No se detectó audio. ¿La música está sonando?")
                         return@launch
                     }
 
@@ -153,18 +153,18 @@ class MusicRecognizerRest(
             timeoutJob = scope.launch {
                 delay((durationSeconds + 5).toLong() * 1000)
                 if (isRecognizing) {
-                    Log.w(TAG, "⏰ Timeout")
+                    Log.w(TAG, " Timeout")
                     stop()
                     onError("Tiempo agotado")
                 }
             }
 
         } catch (e: SecurityException) {
-            Log.e(TAG, "❌ Error de seguridad: ${e.message}")
+            Log.e(TAG, " Error de seguridad: ${e.message}")
             onError("Permiso de micrófono denegado")
             stop()
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error grabando: ${e.message}")
+            Log.e(TAG, " Error grabando: ${e.message}")
             onError("Error: ${e.message}")
             stop()
         }
@@ -177,7 +177,7 @@ class MusicRecognizerRest(
                 val timestamp = (System.currentTimeMillis() / 1000).toString()
                 val signature = buildSignature(timestamp)
 
-                Log.d(TAG, "📤 Tamaño PCM: ${audioData.size} bytes, WAV: ${wavData.size} bytes")
+                Log.d(TAG, " Tamaño PCM: ${audioData.size} bytes, WAV: ${wavData.size} bytes")
 
                 val requestBody = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
@@ -198,21 +198,21 @@ class MusicRecognizerRest(
                     .post(requestBody)
                     .build()
 
-                Log.d(TAG, "📤 Enviando ${wavData.size} bytes a ACRCloud...")
+                Log.d(TAG, " Enviando ${wavData.size} bytes a ACRCloud...")
 
                 val response = client.newCall(request).execute()
                 val responseBody = response.body?.string() ?: ""
 
                 if (response.isSuccessful) {
-                    Log.d(TAG, "✅ Respuesta: $responseBody")
+                    Log.d(TAG, " Respuesta: $responseBody")
                     parseResponse(responseBody)
                 } else {
-                    Log.e(TAG, "❌ HTTP ${response.code}: $responseBody")
+                    Log.e(TAG, " HTTP ${response.code}: $responseBody")
                     onError("Error HTTP: ${response.code}")
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error: ${e.message}")
+                Log.e(TAG, " Error: ${e.message}")
                 onError("Error: ${e.message}")
             }
         }
@@ -269,7 +269,7 @@ class MusicRecognizerRest(
         val signatureVersion = "1"
         val stringToSign = "$method\n$uri\n$ACCESS_KEY\n$dataType\n$signatureVersion\n$timestamp"
 
-        Log.d(TAG, "🔑 StringToSign: $stringToSign")
+        Log.d(TAG, " StringToSign: $stringToSign")
 
         val mac = Mac.getInstance("HmacSHA1")
         val secretKey = SecretKeySpec(ACCESS_SECRET.toByteArray(Charsets.UTF_8), "HmacSHA1")
@@ -278,16 +278,16 @@ class MusicRecognizerRest(
         return Base64.encodeToString(hash, Base64.NO_WRAP)
     }
 
-    // ✅ PARSE COMPLETO Y CORREGIDO
+    //  PARSE COMPLETO Y CORREGIDO
     private fun parseResponse(jsonString: String) {
         try {
-            Log.d(TAG, "📥 Parseando respuesta: ${jsonString.take(300)}...")
+            Log.d(TAG, " Parseando respuesta: ${jsonString.take(300)}...")
 
             val json = JSONObject(jsonString)
             val status = json.optJSONObject("status")
             val code = status?.optInt("code", -1) ?: -1
 
-            Log.d(TAG, "📥 Respuesta status: $code")
+            Log.d(TAG, " Respuesta status: $code")
 
             if (code != 0) {
                 val msg = status?.optString("msg") ?: "Unknown error"
@@ -308,36 +308,36 @@ class MusicRecognizerRest(
             val musicList = metadata?.optJSONArray("music")
 
             if (musicList == null || musicList.length() == 0) {
-                Log.w(TAG, "⚠️ No se encontraron resultados")
+                Log.w(TAG, " No se encontraron resultados")
                 onError("No se encontró la canción. ¿La música se escucha bien?")
                 return
             }
 
             val track = musicList.getJSONObject(0)
 
-            // ✅ Título y artista
+            //  Título y artista
             val title = track.optString("title", "Título desconocido")
             val artist = parseArtist(track)
 
-            // ✅ Álbum y portada
+            //  Álbum y portada
             val albumObj = track.optJSONObject("album")
             val album = albumObj?.optString("name", "") ?: ""
             val coverUrl = albumObj?.optString("cover_url", "") ?: ""
 
-            // ✅ Género (desde el array "genres")
+            //  Género (desde el array "genres")
             val genresArray = track.optJSONArray("genres")
             val genre = if (genresArray != null && genresArray.length() > 0) {
                 genresArray.getJSONObject(0).optString("name", "")
             } else ""
 
-            // ✅ Duración
+            //  Duración
             val durationMs = track.optLong("duration_ms", 0L)
 
-            // ✅ ENLACES EXTERNOS - PARSING COMPLETO
+            //  ENLACES EXTERNOS - PARSING COMPLETO
             val externalUrls = mutableListOf<String>()
             val externalMeta = track.optJSONObject("external_metadata")
 
-            Log.d(TAG, "📦 external_metadata: $externalMeta")
+            Log.d(TAG, " external_metadata: $externalMeta")
 
             if (externalMeta != null) {
                 // ═══════ SPOTIFY ═══════
@@ -348,7 +348,7 @@ class MusicRecognizerRest(
                     if (!trackId.isNullOrBlank()) {
                         val url = "https://open.spotify.com/track/$trackId"
                         externalUrls.add(url)
-                        Log.d(TAG, "✅ Spotify URL: $url")
+                        Log.d(TAG, " Spotify URL: $url")
                     }
                 }
 
@@ -359,7 +359,7 @@ class MusicRecognizerRest(
                     if (!videoId.isNullOrBlank()) {
                         val url = "https://music.youtube.com/watch?v=$videoId"
                         externalUrls.add(url)
-                        Log.d(TAG, "✅ YouTube URL: $url")
+                        Log.d(TAG, " YouTube URL: $url")
                     }
                 }
 
@@ -369,7 +369,7 @@ class MusicRecognizerRest(
                     val url = appleObj.optString("url")
                     if (!url.isNullOrBlank()) {
                         externalUrls.add(url)
-                        Log.d(TAG, "✅ Apple Music URL: $url")
+                        Log.d(TAG, " Apple Music URL: $url")
                     }
                 }
 
@@ -379,23 +379,23 @@ class MusicRecognizerRest(
                     val url = deezerObj.optString("url")
                     if (!url.isNullOrBlank()) {
                         externalUrls.add(url)
-                        Log.d(TAG, "✅ Deezer URL: $url")
+                        Log.d(TAG, " Deezer URL: $url")
                     }
                 }
             }
 
-            // ✅ Si no hay enlaces, intentar con external_ids (fallback)
+            //  Si no hay enlaces, intentar con external_ids (fallback)
             if (externalUrls.isEmpty()) {
                 val externalIds = track.optJSONObject("external_ids")
                 val spotifyId = externalIds?.optString("spotify")
                 if (!spotifyId.isNullOrBlank()) {
                     val url = "https://open.spotify.com/track/$spotifyId"
                     externalUrls.add(url)
-                    Log.d(TAG, "✅ Spotify ID fallback: $url")
+                    Log.d(TAG, " Spotify ID fallback: $url")
                 }
             }
 
-            Log.d(TAG, "✅ Enlaces finales: $externalUrls")
+            Log.d(TAG, " Enlaces finales: $externalUrls")
 
             val result = MusicResult(
                 title = title,
@@ -407,11 +407,11 @@ class MusicRecognizerRest(
                 externalUrls = externalUrls
             )
 
-            Log.d(TAG, "🎵 Canción identificada: $title - $artist")
+            Log.d(TAG, " Canción identificada: $title - $artist")
             onResult(result)
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error parseando: ${e.message}", e)
+            Log.e(TAG, " Error parseando: ${e.message}", e)
             onError("Error parseando resultado")
         }
     }
@@ -443,7 +443,7 @@ class MusicRecognizerRest(
         }
         audioRecord = null
 
-        Log.d(TAG, "⏹️ Reconocimiento detenido")
+        Log.d(TAG, " Reconocimiento detenido")
     }
 
     private fun calculateRMS(frame: ShortArray, size: Int): Float {

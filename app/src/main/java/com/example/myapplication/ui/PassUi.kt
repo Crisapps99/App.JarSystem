@@ -49,31 +49,31 @@ fun LoginScreen(vm: PassVm, onFinish: () -> Unit) {
                 )
 
                 // Paneles de permisos
-                PermItem("Micrófono", "Para escuchar comandos de voz", "📱", state.micOk) {
+                PermItem("Micrófono", "Para escuchar comandos de voz", "", state.micOk) {
                     launcher.launch(android.Manifest.permission.RECORD_AUDIO)
                 }
-                PermItem("Superposición", "Para mostrar el orbe flotante", "🔳", state.overlayOk) {
+                PermItem("Superposición", "Para mostrar el orbe flotante", "", state.overlayOk) {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
                 }
-                PermItem("Accesibilidad", "Para automatizar acciones", "♿", state.accessOk) {
+                PermItem("Accesibilidad", "Para automatizar acciones", "", state.accessOk) {
                     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }
-                PermItem("Notificaciones", "Para leer mensajes entrantes", "🔔", state.notifyOk) {
+                PermItem("Notificaciones", "Para leer mensajes entrantes", "", state.notifyOk) {
                     context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
                 }
-                PermItem("Contactos", "Para identificar a quién llamar", "👥", state.contactsOk) {
+                PermItem("Contactos", "Para identificar a quién llamar", "", state.contactsOk) {
                     launcher.launch(android.Manifest.permission.READ_CONTACTS)
                 }
-                PermItem("Teléfono", "Para iniciar llamadas por voz", "☎️", state.phoneOk) {
+                PermItem("Teléfono", "Para iniciar llamadas por voz", "", state.phoneOk) {
                     launcher.launch(android.Manifest.permission.CALL_PHONE)
                 }
-                PermItem("Cámara", "Para tomar fotos por comando", "📷", state.cameraOk) {
+                PermItem("Cámara", "Para tomar fotos por comando", "", state.cameraOk) {
                     launcher.launch(android.Manifest.permission.CAMERA)
                 }
                 // En LoginScreen.kt, añade este item en la lista de permisos:
                 PermItem(title = "Ubicación",
                     desc = "Para buscar lugares cerca de ti",
-                    icon = "📍",
+                    icon = "",
                     isOk = state.locationOk,
                     onClick = {
                         launcher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
@@ -92,7 +92,7 @@ fun LoginScreen(vm: PassVm, onFinish: () -> Unit) {
                     disabledContainerColor = Color(0xFF007BFF).copy(alpha = 0.4f)
                 )
             ) {
-                Text("CONTINUAR A NEXUS ➔", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("CONTINUAR A NEXUS ", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
     }

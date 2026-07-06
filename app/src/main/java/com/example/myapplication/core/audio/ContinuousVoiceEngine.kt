@@ -94,7 +94,7 @@ class ContinuousVoiceEngine(
 
     private val timeoutRunnable = Runnable {
         if (engineMode == EngineMode.LISTENING) {
-            Log.d(TAG, "⏰ Timeout de silencio en Google Cloud STT")
+            Log.d(TAG, " Timeout de silencio en Google Cloud STT")
             engineMode = EngineMode.WAKE_WORD
             startVoskWakeWordMode()
         }
@@ -119,10 +119,10 @@ class ContinuousVoiceEngine(
             { model ->
                 voskModel = model
                 voskListo = true
-                Log.d(TAG, "✅ Modelo Vosk cargado")
+                Log.d(TAG, " Modelo Vosk cargado")
                 if (!isRunning) startAudioCapture()
             },
-            { e -> Log.e(TAG, "❌ Error cargando Vosk: ${e.message}") }
+            { e -> Log.e(TAG, " Error cargando Vosk: ${e.message}") }
         )
     }
 
@@ -151,12 +151,12 @@ class ContinuousVoiceEngine(
 
                 if (textoLimpio == ultimoTextoProcesado &&
                     (ahora - ultimoTimestampProcesado) < 3000L) {
-                    Log.d(TAG, "⏭️ Resultado duplicado ignorado")
+                    Log.d(TAG, " Resultado duplicado ignorado")
                     return@GrpcVoiceRecognizer
                 }
 
                 if (haEnviadoResultado) {
-                    Log.d(TAG, "⏭️ Ya se envió un resultado")
+                    Log.d(TAG, " Ya se envió un resultado")
                     return@GrpcVoiceRecognizer
                 }
 
@@ -168,7 +168,7 @@ class ContinuousVoiceEngine(
                 ultimoTextoProcesado = textoLimpio
                 ultimoTimestampProcesado = ahora
 
-                Log.d(TAG, "📝 Resultado final: $texto")
+                Log.d(TAG, " Resultado final: $texto")
                 detenerSesion()
                 mainHandler.post {
                     onFinalResult(texto)
@@ -176,7 +176,7 @@ class ContinuousVoiceEngine(
                 }
             },
             onError = { error ->
-                Log.e(TAG, "❌ Error gRPC: $error")
+                Log.e(TAG, " Error gRPC: $error")
                 mainHandler.post {
                     onError(error)
                     if (engineMode == EngineMode.LISTENING) detenerSesion()
@@ -188,9 +188,9 @@ class ContinuousVoiceEngine(
             try {
                 grpcRecognizer.init()
                 grpcListo = true
-                Log.d(TAG, "✅ Google Cloud STT inicializado")
+                Log.d(TAG, " Google Cloud STT inicializado")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error inicializando gRPC: ${e.message}")
+                Log.e(TAG, " Error inicializando gRPC: ${e.message}")
             }
         }
     }
@@ -204,7 +204,7 @@ class ContinuousVoiceEngine(
         onResult: (MusicRecognizerRest.MusicResult?) -> Unit
     ) {
         if (musicRecognitionActive) {
-            Log.w(TAG, "⚠️ Ya hay reconocimiento de música activo")
+            Log.w(TAG, " Ya hay reconocimiento de música activo")
             return
         }
 
@@ -241,7 +241,7 @@ class ContinuousVoiceEngine(
                 }
             },
             onError = { error ->
-                Log.e(TAG, "❌ Error en reconocimiento de música: $error")
+                Log.e(TAG, " Error en reconocimiento de música: $error")
                 musicRecognitionActive = false
                 engineMode = EngineMode.WAKE_WORD
                 startVoskWakeWordMode()
@@ -257,7 +257,7 @@ class ContinuousVoiceEngine(
 
         musicRecognizer?.start(durationSegundos)
         mainHandler.post { onSpeechStarted() }
-        Log.d(TAG, "🎵 Reconocimiento de música iniciado por $durationSegundos segundos")
+        Log.d(TAG, " Reconocimiento de música iniciado por $durationSegundos segundos")
     }
 
     fun detenerReconocimientoMusica() {
@@ -269,7 +269,7 @@ class ContinuousVoiceEngine(
         engineMode = EngineMode.WAKE_WORD
         startVoskWakeWordMode()
         mainHandler.post { onSpeechEnded() }
-        Log.d(TAG, "⏹️ Reconocimiento de música detenido")
+        Log.d(TAG, " Reconocimiento de música detenido")
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -278,7 +278,7 @@ class ContinuousVoiceEngine(
 
     private fun startAudioCapture() {
         if (!hasAudioPermission()) {
-            Log.e(TAG, "❌ Permiso RECORD_AUDIO no concedido")
+            Log.e(TAG, " Permiso RECORD_AUDIO no concedido")
             return
         }
         if (isRunning) return
@@ -293,7 +293,7 @@ class ContinuousVoiceEngine(
             )
 
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "❌ AudioRecord no inicializado")
+                Log.e(TAG, " AudioRecord no inicializado")
                 audioRecord = null
                 return
             }
@@ -302,10 +302,10 @@ class ContinuousVoiceEngine(
             isRunning = true
             startVoskWakeWordMode()
             startCaptureLoop()
-            Log.i(TAG, "✅ Motor de audio iniciado en modo WAKE_WORD")
+            Log.i(TAG, " Motor de audio iniciado en modo WAKE_WORD")
 
         } catch (e: SecurityException) {
-            Log.e(TAG, "❌ Error iniciando AudioRecord: ${e.message}")
+            Log.e(TAG, " Error iniciando AudioRecord: ${e.message}")
             releaseAudioRecord()
         }
     }
@@ -313,19 +313,19 @@ class ContinuousVoiceEngine(
     private fun startCaptureLoop() {
         captureJob = engineScope.launch {
             val buffer = ShortArray(FRAME_LENGTH)
-            Log.d(TAG, "🔄 Loop de captura iniciado")
+            Log.d(TAG, " Loop de captura iniciado")
 
             while (isRunning) {
                 val read = try {
                     audioRecord?.read(buffer, 0, FRAME_LENGTH) ?: break
                 } catch (e: SecurityException) {
-                    Log.e(TAG, "❌ SecurityException en lectura: ${e.message}")
+                    Log.e(TAG, " SecurityException en lectura: ${e.message}")
                     break
                 }
 
                 if (read == AudioRecord.ERROR_INVALID_OPERATION ||
                     read == AudioRecord.ERROR_BAD_VALUE) {
-                    Log.e(TAG, "❌ Error fatal AudioRecord: $read")
+                    Log.e(TAG, " Error fatal AudioRecord: $read")
                     break
                 }
                 if (read <= 0) { delay(10); continue }
@@ -352,7 +352,7 @@ class ContinuousVoiceEngine(
                                     // Primero revisar resultado parcial (más rápido)
                                     val partial = JSONObject(rec.partialResult).optString("partial", "").lowercase().trim()
                                     if (partial.isNotEmpty() && partial.matches(WAKE_REGEX)) {
-                                        Log.i(TAG, "🔊 WAKE WORD DETECTADO (partial): '$partial'")
+                                        Log.i(TAG, " WAKE WORD DETECTADO (partial): '$partial'")
                                         handleWakeWordDetected()
                                         return@let
                                     }
@@ -361,7 +361,7 @@ class ContinuousVoiceEngine(
                                     if (rec.acceptWaveForm(buffer, read)) {
                                         val text = JSONObject(rec.result).optString("text", "").lowercase().trim()
                                         if (text.isNotEmpty() && text.matches(WAKE_REGEX)) {
-                                            Log.i(TAG, "🔊 WAKE WORD DETECTADO (final): '$text'")
+                                            Log.i(TAG, " WAKE WORD DETECTADO (final): '$text'")
                                             handleWakeWordDetected()
                                         }
                                     }
@@ -372,7 +372,7 @@ class ContinuousVoiceEngine(
                     EngineMode.STOPPED -> break
                 }
             }
-            Log.d(TAG, "⏹️ Loop de captura terminado")
+            Log.d(TAG, " Loop de captura terminado")
         }
     }
 
@@ -406,7 +406,7 @@ class ContinuousVoiceEngine(
             voskRecognizer?.close()
             voskRecognizer = Recognizer(voskModel, SAMPLE_RATE.toFloat(), grammar)
         }
-        Log.d(TAG, "🔇 Vosk: modo WAKE_WORD (gramática: $grammar)")
+        Log.d(TAG, " Vosk: modo WAKE_WORD (gramática: $grammar)")
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -415,11 +415,11 @@ class ContinuousVoiceEngine(
 
     fun iniciarSesionContinua(language: String = "es-ES") {
         if (!grpcListo) {
-            Log.w(TAG, "⏳ gRPC no listo aún")
+            Log.w(TAG, " gRPC no listo aún")
             return
         }
         if (grpcActivo) {
-            Log.w(TAG, "⚠️ gRPC ya activo")
+            Log.w(TAG, " gRPC ya activo")
             return
         }
 
@@ -431,19 +431,19 @@ class ContinuousVoiceEngine(
         timeoutHandler.postDelayed(timeoutRunnable, TIMEOUT_SILENCIO_MS)
 
         mainHandler.post { onSpeechStarted() }
-        Log.d(TAG, "🎙️ Google Cloud STT iniciado (timeout: ${TIMEOUT_SILENCIO_MS}ms)")
+        Log.d(TAG, " Google Cloud STT iniciado (timeout: ${TIMEOUT_SILENCIO_MS}ms)")
     }
 
     fun detenerSesion() {
         if (!grpcActivo) return
-        Log.d(TAG, "⏹️ Deteniendo sesión Google Cloud STT")
+        Log.d(TAG, " Deteniendo sesión Google Cloud STT")
         grpcActivo = false
         grpcRecognizer.stopStreaming()
         timeoutHandler.removeCallbacks(timeoutRunnable)
         engineMode = EngineMode.WAKE_WORD
         startVoskWakeWordMode()
         mainHandler.post { onSpeechEnded() }
-        Log.d(TAG, "✅ Volviendo a modo WAKE_WORD")
+        Log.d(TAG, " Volviendo a modo WAKE_WORD")
     }
 
     fun reiniciarEscucha() {
@@ -494,7 +494,7 @@ class ContinuousVoiceEngine(
     // ────────────────────────────────────────────────────────────────────────
 
     fun stop() {
-        Log.d(TAG, "🛑 Deteniendo motor")
+        Log.d(TAG, " Deteniendo motor")
         isRunning = false
         grpcActivo = false
         engineMode = EngineMode.STOPPED
@@ -524,6 +524,6 @@ class ContinuousVoiceEngine(
         engineScope.cancel()
         musicScope.cancel()
 
-        Log.i(TAG, "✅ Motor detenido")
+        Log.i(TAG, " Motor detenido")
     }
 }

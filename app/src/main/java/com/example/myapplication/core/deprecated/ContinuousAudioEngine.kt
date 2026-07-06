@@ -70,7 +70,7 @@
 //     */
 //    fun start() {
 //        if (isRunning.get()) {
-//            Log.w(TAG, "⚠️ Motor ya en ejecución")
+//            Log.w(TAG, " Motor ya en ejecución")
 //            return
 //        }
 //
@@ -88,21 +88,21 @@
 //            )
 //
 //            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-//                Log.e(TAG, "❌ AudioRecord no inicializado — verifica permisos RECORD_AUDIO")
+//                Log.e(TAG, " AudioRecord no inicializado — verifica permisos RECORD_AUDIO")
 //                audioRecord = null
 //                return
 //            }
 //
 //            audioRecord?.startRecording()
 //            isRunning.set(true)
-//            Log.i(TAG, "✅ Motor de audio iniciado (buffer=${bufferSize}B, rate=${SAMPLE_RATE}Hz)")
+//            Log.i(TAG, " Motor de audio iniciado (buffer=${bufferSize}B, rate=${SAMPLE_RATE}Hz)")
 //
 //            startCaptureLoop()
 //
 //        } catch (e: SecurityException) {
-//            Log.e(TAG, "❌ Sin permiso RECORD_AUDIO: ${e.message}")
+//            Log.e(TAG, " Sin permiso RECORD_AUDIO: ${e.message}")
 //        } catch (e: Exception) {
-//            Log.e(TAG, "❌ Error iniciando AudioRecord: ${e.message}", e)
+//            Log.e(TAG, " Error iniciando AudioRecord: ${e.message}", e)
 //            cleanup()
 //        }
 //    }
@@ -115,7 +115,7 @@
 //        captureJob = engineScope.launch {
 //            val frame = ShortArray(FRAME_LENGTH)
 //
-//            Log.d(TAG, "🔄 Loop de captura iniciado")
+//            Log.d(TAG, " Loop de captura iniciado")
 //
 //            while (isRunning.get()) {
 //                val read = audioRecord?.read(frame, 0, FRAME_LENGTH) ?: break
@@ -124,7 +124,7 @@
 //                    // read == -1 o -2 indica error de AudioRecord
 //                    if (read == AudioRecord.ERROR_INVALID_OPERATION ||
 //                        read == AudioRecord.ERROR_BAD_VALUE) {
-//                        Log.e(TAG, "❌ Error fatal leyendo audio: $read")
+//                        Log.e(TAG, " Error fatal leyendo audio: $read")
 //                        break
 //                    }
 //                    // Otros valores negativos: espera y reintenta
@@ -147,7 +147,7 @@
 //                        }
 //                        // Si llenamos el buffer, para la grabación automáticamente
 //                        if (recordingWritePos >= MAX_RECORDING_SAMPLES) {
-//                            Log.w(TAG, "⚠️ Buffer lleno (30s) — deteniendo grabación automáticamente")
+//                            Log.w(TAG, " Buffer lleno (30s) — deteniendo grabación automáticamente")
 //                            isRecording.set(false)
 //                        }
 //                    }
@@ -157,7 +157,7 @@
 //                onFrameAvailable(frame.copyOf(read))
 //            }
 //
-//            Log.d(TAG, "⏹️ Loop de captura terminado")
+//            Log.d(TAG, " Loop de captura terminado")
 //        }
 //    }
 //
@@ -173,7 +173,7 @@
 //            recordingSampleCount = 0
 //        }
 //        isRecording.set(true)
-//        Log.d(TAG, "⏺️ Grabación iniciada para Whisper")
+//        Log.d(TAG, " Grabación iniciada para Whisper")
 //    }
 //
 //    /**
@@ -187,10 +187,10 @@
 //        return bufferLock.withLock {
 //            val count = recordingSampleCount
 //            if (count == 0) {
-//                Log.w(TAG, "⚠️ Grabación vacía")
+//                Log.w(TAG, " Grabación vacía")
 //                null
 //            } else {
-//                Log.d(TAG, "⏹️ Grabación detenida — ${count} samples (${count / SAMPLE_RATE}s)")
+//                Log.d(TAG, " Grabación detenida — ${count} samples (${count / SAMPLE_RATE}s)")
 //                recordingBuffer.copyOf(count)
 //            }
 //        }
@@ -206,7 +206,7 @@
 //            recordingWritePos = 0
 //            recordingSampleCount = 0
 //        }
-//        Log.d(TAG, "🗑️ Grabación descartada")
+//        Log.d(TAG, " Grabación descartada")
 //    }
 //
 //    fun isRecording(): Boolean = isRecording.get()
@@ -233,7 +233,7 @@
 //        captureJob?.cancel()
 //        captureJob = null
 //        cleanup()
-//        Log.i(TAG, "✅ Motor de audio detenido")
+//        Log.i(TAG, " Motor de audio detenido")
 //    }
 //
 //    private fun cleanup() {

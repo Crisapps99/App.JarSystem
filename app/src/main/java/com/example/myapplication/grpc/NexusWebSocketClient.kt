@@ -16,7 +16,7 @@ class NexusWebSocketClient(
         private const val TAG = "NEXUS_WS"
     }
 
-    // ✅ Agregar Handler del hilo principal
+    //  Agregar Handler del hilo principal
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var client: OkHttpClient? = null
@@ -45,7 +45,7 @@ class NexusWebSocketClient(
                 val cleanUrl = hostUrl.replace("https://", "").replace("http://", "").replace("wss://", "").replace("ws://", "")
                 val wsUrl = "$protocol://$cleanUrl/ws/jarvis"
 
-                Log.d(TAG, "📡 Conectando a WebSocket: $wsUrl")
+                Log.d(TAG, " Conectando a WebSocket: $wsUrl")
 
                 client = OkHttpClient.Builder()
                     .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -62,19 +62,19 @@ class NexusWebSocketClient(
                 webSocket = client?.newWebSocket(request, object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) {
                         isConnected = true
-                        reconnectAttempts = 0  // ✅ Resetear contador al conectar exitosamente
-                        Log.d(TAG, "✅ Conexión WebSocket establecida. SessionID: $sessionId")
+                        reconnectAttempts = 0  //  Resetear contador al conectar exitosamente
+                        Log.d(TAG, " Conexión WebSocket establecida. SessionID: $sessionId")
 
-                        // ✅ Usar mainHandler para asegurar ejecución en hilo principal
+                        //  Usar mainHandler para asegurar ejecución en hilo principal
                         mainHandler.post {
                             onConnected?.invoke()
                         }
                     }
 
                     override fun onMessage(webSocket: WebSocket, text: String) {
-                        Log.d(TAG, "📨 Mensaje recibido de la GPU")
+                        Log.d(TAG, " Mensaje recibido de la GPU")
 
-                        // ✅ Procesar SIEMPRE en hilo principal para evitar problemas de UI
+                        //  Procesar SIEMPRE en hilo principal para evitar problemas de UI
                         mainHandler.post {
                             try {
                                 onEvent?.invoke(text)
@@ -85,7 +85,7 @@ class NexusWebSocketClient(
                     }
 
                     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                        Log.e(TAG, "❌ Error en el canal WebSocket: ${t.message}", t)
+                        Log.e(TAG, " Error en el canal WebSocket: ${t.message}", t)
                         isConnected = false
 
                         mainHandler.post {
@@ -96,11 +96,11 @@ class NexusWebSocketClient(
                     }
 
                     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                        Log.d(TAG, "⚠️ Servidor cerrando el canal: $reason")
+                        Log.d(TAG, " Servidor cerrando el canal: $reason")
                     }
 
                     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                        Log.d(TAG, "🛑 WebSocket cerrado. Código: $code, Razón: $reason")
+                        Log.d(TAG, " WebSocket cerrado. Código: $code, Razón: $reason")
                         isConnected = false
 
                         mainHandler.post {
@@ -115,7 +115,7 @@ class NexusWebSocketClient(
                 })
 
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error crítico iniciando WebSocket: ${e.message}", e)
+                Log.e(TAG, " Error crítico iniciando WebSocket: ${e.message}", e)
                 isConnected = false
 
                 mainHandler.post {
@@ -127,7 +127,7 @@ class NexusWebSocketClient(
 
     private fun scheduleReconnect() {
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            Log.e(TAG, "❌ Máximo de intentos de reconexión alcanzado")
+            Log.e(TAG, " Máximo de intentos de reconexión alcanzado")
             mainHandler.post {
                 onError?.invoke("No se pudo reconectar al servidor después de $MAX_RECONNECT_ATTEMPTS intentos")
             }
@@ -136,7 +136,7 @@ class NexusWebSocketClient(
         reconnectAttempts++
         scope.launch {
             delay(RECONNECT_DELAY_MS * reconnectAttempts)
-            Log.d(TAG, "🔄 Intentando reconectar (intento $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS)")
+            Log.d(TAG, " Intentando reconectar (intento $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS)")
             connect()
         }
     }
@@ -150,9 +150,9 @@ class NexusWebSocketClient(
     }
 
     fun sendText(texto: String) {
-        // ✅ Si no está conectado, intentar reconectar ANTES de fallar
+        //  Si no está conectado, intentar reconectar ANTES de fallar
         if (!isConnected || webSocket == null) {
-            Log.w(TAG, "⚠️ WebSocket inactivo, intentando reconectar...")
+            Log.w(TAG, " WebSocket inactivo, intentando reconectar...")
 
             // Cancelar intentos previos
             reconnectAttempts = 0
@@ -162,7 +162,7 @@ class NexusWebSocketClient(
                 delay(500)
 
                 if (!isConnected) {
-                    Log.d(TAG, "🔄 Reconectando tras petición del usuario...")
+                    Log.d(TAG, " Reconectando tras petición del usuario...")
                     connect()
 
                     // Esperar a que se conecte
@@ -208,15 +208,15 @@ class NexusWebSocketClient(
 
             val sent = webSocket?.send(jsonString) ?: false
             if (sent) {
-                Log.d(TAG, "✅ Payload enviado: ${jsonString.take(80)}...")
+                Log.d(TAG, " Payload enviado: ${jsonString.take(80)}...")
             } else {
-                Log.e(TAG, "❌ Error al enviar")
+                Log.e(TAG, " Error al enviar")
                 mainHandler.post {
                     onError?.invoke("Error al enviar comando")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error: ${e.message}")
+            Log.e(TAG, " Error: ${e.message}")
             mainHandler.post {
                 onError?.invoke("Error al enviar")
             }
@@ -225,7 +225,7 @@ class NexusWebSocketClient(
 
     fun cancel() {
         sendText("CANCEL_CURRENT_PIPELINE_SIGNAL")
-        Log.d(TAG, "🛑 Señal de cancelación enviada por el canal.")
+        Log.d(TAG, " Señal de cancelación enviada por el canal.")
     }
 
     fun isReady(): Boolean = isConnected

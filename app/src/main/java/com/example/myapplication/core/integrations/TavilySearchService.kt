@@ -13,8 +13,8 @@ import java.util.concurrent.TimeUnit
 data class SearchResult(
     val content: String,
     val urls: List<String>,
-    val imageUrls: List<String> = emptyList(), // 📸 Guardará las imágenes reales devueltas por la API
-    val query: String = ""                     // 🔍 Guarda la consulta limpia para comandos como "Ver más"
+    val imageUrls: List<String> = emptyList(), //  Guardará las imágenes reales devueltas por la API
+    val query: String = ""                     //  Guarda la consulta limpia para comandos como "Ver más"
 )
 
 object TavilySearchService {
@@ -84,7 +84,7 @@ object TavilySearchService {
     ): String = withContext(Dispatchers.IO) {
         try {
             val consultaLimpia = extraerConsultaReal(query)
-            Log.d(TAG, "🎤 Frase original: '$query' -> 🔍 Consulta limpia: '$consultaLimpia'")
+            Log.d(TAG, " Frase original: '$query' ->  Consulta limpia: '$consultaLimpia'")
 
             val jsonBody = JSONObject().apply {
                 put("api_key", API_KEY)
@@ -150,7 +150,7 @@ object TavilySearchService {
         val emptyResult = SearchResult("", emptyList(), emptyList(), query)
         try {
             val consultaLimpia = extraerConsultaReal(query)
-            Log.d(TAG, "🔍 Avanzada - Consulta limpia: '$consultaLimpia'")
+            Log.d(TAG, " Avanzada - Consulta limpia: '$consultaLimpia'")
 
             val jsonBody = JSONObject().apply {
                 put("api_key", API_KEY)
@@ -200,7 +200,7 @@ object TavilySearchService {
             val sb = StringBuilder()
 
             if (answer.isNotBlank() && answer.length > 20) {
-                sb.append("**💡 Resumen Directo:**\n")
+                sb.append("** Resumen Directo:**\n")
                 sb.append("${formatearRespuesta(answer)}\n\n")
             }
 

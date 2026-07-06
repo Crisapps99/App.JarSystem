@@ -38,7 +38,7 @@
 //    private fun probarColab() {
 //        lifecycleScope.launch {
 //            try {
-//                mostrar("⏳ Probando servidor NLU Colab...")
+//                mostrar(" Probando servidor NLU Colab...")
 //
 //                val resp = RetrofitClient.actionApiService.predictAction(
 //                    ActionRequest("abrir whatsapp")
@@ -54,7 +54,7 @@
 //    private fun probarCerebroUnificado() {
 //        lifecycleScope.launch {
 //            try {
-//                mostrar("⏳ Probando Gemma en Colab...")
+//                mostrar(" Probando Gemma en Colab...")
 //
 //                // Probamos con una frase de comando
 //                val resp = RetrofitClient.actionApiService.predictAction(
@@ -62,16 +62,16 @@
 //                )
 //
 //                if (resp.success) {
-//                    mostrar("🟢 ÉXITO:")
-//                    mostrar("💬 Frase de Jarvis: ${resp.response_text}")
-//                    mostrar("🤖 Modo: ${resp.mode}")
-//                    mostrar("📦 Payload acciones: ${resp.payload?.size ?: 0}")
+//                    mostrar(" ÉXITO:")
+//                    mostrar(" Frase de Jarvis: ${resp.response_text}")
+//                    mostrar(" Modo: ${resp.mode}")
+//                    mostrar(" Payload acciones: ${resp.payload?.size ?: 0}")
 //                } else {
-//                    mostrar("🟠 El servidor respondió pero success es false")
+//                    mostrar(" El servidor respondió pero success es false")
 //                }
 //
 //            } catch (e: Exception) {
-//                mostrar("🔴 ERROR DE CONEXIÓN:\n${e.message}")
+//                mostrar(" ERROR DE CONEXIÓN:\n${e.message}")
 //            }
 //        }
 //    }

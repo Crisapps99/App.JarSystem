@@ -45,7 +45,7 @@ object YoutubeController {
     fun anteriorCancion(context: Context): Boolean {
         val ctrl = getYouTubeController(context) ?: return false
         ctrl.transportControls.skipToPrevious()
-        Log.d(TAG, "⏮️ Anterior")
+        Log.d(TAG, " Anterior")
         return true
     }
 
@@ -62,34 +62,34 @@ object YoutubeController {
         val posicionFinal = if (nuevaPosicion < 0) 0 else nuevaPosicion
 
         ctrl.transportControls.seekTo(posicionFinal)
-        Log.d(TAG, "⏩/⏪ Saltando a ${posicionFinal / 1000} segundos")
+        Log.d(TAG, "/ Saltando a ${posicionFinal / 1000} segundos")
         return true
     }
     fun pausar(context: Context): Boolean {
         val ctrl = getYouTubeController(context) ?: return false
         ctrl.transportControls.pause()
-        Log.d(TAG, "⏸️ YouTube pausado")
+        Log.d(TAG, " YouTube pausado")
         return true
     }
 
     fun reproducir(context: Context): Boolean {
         val ctrl = getYouTubeController(context) ?: return false
         ctrl.transportControls.play()
-        Log.d(TAG, "▶️ YouTube reanudado")
+        Log.d(TAG, "▶ YouTube reanudado")
         return true
     }
 
     fun detener(context: Context): Boolean {
         val ctrl = getYouTubeController(context) ?: return false
         ctrl.transportControls.stop()
-        Log.d(TAG, "⏹️ YouTube detenido")
+        Log.d(TAG, " YouTube detenido")
         return true
     }
 
     fun siguienteCancion(context: Context): Boolean {
         val ctrl = getYouTubeController(context) ?: return false
         ctrl.transportControls.skipToNext()
-        Log.d(TAG, "⏭️ Siguiente")
+        Log.d(TAG, " Siguiente")
         return true
     }
 

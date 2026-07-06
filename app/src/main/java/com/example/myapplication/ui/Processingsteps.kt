@@ -119,7 +119,7 @@ private fun StepDot(
                 modifier         = Modifier.size(14.dp).clip(CircleShape).background(colorDone),
                 contentAlignment = Alignment.Center
             ) {
-                Text("✓", fontSize = 8.sp, color = Color(0xFF131618), fontWeight = FontWeight.Bold)
+                Text("", fontSize = 8.sp, color = Color(0xFF131618), fontWeight = FontWeight.Bold)
             }
         }
         StepStatus.ACTIVE -> {

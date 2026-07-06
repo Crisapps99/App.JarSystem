@@ -59,6 +59,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.unit.dp
+import android.widget.TextView
+import android.text.method.LinkMovementMethod
+import androidx.compose.ui.viewinterop.AndroidView
+
 // ─── DEFINIR TODOS LOS COLORES AQUÍ (INCLUYENDO ColorCyanNexus) ─────────────
 private val ColorBgDark     = Color(0xFF1C1C1E)
 private val ColorTextMain   = Color(0xFFE8E8F0)
@@ -184,7 +188,7 @@ fun JarvisOverlayContent(
             exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier
                 .width(400.dp)
-                .padding(bottom = 150.dp)  // ✅ Subido un poco más para que no tape la barra de 130.dp
+                .padding(bottom = 150.dp)  //  Subido un poco más para que no tape la barra de 130.dp
         ) {
             ResultsPanel(uiState = uiState)
         }
@@ -211,9 +215,9 @@ fun JarvisOverlayContent(
                 }
             },
             modifier = Modifier
-                .fillMaxWidth()  // ✅ Ocupa todo el ancho
-                .padding(horizontal = 0.dp)  // ✅ Sin padding extra
-                .align(Alignment.BottomCenter)// ✅ Dejamos que la altura y paddings se controlen internamente
+                .fillMaxWidth()  //  Ocupa todo el ancho
+                .padding(horizontal = 0.dp)  //  Sin padding extra
+                .align(Alignment.BottomCenter)//  Dejamos que la altura y paddings se controlen internamente
         )
     }
 }
@@ -369,9 +373,9 @@ fun UnifiedNexusBottomBar(
                     text = when {
                         uiState.jarvisState == JarvisState.IDLE -> "¿En qué puedo ayudarte?"
                         uiState.userTranscription.isNotBlank() -> uiState.userTranscription
-                        uiState.jarvisState == JarvisState.LISTENING -> "🎤 Escuchando..."
-                        uiState.jarvisState == JarvisState.THINKING -> "💭 Pensando..."
-                        uiState.jarvisState == JarvisState.SPEAKING -> "🔊 Hablando..."
+                        uiState.jarvisState == JarvisState.LISTENING -> " Escuchando..."
+                        uiState.jarvisState == JarvisState.THINKING -> " Pensando..."
+                        uiState.jarvisState == JarvisState.SPEAKING -> " Hablando..."
                         else -> "NEXUS"
                     },
                     color = Color(uiState.labelColor),
@@ -494,8 +498,8 @@ fun ConversationViewInsideOverlay(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .fillMaxHeight(0.85f)  // ✅ Ocupa 85% de la altura
-            .background(ColorBgDark, RoundedCornerShape(28.dp))  // ✅ Mismo fondo que ResultsPanel
+            .fillMaxHeight(0.85f)  //  Ocupa 85% de la altura
+            .background(ColorBgDark, RoundedCornerShape(28.dp))  //  Mismo fondo que ResultsPanel
             .shadow(
                 elevation = 24.dp,
                 shape = RoundedCornerShape(28.dp),
@@ -530,7 +534,7 @@ fun ConversationViewInsideOverlay(
 
             // Título
             Text(
-                text = "💬 Conversación",
+                text = " Conversación",
                 color = Color.White,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
@@ -580,7 +584,7 @@ fun ConversationViewInsideOverlay(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "💬",
+                                text = "",
                                 fontSize = 40.sp
                             )
                             Text(
@@ -730,12 +734,17 @@ fun ChatBubbleStyled(message: Message) {
             )
 
             // Mensaje
-            Text(
-                text = message.text,
-                color = ColorTextMain,
-                fontSize = 14.sp,
-                lineHeight = 20.sp
-            )
+            // Dentro de ChatBubbleStyled, reemplaza el Text del mensaje por:
+            if (!isUser && message.text.contains("<")) {
+                HtmlText(html = message.text)
+            } else {
+                Text(
+                    text = message.text,
+                    color = ColorTextMain,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
 
             // Hora
             Text(
@@ -921,8 +930,10 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
             .shadow(elevation = 20.dp, shape = RoundedCornerShape(24.dp))
             .background(Color(0xFF1C1C1E), RoundedCornerShape(24.dp))
             .border(1.dp, Color(0xFF3A3A50), RoundedCornerShape(24.dp))
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(20.dp)
+            .heightIn(max = 350.dp)  // ← altura máxima con scroll
+            .verticalScroll(rememberScrollState()),
+    horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // --- SECCIÓN DE TÍTULO / HEADER TIPO BUSCADOR ---
         Row(
@@ -935,7 +946,7 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
                     .background(ColorCyanNexus.copy(alpha = 0.1f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text("🔍", fontSize = 18.sp)
+                Text("", fontSize = 18.sp)
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
@@ -952,18 +963,30 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
         Divider(color = Color(0xFF3A3A50), thickness = 1.dp)
         Spacer(modifier = Modifier.height(16.dp))
 
-        val displayText = if (uiState.typewriterText.isNotBlank()) {
-            uiState.typewriterText
-        } else {
-            uiState.transcription   // o uiState.fullHtmlText si quieres HTML
+        // Contenido con scroll
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+        ) {
+            if (uiState.fullHtmlText.isNotBlank()) {
+                HtmlText(html = uiState.fullHtmlText)
+            } else if (uiState.typewriterText.isNotBlank()) {
+                Text(
+                    text = uiState.typewriterText,
+                    color = ColorTextMain,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
+                )
+            } else {
+                Text(
+                    text = uiState.transcription,
+                    color = ColorTextMain,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
+                )
+            }
         }
-
-        Text(
-            text = displayText,
-            color = ColorTextMain,
-            fontSize = 15.sp,
-            lineHeight = 22.sp
-        )
 
         // --- FUENTES / URLS (Si existen) ---
         if (uiState.sourceUrls.isNotEmpty()) {
@@ -972,35 +995,6 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
             uiState.sourceUrls.take(2).forEach { url ->
                 Text("• ${url.take(30)}...", color = ColorCyanNexus, fontSize = 12.sp)
             }
-        }
-    }
-}
-
-@Composable
-fun MusicResultCardStyled(uiState: JarvisOverlayUiState) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF2C2C3A), RoundedCornerShape(16.dp))
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Imagen (si tienes URL)
-        AsyncImage(
-            model = uiState.musicCoverUrl,
-            contentDescription = "Cover",
-            modifier = Modifier
-                .size(60.dp)
-                .clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop
-        )
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Column {
-            Text(uiState.musicTitle, color = Color.White, fontWeight = FontWeight.Bold)
-            Text(uiState.musicArtist, color = Color.Gray, fontSize = 13.sp)
-            Text("• ${uiState.musicGenre}", color = ColorCyanNexus, fontSize = 12.sp)
         }
     }
 }
@@ -1052,7 +1046,7 @@ private fun SourceChip(url: String) {
             }
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
-        Text(text = "🔗 Fuente", color = Color(0xFFCCCCEE), fontSize = 12.sp)
+        Text(text = " Fuente", color = Color(0xFFCCCCEE), fontSize = 12.sp)
     }
 }
 
@@ -1199,4 +1193,22 @@ fun JarvisOverlayUiState.clearPanel() {
 fun JarvisOverlayUiState.hidePanel() {
     showPanel = false
     clearPanel()
+}
+@Composable
+fun HtmlText(html: String, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { context ->
+            TextView(context).apply {
+                movementMethod = LinkMovementMethod.getInstance()
+                setText(Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY))
+                setTextColor(android.graphics.Color.WHITE)
+                textSize = 16f
+                setLineSpacing(4f, 1.2f) // mejor espaciado
+            }
+        },
+        modifier = modifier,
+        update = { textView ->
+            textView.text = Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY)
+        }
+    )
 }

@@ -40,6 +40,7 @@ import kotlinx.coroutines.delay
 import android.os.Vibrator
 import android.os.VibrationEffect
 import android.os.Build
+import com.example.myapplication.core.integrations.SearchResult
 import com.example.myapplication.data.ChatRepository
 import com.example.myapplication.model.ScreenElement
 import com.example.myapplication.ui.JarvisOverlayUiState
@@ -194,7 +195,7 @@ class JarvisVoiceController(
                     estaProcesandoComando = false
                     timeoutServidor?.let { mainHandler.removeCallbacks(it) }
                     ui.setOrbVisibility(true)
-                    ui.showText("🎤 Escuchando...")
+                    ui.showText(" Escuchando...")
                     // Activar sesión de escucha con Google Cloud STT
                     sesionActiva = true
                     isProcessing = false
@@ -255,7 +256,7 @@ class JarvisVoiceController(
     }
 
     private fun iniciarModoConversacional() {
-        Log.d(TAG, "💬 Iniciando modo conversacional - esperando 5 segundos")
+        Log.d(TAG, " Iniciando modo conversacional - esperando 5 segundos")
 
         // Cancelar timeout anterior si existe
         timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
@@ -270,7 +271,7 @@ class JarvisVoiceController(
 
         // Configurar timeout para volver a modo wake word
         timeoutConversacional = Runnable {
-            Log.d(TAG, "⏰ 5 segundos sin actividad - volviendo a modo wake word")
+            Log.d(TAG, " 5 segundos sin actividad - volviendo a modo wake word")
             finalizarSesionConversacional()
         }
         mainHandler.postDelayed(timeoutConversacional!!, TIMEOUT_CONVERSACIONAL_MS)
@@ -282,35 +283,35 @@ class JarvisVoiceController(
     private fun reiniciarTimeoutConversacional() {
         timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
         timeoutConversacional = Runnable {
-            Log.d(TAG, "⏰ 5 segundos sin actividad - volviendo a modo wake word")
+            Log.d(TAG, " 5 segundos sin actividad - volviendo a modo wake word")
             finalizarSesionConversacional()
         }
         mainHandler.postDelayed(timeoutConversacional!!, TIMEOUT_CONVERSACIONAL_MS)
     }
 
     private fun finalizarSesionConversacional() {
-        Log.d(TAG, "🔇 Finalizando modo conversacional")
+        Log.d(TAG, " Finalizando modo conversacional")
         timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
         timeoutConversacional = null
         modoConversacionActivo = false
 
-        // ✅ Detener la sesión de escucha
+        //  Detener la sesión de escucha
         voiceEngine.detenerSesion()
 
-        // ✅ Reanudar wake word
+        //  Reanudar wake word
         porcupineController?.reanudarPorcupine()
 
-        // ✅ Cerrar el panel de conversación
+        //  Cerrar el panel de conversación
         uiState?.showConversation = false
 
-        // ✅ Resetear estado
+        //  Resetear estado
         setState(JarvisState.IDLE)
     }
 
     private fun procesarTexto(texto: String) {
         if (modoConversacionActivo) {
             reiniciarTimeoutConversacional()
-            Log.d(TAG, "🔄 Timeout conversacional reiniciado por actividad del usuario")
+            Log.d(TAG, " Timeout conversacional reiniciado por actividad del usuario")
         }
 
         mainHandler.post {
@@ -330,8 +331,8 @@ class JarvisVoiceController(
         }
         val ahora = System.currentTimeMillis()
         val textoLimpio = texto.trim()
-        // 🆕 Guardar mensaje del usuario LOCALMENTE inmediatamente
-        // ✅ CORRECTO
+        //  Guardar mensaje del usuario LOCALMENTE inmediatamente
+        //  CORRECTO
         if (chatRepository != null) {
             scope.launch {
                 chatRepository.addUserMessage(texto)
@@ -347,7 +348,7 @@ class JarvisVoiceController(
         val tiempoDesdeTTS = ahora - ttsTerminoTimestamp
         if (tiempoDesdeTTS < 2000L) {
             if (textoLimpio.length < 15) {
-                Log.d(TAG, "⏭️ Posible eco post-TTS ignorado: '$texto'")
+                Log.d(TAG, " Posible eco post-TTS ignorado: '$texto'")
                 return
             }
         }
@@ -373,7 +374,7 @@ class JarvisVoiceController(
             val respuesta = "¡Hola! ¿Qué necesitas?"
             hablar(respuesta)
 
-            // 🆕 Guardar en Room
+            //  Guardar en Room
             chatRepository?.let { repo ->
                 scope.launch {
                     repo.addUserMessage(texto)
@@ -387,7 +388,7 @@ class JarvisVoiceController(
             return
         }
         // ============================================================
-        // ⭐ PRIMERO: COMANDOS DE RECONOCIMIENTO DE MÚSICA (ACRCloud)
+        //  PRIMERO: COMANDOS DE RECONOCIMIENTO DE MÚSICA (ACRCloud)
         // ============================================================
         val lowerText = textoLimpio.lowercase()
         val comandosMusica = listOf(
@@ -407,9 +408,9 @@ class JarvisVoiceController(
         )
 
         if (comandosMusica.any { lowerText.contains(it) }) {
-            Log.d(TAG, "🎵 Comando de reconocimiento de música detectado")
+            Log.d(TAG, " Comando de reconocimiento de música detectado")
             startMusicRecognition()
-            return  // ✅ IMPORTANTE: salir aquí para que no siga procesando
+            return  //  IMPORTANTE: salir aquí para que no siga procesando
         }
 
         // ============================================================
@@ -501,7 +502,7 @@ class JarvisVoiceController(
         // YouTube
         if (texto.lowercase().contains("youtube") &&
             (texto.lowercase().contains("pon") || texto.lowercase().contains("reproduce"))) {
-            Log.d(TAG, "🎬 Comando de YouTube detectado: '$texto'")
+            Log.d(TAG, " Comando de YouTube detectado: '$texto'")
             ejecutarMusica(texto)
             return
         }
@@ -518,7 +519,7 @@ class JarvisVoiceController(
         }
         // Cancelación
         if (esComandoCancelacion(texto)) {
-            Log.d(TAG, "🛑 Comando de cancelación detectado: '$texto'")
+            Log.d(TAG, " Comando de cancelación detectado: '$texto'")
             cancelarAccionActual()
             return
         }
@@ -548,7 +549,7 @@ class JarvisVoiceController(
                 val contacto = CommandAnalyzer.detectarParametro(texto, intencion)
                 val mensaje = extraerMensajeDelComando(texto)
                 if (contacto.isNotBlank() && mensaje.isNotBlank()) {
-                    Log.d(TAG, "📱 [WHATSAPP] Mostrando preview para $contacto")
+                    Log.d(TAG, " [WHATSAPP] Mostrando preview para $contacto")
                     ActionExecutor.sendWhatsAppMessage(context, contacto, mensaje)
                     hablar("Enviando mensaje a $contacto") {
                         isProcessing = false
@@ -630,12 +631,12 @@ class JarvisVoiceController(
         if (isRecognizingMusic) return
         isRecognizingMusic = true
 
-        ui.showText("🎵 Reconociendo música... acercando el dispositivo")
+        ui.showText(" Reconociendo música... acercando el dispositivo")
         ui.renderState(JarvisState.LISTENING)
         ui.setOrbVisibility(true)
 
         voiceEngine.iniciarReconocimientoMusica(
-            durationSegundos = 10,  // ✅ Solo 10 segundos
+            durationSegundos = 10,  //  Solo 10 segundos
             onResult = { musicResult ->
                 isRecognizingMusic = false
                 if (musicResult != null) {
@@ -654,7 +655,7 @@ class JarvisVoiceController(
             if (isRecognizingMusic) {
                 isRecognizingMusic = false
                 voiceEngine.detenerReconocimientoMusica()
-                ui.showText("⏰ Tiempo agotado")
+                ui.showText(" Tiempo agotado")
                 ui.renderState(JarvisState.IDLE)
             }
         }
@@ -674,11 +675,11 @@ class JarvisVoiceController(
         }
     }
     private fun showMusicResult(music: MusicRecognizerRest.MusicResult) {
-        Log.d(TAG, "🎵 Mostrando resultado: ${music.title} - ${music.artist}")
+        Log.d(TAG, " Mostrando resultado: ${music.title} - ${music.artist}")
         Log.d(TAG, "   Enlaces: ${music.externalUrls}")
 
         uiState?.let { state ->
-            // ✅ Asignar TODOS los campos
+            //  Asignar TODOS los campos
             state.musicTitle = music.title
             state.musicArtist = music.artist
             state.musicAlbum = music.album
@@ -687,12 +688,12 @@ class JarvisVoiceController(
             state.musicCoverUrl = music.coverUrl
             state.musicExternalUrls = music.externalUrls
 
-            // ✅ Mostrar en la UI
+            //  Mostrar en la UI
             state.showMusicResult = true
             state.showPanel = true
         }
 
-        // ✅ Hablar el resultado
+        //  Hablar el resultado
         hablar("La canción es ${music.title} de ${music.artist}")
     }
     private fun extraerAppsParaSplitScreen(texto: String): List<String> {
@@ -730,9 +731,9 @@ class JarvisVoiceController(
                 val pkg = ActionExecutor.getPackageNameFromAppName(nombre, context)
                 if (pkg != null) {
                     paquetes.add(pkg)
-                    Log.d(TAG, "✅ App detectada: '$nombre' → $pkg")
+                    Log.d(TAG, " App detectada: '$nombre' → $pkg")
                 } else {
-                    Log.w(TAG, "⚠️ App no encontrada: '$nombre'")
+                    Log.w(TAG, " App no encontrada: '$nombre'")
                 }
             }
         }
@@ -768,12 +769,12 @@ class JarvisVoiceController(
     }
 
     private fun ejecutarBusquedaImagenes(query: String) {
-        ui.showText("🔍 Buscando imágenes de $query...")
+        ui.showText(" Buscando imágenes de $query...")
         setState(JarvisState.THINKING)
 
         scope.launch {
             try {
-                // 🌐 Hacemos la petición nativa a Tavily usando tus imports de OkHttp
+                //  Hacemos la petición nativa a Tavily usando tus imports de OkHttp
                 val urlsImagenes = withContext(Dispatchers.IO) {
                     val client = OkHttpClient.Builder()
                         .connectTimeout(10, TimeUnit.SECONDS)
@@ -814,7 +815,7 @@ class JarvisVoiceController(
                     listaUrls
                 }
 
-                // 🎨 Volvemos al hilo principal para renderizar los resultados en el Orbe
+                //  Volvemos al hilo principal para renderizar los resultados en el Orbe
                 withContext(Dispatchers.Main) {
                     if (urlsImagenes.isNotEmpty()) {
                         ultimoResultadoBusqueda = SearchResult(
@@ -836,7 +837,7 @@ class JarvisVoiceController(
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error en búsqueda visual: ${e.message}")
+                Log.e(TAG, " Error en búsqueda visual: ${e.message}")
                 isProcessing = false
                 withContext(Dispatchers.Main) {
                     ui.showText("Hubo un error de conexión al buscar imágenes.")
@@ -913,7 +914,7 @@ class JarvisVoiceController(
                 isProcessing = false
             }
         } else {
-            // 🟢 Abrir Spotify sin setPackage
+            //  Abrir Spotify sin setPackage
             val queryEncoded = Uri.encode(busqueda)
             val uri = Uri.parse("https://open.spotify.com/search/$queryEncoded")
             val intent = Intent(Intent.ACTION_VIEW, uri).apply {
@@ -991,9 +992,9 @@ class JarvisVoiceController(
                     .readTimeout(10, TimeUnit.SECONDS)
                     .build()
 
-                // 🔑 REEMPLAZA ESTO CON TU URL REAL DE MODAL
+                //  REEMPLAZA ESTO CON TU URL REAL DE MODAL
                 val url = "wss://mausand2499--jarvoice-nexus-api-nexusserver-serve-dev.modal.run/ws/jarvis"
-                Log.d(TAG, "📡 Consultando: $url")
+                Log.d(TAG, " Consultando: $url")
 
                 val request = Request.Builder()
                     .url(url)
@@ -1005,28 +1006,28 @@ class JarvisVoiceController(
                     val json = JSONObject(response.body?.string() ?: "{}")
                     val status = json.optString("status", "")
 
-                    Log.d(TAG, "📡 Response: $json")
+                    Log.d(TAG, " Response: $json")
 
                     if (status == "ready") {
                         val host = json.optString("host", "")
                         val port = json.optInt("port", 0)
 
                         if (host.isNotEmpty() && port > 0) {
-                            Log.d(TAG, "✅ Endpoint: $host:$port")
+                            Log.d(TAG, " Endpoint: $host:$port")
                             return@withContext Pair(host, port)
                         }
                     } else if (status == "not_ready") {
-                        Log.w(TAG, "⏳ gRPC aún no listo, reintentando...")
+                        Log.w(TAG, " gRPC aún no listo, reintentando...")
                         delay(2000)
                         return@withContext obtenerDireccionGrpc()
                     } else {
-                        Log.e(TAG, "❌ Estado desconocido: $status")
+                        Log.e(TAG, " Estado desconocido: $status")
                     }
                 } else {
-                    Log.e(TAG, "❌ HTTP ${response.code}")
+                    Log.e(TAG, " HTTP ${response.code}")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error: ${e.message}")
+                Log.e(TAG, " Error: ${e.message}")
             }
             null
         }
@@ -1046,7 +1047,7 @@ class JarvisVoiceController(
                 com.example.myapplication.BuildConfig.NEXUS_WS_HOST
             }
 
-            Log.d(TAG, "📡 Conectando a WebSocket en: $urlCompleta")
+            Log.d(TAG, " Conectando a WebSocket en: $urlCompleta")
 
             wsClient = NexusWebSocketClient(
                 hostUrl = urlCompleta,
@@ -1054,11 +1055,11 @@ class JarvisVoiceController(
             )
 
             wsClient?.onConnected = {
-                Log.d(TAG, "🚀 Canal WebSocket con Nexus AI vinculado exitosamente.")
+                Log.d(TAG, " Canal WebSocket con Nexus AI vinculado exitosamente.")
             }
 
             wsClient?.onDisconnected = {
-                Log.d(TAG, "🛑 Conexión WebSocket cerrada.")
+                Log.d(TAG, " Conexión WebSocket cerrada.")
                 mainHandler.post {
                     setState(JarvisState.IDLE)
                 }
@@ -1075,7 +1076,7 @@ class JarvisVoiceController(
 
             wsClient?.onEvent = { jsonString ->
                 Log.d(TAG, "Evento recibido: ${jsonString.take(200)}...")
-                procesarEventoWebSocket(jsonString)  // ✅ Aquí está la llamada
+                procesarEventoWebSocket(jsonString)  //  Aquí está la llamada
             }
             wsClient?.connect()
         }
@@ -1122,7 +1123,7 @@ class JarvisVoiceController(
                                 tag = tag,
                                 displayText = responseText
                             )
-                            Log.d(TAG, "💾 Respuesta guardada en Room: $responseText")
+                            Log.d(TAG, " Respuesta guardada en Room: $responseText")
                         }
                     }
                     // 🆕 SI ES CONVERSACIONAL, ABRIR EL PANEL DE CONVERSACIÓN
@@ -1133,7 +1134,7 @@ class JarvisVoiceController(
                             uiState?.transcription = responseText
                             // Cargar mensajes de Room automáticamente
                         }
-                        // ✅ Hablar la respuesta y después iniciar modo conversacional
+                        //  Hablar la respuesta y después iniciar modo conversacional
                         hablar(responseText) {
                             // 🆕 Después de TTS, iniciar modo conversacional (esperar 5 segundos)
                             iniciarModoConversacional()
@@ -1200,7 +1201,7 @@ class JarvisVoiceController(
 
                                             // Si hay una respuesta actualizamos responseText
                                             if (answer.isNotBlank()) {
-                                                responseText = answer  // ✅ Ahora es var, así que funciona
+                                                responseText = answer  //  Ahora es var, así que funciona
                                             }
 
                                             // CREAR LAS LISTAS VACIAS Y LLENARLAS CON LOS DATOS DEL JSON
@@ -1283,7 +1284,7 @@ class JarvisVoiceController(
                                 }
                             }
                             if (broadcastActions.isNotEmpty()) {
-                                Log.d(TAG, "🎯 Ejecutando ${broadcastActions.size} acciones")
+                                Log.d(TAG, " Ejecutando ${broadcastActions.size} acciones")
                                 ejecutarAccionesTecnicas(broadcastActions, responseText, "websocket_payload")
                             }
                         }
@@ -1325,7 +1326,7 @@ class JarvisVoiceController(
                     mainHandler.post {
                         when {
                             type == "conversacional" || type == "fallback" -> {
-                                // ✅ Cancelar timeout del servidor — esta es la respuesta final
+                                //  Cancelar timeout del servidor — esta es la respuesta final
                                 timeoutServidor?.let { mainHandler.removeCallbacks(it) }
                                 timeoutServidor = null
                                 esperandoRespuestaServidor = false
@@ -1347,7 +1348,7 @@ class JarvisVoiceController(
                             }
                             type == "busqueda" -> {
                                 if (message.isNotBlank()) {
-                                    ui.showText("🔍 $message")
+                                    ui.showText(" $message")
                                 }
                             }
                             message.contains("listo") || percent >= 1.0 -> {
@@ -1375,13 +1376,13 @@ class JarvisVoiceController(
                     val intent = payload.optString("intent", "")
                     val params = payload.optJSONObject("params")
 
-                    Log.d(TAG, "🎯 Intent: $intent, Params: $params")
+                    Log.d(TAG, " Intent: $intent, Params: $params")
                 }
 
                 "ERROR" -> {
                     val payload = root.getJSONObject("payload")
                     val errorMsg = payload.optString("message", "Error desconocido")
-                    Log.e(TAG, "❌ Error del servidor: $errorMsg")
+                    Log.e(TAG, " Error del servidor: $errorMsg")
                     estaEnviandoAlServidor = false
                     estaProcesandoComando = false
                     cancelarEnvioActual()
@@ -1402,7 +1403,7 @@ class JarvisVoiceController(
                         val respuestaTexto = ttsObj.getString("text")
                         hablar(respuestaTexto) { finalizarInteraccion() }
 
-                        Log.d(TAG, "🔊 TTS extraído: $respuestaTexto")
+                        Log.d(TAG, " TTS extraído: $respuestaTexto")
 
                         mainHandler.post {
                             ui.showText(respuestaTexto)
@@ -1525,7 +1526,7 @@ class JarvisVoiceController(
         // iniciar timeout para evitar que se quede colgado
         timeoutServidor?.let { mainHandler.removeCallbacks(it) }
         timeoutServidor = Runnable {
-            Log.w(TAG, "⏰ TIMEOUT del servidor (${TIMEOUT_SERVIDOR_MS}ms)")
+            Log.w(TAG, " TIMEOUT del servidor (${TIMEOUT_SERVIDOR_MS}ms)")
             cancelarEnvioActual()
             setState(JarvisState.IDLE)
             ui.showText("El servidor tardó demasiado en responder")
@@ -1547,7 +1548,7 @@ class JarvisVoiceController(
                     )
                 )
 
-                // 📍 Obtener ubicación
+                //  Obtener ubicación
                 var latitude: Double? = null
                 var longitude: Double? = null
                 var locationError: String? = null
@@ -1559,7 +1560,7 @@ class JarvisVoiceController(
                         latitude = location.latitude
                         longitude = location.longitude
                         Log.d(TAG, "Ubicación obtenida: $latitude, $longitude")
-                        ui.showText("📍 Ubicación obtenida")
+                        ui.showText(" Ubicación obtenida")
                     } else {
                         locationError = "No se pudo obtener ubicación"
                     }
@@ -1567,7 +1568,7 @@ class JarvisVoiceController(
                     locationError = "Error: ${e.message}"
                 }
 
-                // 📸 Capturar pantalla
+                //  Capturar pantalla
                 MyAccessibilityService.instance?.captureNow()
                 delay(200)
 
@@ -1583,7 +1584,7 @@ class JarvisVoiceController(
                     )
                 )
 
-                // 🌐 Verificar WebSocket
+                //  Verificar WebSocket
                 val client = wsClient ?: run {
                     inicializarWebSocket()
                     wsClient ?: error("No se pudo inicializar el canal WebSocket")
@@ -1609,9 +1610,9 @@ class JarvisVoiceController(
                     return@launch
                 }
 
-                // ✅ Construir el JSON correctamente
+                //  Construir el JSON correctamente
                 val mensajeJson = JSONObject().apply {
-                    put("text", texto.trim())  // ✅ Texto limpio
+                    put("text", texto.trim())  //  Texto limpio
                     put("timestamp", System.currentTimeMillis())
 
                     val contextObj = JSONObject().apply {
@@ -1639,14 +1640,14 @@ class JarvisVoiceController(
                     put("context", contextObj)
                 }
 
-                // ✅ Enviar el JSON directamente usando el WebSocket
+                //  Enviar el JSON directamente usando el WebSocket
                 val jsonString = mensajeJson.toString()
-                Log.d(TAG, "📤 Enviando comando: $jsonString")
+                Log.d(TAG, " Enviando comando: $jsonString")
 
-                // ✅ Enviar directamente sin pasar por sendText()
+                //  Enviar directamente sin pasar por sendText()
                 client.sendText(jsonString)
 
-                Log.d(TAG, "📤 Comando enviado exitosamente")
+                Log.d(TAG, " Comando enviado exitosamente")
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error crítico en enviarComandoAlServidor: ${e.message}")
@@ -2034,7 +2035,7 @@ class JarvisVoiceController(
 //        if (::audioEngine.isInitializetry:
 //    rescate_result = await check_rescates(texto_lower, self.texto_acumulado, metadata_ws)
 //except Exception as e:
-//    self._log(f"❌ Error en rescates: {e}")
+//    self._log(f" Error en rescates: {e}")
 //    rescate_result = Noned) audioEngine.start()
 //        porcupineController?.reanudarPorcupine()
         setState(JarvisState.IDLE)
@@ -2106,7 +2107,7 @@ class JarvisVoiceController(
             return
         }
 
-        // 🚀 LÓGICA DE CONFIRMACIÓN WHATSAPP
+        //  LÓGICA DE CONFIRMACIÓN WHATSAPP
         if (uiState?.showWhatsappPreview == true) {
             val afirmativos = listOf("sí", "si", "claro", "dale", "ok", "enviar", "manda", "hazlo")
             val negativos = listOf("no", "cancela", "olvídalo", "quita", "mejor no")
@@ -2232,7 +2233,7 @@ class JarvisVoiceController(
         scope.launch {
             Log.d(TAG, " [DEBUG VISUAL] Solicitando captura de pantalla...")
 
-            // 🔥 Usar callback para asegurar que obtenemos el snapshot
+            //  Usar callback para asegurar que obtenemos el snapshot
             var elementosCapturados: List<ScreenElement> = emptyList()
 
             withContext(Dispatchers.Main) {
@@ -2252,7 +2253,7 @@ class JarvisVoiceController(
 
             withContext(Dispatchers.Main) {
                 if (elementosCapturados.isEmpty()) {
-                    Log.e(TAG, "❌ No se pudo capturar la pantalla después de ${intentos} intentos")
+                    Log.e(TAG, " No se pudo capturar la pantalla después de ${intentos} intentos")
                     ui.setOrbVisibility(true)
                     hablar("No pude ver la pantalla. ¿Puedes abrir la app primero?") {
                         isProcessing = false
@@ -2265,8 +2266,8 @@ class JarvisVoiceController(
                                 it.bounds.width() > 10 && it.bounds.height() > 10
                     }
 
-                    Log.d(TAG, "📱 Elementos totales: ${elementosCapturados.size}")
-                    Log.d(TAG, "🖱️ Elementos interactivos: ${interactivos.size}")
+                    Log.d(TAG, " Elementos totales: ${elementosCapturados.size}")
+                    Log.d(TAG, " Elementos interactivos: ${interactivos.size}")
 
                     if (interactivos.isEmpty()) {
                         ui.setOrbVisibility(true)
@@ -2322,7 +2323,7 @@ class JarvisVoiceController(
             return
         }
 
-        Log.d(TAG, "🖱️ CLICK en #$numero: x=${elemento.centerX} y=${elemento.centerY}")
+        Log.d(TAG, " CLICK en #$numero: x=${elemento.centerX} y=${elemento.centerY}")
 
         //  IMPORTANTE: Ejecuta el tap DIRECTAMENTE sin pasar por acciones
         // para evitar delays
@@ -2546,7 +2547,7 @@ class JarvisVoiceController(
     // LIFECYCLE
     // ────────────────────────────────────────────────────────────────────────
     fun resetCompleto() {
-        Log.d(TAG, "🔄 Reset completo desde controlador")
+        Log.d(TAG, " Reset completo desde controlador")
 
         // 1. Detener todo
         stopListeningCompletamente()
@@ -2578,7 +2579,7 @@ class JarvisVoiceController(
         // 4. Reanudar wake word
         porcupineController?.reanudarPorcupine()
 
-        Log.d(TAG, "✅ Reset completo - Listo para wake word")
+        Log.d(TAG, " Reset completo - Listo para wake word")
     }
     fun destroy() {
 

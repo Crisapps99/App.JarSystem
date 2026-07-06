@@ -68,7 +68,7 @@ object MessagingManager {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)
-        Log.d("JARVIS_MSG", "📱 Abriendo WhatsApp con $cleanNumber")
+        Log.d("JARVIS_MSG", " Abriendo WhatsApp con $cleanNumber")
     }
 
     /**
@@ -115,7 +115,7 @@ object MessagingManager {
             }
         }
         context.startActivity(intent)
-        Log.d("JARVIS_MSG", "🛒 Redirigiendo a Play Store: $packageName")
+        Log.d("JARVIS_MSG", " Redirigiendo a Play Store: $packageName")
     }
 
     /**

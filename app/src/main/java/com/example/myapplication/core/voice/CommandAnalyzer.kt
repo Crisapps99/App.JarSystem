@@ -28,7 +28,7 @@ object CommandAnalyzer {
         }
 
         return when {
-            // ✅ PRIORIDAD: Si menciona "youtube", es VIDEO, no música
+            //  PRIORIDAD: Si menciona "youtube", es VIDEO, no música
             t.contains("youtube") || (t.contains("video") && !t.contains("música")) -> {
                 Intent.PLAY_MUSIC  // Usamos PLAY_MUSIC pero cambiaremos la app a YouTube
             }

@@ -242,7 +242,7 @@ fun NexusUnifiedBottomBar(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 🔥 SECCIÓN DE PREVISUALIZACIÓN (JETPACK COMPOSE PREVIEW)
+//  SECCIÓN DE PREVISUALIZACIÓN (JETPACK COMPOSE PREVIEW)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Preview(name = "Nexus Chat - Estado Inactivo", showBackground = true, backgroundColor = 0xFF121214)

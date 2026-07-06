@@ -65,7 +65,7 @@ class JarvisNotificationListener : NotificationListenerService() {
         //  FIX: Usar getCharSequence para evitar ClassCastException (SpannableString)
         val item = convertirSbn(sbn) ?: return
 
-        Log.d(TAG, "📬 Nueva: [${item.appName}] ${item.title}: ${item.body.take(60)}")
+        Log.d(TAG, " Nueva: [${item.appName}] ${item.title}: ${item.body.take(60)}")
         NotificationMemory.addNotification(item)
     }
 
@@ -157,7 +157,7 @@ class JarvisNotificationListener : NotificationListenerService() {
             }
 
             if (target == null) {
-                Log.w(TAG, "️ No se encontró notificación respondible para: $targetPackage")
+                Log.w(TAG, " No se encontró notificación respondible para: $targetPackage")
                 return
             }
 
@@ -188,7 +188,7 @@ class JarvisNotificationListener : NotificationListenerService() {
             }
 
             if (!respondido) {
-                Log.w(TAG, "⚠ Ninguna acción de esta app permite respuesta directa")
+                Log.w(TAG, " Ninguna acción de esta app permite respuesta directa")
             }
 
         } catch (e: Exception) {

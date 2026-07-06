@@ -60,7 +60,7 @@
 //    //  NUEVO: Setter para timestamp de TTS
 //    fun setTtsEndTimestamp(timestamp: Long) {
 //        ttsTerminoTimestamp = timestamp
-//        Log.d(TAG, "📍 TTS terminó en: $timestamp")
+//        Log.d(TAG, " TTS terminó en: $timestamp")
 //    }
 //
 //    fun startSession() {
@@ -114,7 +114,7 @@
 //
 //        if (inEcoWindow && !allowEarlyInput) {
 //            val timeSinceTtsEnd = currentTime - ttsTerminoTimestamp
-//            Log.d(TAG, "⚠️ Eco ignorado (${timeSinceTtsEnd}ms) - esperando")
+//            Log.d(TAG, " Eco ignorado (${timeSinceTtsEnd}ms) - esperando")
 //            onsetCount = 0
 //            offsetCount = 0
 //            return
@@ -129,7 +129,7 @@
 //
 //                if (onsetCount % 10 == 1) {
 //                    val desde = if (allowEarlyInput) "durante TTS" else "normal"
-//                    Log.d(TAG, "🎙️ Voz detectada [$desde] (RMS=$rms, onset=$onsetCount/${ONSET_FRAMES_REQUIRED})")
+//                    Log.d(TAG, " Voz detectada [$desde] (RMS=$rms, onset=$onsetCount/${ONSET_FRAMES_REQUIRED})")
 //                }
 //
 //                // Después de N frames, confirma inicio de voz
@@ -183,7 +183,7 @@
 //        sessionTimeoutJob = scope.launch {
 //            delay(SESSION_TIMEOUT_MS)
 //            if (sessionState != SessionState.IDLE) {
-//                Log.d(TAG, "⏱️ Timeout alcanzado")
+//                Log.d(TAG, " Timeout alcanzado")
 //                onSessionTimeout?.invoke()
 //            }
 //        }

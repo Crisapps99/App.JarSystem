@@ -105,7 +105,7 @@
 //    }
 //
 //    private fun iniciarEscucha() {
-//        txtStatus.text = "🎤 Escuchando..."
+//        txtStatus.text = " Escuchando..."
 //        tts.speak("Entrenemos.", TextToSpeech.QUEUE_FLUSH, null, null)
 //        speechRecognizer.startListening(recognizerIntent)
 //    }
@@ -245,7 +245,7 @@
 ////
 ////            command = Gson().fromJson(json, CommandData::class.java)
 ////
-////            // 🔥 AGREGAMOS LOS CAMPOS FALTANTES
+////            //  AGREGAMOS LOS CAMPOS FALTANTES
 ////            command = command.copy(
 ////                frase = texto,
 ////                created_at = Date().toString()
@@ -265,7 +265,7 @@
 ////    private fun mostrarResultado(cmd: CommandData) {
 ////
 ////        txtStatus.text = """
-////✔ Resultado NLU (Ollama)
+//// Resultado NLU (Ollama)
 ////
 ////Frase: ${cmd.frase}
 ////Intención: ${cmd.intent}
@@ -283,11 +283,11 @@
 //    // ENVIO A MONGO
 //    // =============================
 ////    private suspend fun enviarAMongo() {
-////        txtStatus.text = "📡 Guardando en Mongo..."
+////        txtStatus.text = " Guardando en Mongo..."
 ////
 ////        try {
 ////            val resp = api.trainexample(command)
-////            txtStatus.text = "Guardado ✔\n${resp.message}"
+////            txtStatus.text = "Guardado \n${resp.message}"
 ////            mostrarDialogoEntrenar()
 ////
 ////        } catch (e: Exception) {
@@ -315,7 +315,7 @@
 ////        val entitiesFormatted = command.entities.entries.joinToString("\n") { "• ${it.key} = ${it.value}" }
 ////
 ////        val mensaje = """
-////📌 Resultado NLU (Ollama):
+//// Resultado NLU (Ollama):
 ////
 ////Frase: ${command.frase}
 ////Intención: ${command.intent}
@@ -344,19 +344,19 @@
 //    // ENTRENAMIENTO
 //    // =============================
 ////    private fun entrenarModelo() {
-////        txtStatus.text = "🔥 Entrenando modelo..."
+////        txtStatus.text = " Entrenando modelo..."
 ////        tts.speak("Iniciando entrenamiento.", TextToSpeech.QUEUE_FLUSH, null, null)
 ////
 ////        lifecycleScope.launch {
 ////            try {
 ////                val resp = api.trainModel()
 ////
-////                txtStatus.text = "✔ Entrenamiento finalizado.\n${resp.message}"
+////                txtStatus.text = " Entrenamiento finalizado.\n${resp.message}"
 ////
 ////                tts.speak("Entrenamiento completado.", TextToSpeech.QUEUE_FLUSH, null, null)
 ////
 ////            } catch (e: Exception) {
-////                txtStatus.text = "❌ Error entrenando: ${e.message}"
+////                txtStatus.text = " Error entrenando: ${e.message}"
 ////                tts.speak("Error durante el entrenamiento.", TextToSpeech.QUEUE_FLUSH, null, null)
 ////            }
 ////        }

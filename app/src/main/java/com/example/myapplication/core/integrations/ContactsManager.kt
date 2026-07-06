@@ -71,7 +71,7 @@ object ContactsManager {
 
         cachedContacts = contacts
         lastLoadTime = now
-        Log.d("JARVIS_CONTACTS", "📒 ${contacts.size} contactos cargados")
+        Log.d("JARVIS_CONTACTS", " ${contacts.size} contactos cargados")
         return contacts
     }
     fun getAllContacts(context: Context): List<Contact> {
@@ -162,10 +162,10 @@ object ContactsManager {
             context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValues)
 
             cachedContacts = emptyList()
-            Log.d("JARVIS_CONTACTS", "✅ Contacto creado: $name → $phoneNumber")
+            Log.d("JARVIS_CONTACTS", " Contacto creado: $name → $phoneNumber")
             true
         } catch (e: Exception) {
-            Log.e("JARVIS_CONTACTS", "❌ Error creando contacto: ${e.message}")
+            Log.e("JARVIS_CONTACTS", " Error creando contacto: ${e.message}")
             false
         }
     }
@@ -179,7 +179,7 @@ object ContactsManager {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)
-        Log.d("JARVIS_CALL", "📞 Llamando a $phoneNumber")
+        Log.d("JARVIS_CALL", " Llamando a $phoneNumber")
     }
 
     fun dialNumber(context: Context, phoneNumber: String) {

@@ -26,6 +26,7 @@ import androidx.core.app.NotificationCompat
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.myapplication.activity.JarActivity
 import com.example.myapplication.core.audio.ContinuousVoiceEngine
+import com.example.myapplication.core.integrations.SearchResult
 import com.example.myapplication.core.memory.ScreenMemory
 import com.example.myapplication.core.voice.JarvisState
 import com.example.myapplication.core.voice.JarvisUi
@@ -79,7 +80,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             if (intent?.action == "JARVIS.SHOW_WHATSAPP_PREVIEW") {
                 val contact = intent.getStringExtra("contact") ?: return
                 val message = intent.getStringExtra("message") ?: return
-                Log.d(TAG, "📱 Mostrando preview de WhatsApp para $contact")
+                Log.d(TAG, " Mostrando preview de WhatsApp para $contact")
                 mainHandler.post {
                     uiState.pendingWhatsappContact = contact
                     uiState.pendingWhatsappMessage = message
@@ -93,7 +94,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
     }
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "🚀 Servicio creado")
+        Log.d(TAG, " Servicio creado")
         startForeground(NOTIFICATION_ID, createNotification())
         lifecycleOwner.start()
         createOverlay()
@@ -150,12 +151,12 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             serviceScope.launch {
                 val sessionId = chatRepository.getSessionId()
                 val count = dao.getMessagesForSession(sessionId).firstOrNull()?.size ?: 0
-                Log.d(TAG, "📊 Base de datos abierta, mensajes: $count")
+                Log.d(TAG, " Base de datos abierta, mensajes: $count")
 
-                // ✅ También imprime los mensajes para verlos en logs
+                //  También imprime los mensajes para verlos en logs
                 val messages = dao.getMessagesForSession(sessionId).firstOrNull()
                 messages?.forEach { msg ->
-                    Log.d(TAG, "💬 [${msg.sender}] ${msg.content}")
+                    Log.d(TAG, " [${msg.sender}] ${msg.content}")
                 }
             }
         } catch (e: Exception) {
@@ -206,7 +207,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
                             startActivity(intent)
                         },
                         onSendMessage = { text ->
-                            // ✅ Enviar mensaje escrito al servidor
+                            //  Enviar mensaje escrito al servidor
                             if (::controller.isInitialized) {
                                 controller.enviarComandoAlServidor(text)
                             }
@@ -242,16 +243,16 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             windowManager?.addView(composeView, params)
             composeView?.visibility = View.GONE
             isOverlayReady = true
-            Log.d(TAG, "✅ Overlay Compose creado")
+            Log.d(TAG, " Overlay Compose creado")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error creando overlay: ${e.message}")
+            Log.e(TAG, " Error creando overlay: ${e.message}")
             isOverlayReady = false
         }
     }
     private val resetReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "JARVIS.RESET_COMPLETE") {
-                Log.d(TAG, "📡 Reset completo recibido por broadcast")
+                Log.d(TAG, " Reset completo recibido por broadcast")
                 handleBackgroundDismiss()
             }
         }
@@ -302,7 +303,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         mainHandler.removeCallbacksAndMessages(null)
         serviceScope.coroutineContext.cancelChildren()
 
-        Log.d(TAG, "✅ Reset completo - Modo wake word activo")
+        Log.d(TAG, " Reset completo - Modo wake word activo")
     }
     // ────────────────────────────────────────────────────────────────────────
     // JarvisUi
@@ -342,14 +343,14 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         mainHandler.post {
             if (!isOverlayReady) return@post
 
-            // ✅ Si hay resultado de música, NO resetear el panel
+            //  Si hay resultado de música, NO resetear el panel
             if (uiState.showMusicResult && state == JarvisState.IDLE) {
                 // Mantener el panel visible con el resultado de música
                 uiState.showPanel = true
                 return@post
             }
 
-            // ✅ Si hay WhatsApp preview, NO resetear
+            //  Si hay WhatsApp preview, NO resetear
             if (uiState.showWhatsappPreview && state == JarvisState.IDLE) {
                 uiState.showPanel = true
                 return@post
@@ -366,7 +367,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
             if (state == JarvisState.IDLE) {
                 resumeWakeWordDetection()
-                // ✅ Si no hay resultados especiales, ocultar panel después de un tiempo
+                //  Si no hay resultados especiales, ocultar panel después de un tiempo
                 if (!uiState.showMusicResult && !uiState.showWhatsappPreview) {
                     mainHandler.postDelayed({
                         if (uiState.jarvisState == JarvisState.IDLE) {
@@ -526,7 +527,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
             .setPrimaryClip(android.content.ClipData.newPlainText("Nexus", texto))
         renderState(JarvisState.IDLE)
-        showText("¡Texto copiado! ✓")
+        showText("¡Texto copiado! ")
     }
 
     private fun ejecutarAbrirNavegador(urls: List<String>) {
@@ -567,7 +568,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         if (visible) {
             showOverlay()
         } else {
-            // ✅ No ocultar si hay resultado de música activo
+            //  No ocultar si hay resultado de música activo
             if (!uiState.showMusicResult) {
                 hideOverlay()
             }

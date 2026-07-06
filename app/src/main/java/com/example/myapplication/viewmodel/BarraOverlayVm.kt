@@ -51,9 +51,9 @@ fun ListeningBar(
     barColorMode: BarColorMode = BarColorMode.IDLE
 ) {
     val density      = LocalDensity.current.density
-    val cornerRadius = 50f * density  // ✅ Más redondeado
+    val cornerRadius = 50f * density  //  Más redondeado
     val infiniteTransition = rememberInfiniteTransition(label = "listening")
-    // ✅ Colores según modo
+    //  Colores según modo
     val activeColors = remember(barColorMode) {
         when (barColorMode) {
             BarColorMode.IDLE -> intArrayOf(
@@ -127,7 +127,7 @@ fun ListeningBar(
             val rectBox = RectF(margin, margin, w - margin, h - margin)
 
             if (jarvisState != JarvisState.IDLE) {
-                // ✅ Borde exterior con SweepGradient usando los colores del modo
+                //  Borde exterior con SweepGradient usando los colores del modo
                 val shaderOuter = SweepGradient(centerX, centerY, activeColors, null).apply {
                     setLocalMatrix(Matrix().apply { postRotate(sweepOffset, centerX, centerY) })
                 }
@@ -140,7 +140,7 @@ fun ListeningBar(
                 }
                 nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, glowPaintOuter)
 
-                // ✅ Borde interior con colores invertidos
+                //  Borde interior con colores invertidos
                 val shaderInner = SweepGradient(centerX, centerY, activeColors.reversedArray(), null).apply {
                     setLocalMatrix(Matrix().apply { postRotate(-sweepOffset * 1.2f, centerX, centerY) })
                 }

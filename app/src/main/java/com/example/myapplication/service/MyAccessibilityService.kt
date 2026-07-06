@@ -71,7 +71,7 @@ class MyAccessibilityService : AccessibilityService() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "JARVIS.WRITE_MESSAGE_AND_SEND") {
                 val mensaje = intent.getStringExtra("mensaje") ?: ""
-                Log.d(TAG, "✏️ Escribiendo mensaje: '$mensaje'")
+                Log.d(TAG, " Escribiendo mensaje: '$mensaje'")
                 escribirMensajeYEnviar(mensaje)
             }
         }
@@ -98,20 +98,20 @@ class MyAccessibilityService : AccessibilityService() {
                 addAction("JARVIS.YOUTUBE_AUTOCLICK")
             }
             registerReceiver(actionsReceiver, filter, RECEIVER_NOT_EXPORTED)
-            Log.i(TAG, "✅ BroadcastReceiver registrado para: $ACTION_EXECUTE")
+            Log.i(TAG, " BroadcastReceiver registrado para: $ACTION_EXECUTE")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error registrando BroadcastReceiver: ${e.message}", e)
+            Log.e(TAG, " Error registrando BroadcastReceiver: ${e.message}", e)
         }
         verificarPermisosCamara()
         val filterWrite = IntentFilter("JARVIS.WRITE_MESSAGE_AND_SEND")
         registerReceiver(writeMessageReceiver, filterWrite, RECEIVER_NOT_EXPORTED)
-        Log.d(TAG, "✅ AccessibilityService conectado y listo")
+        Log.d(TAG, " AccessibilityService conectado y listo")
     }
 
     private val sendMessageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "JARVIS.SEND_CURRENT_MESSAGE") {
-                Log.d(TAG, "📤 Recibido SEND_CURRENT_MESSAGE, presionando botón enviar")
+                Log.d(TAG, " Recibido SEND_CURRENT_MESSAGE, presionando botón enviar")
                 presionarBotonEnviar()
             }
         }
@@ -121,7 +121,7 @@ class MyAccessibilityService : AccessibilityService() {
         handler.postDelayed({
             val root = rootInActiveWindow
             if (root == null) {
-                Log.e(TAG, "❌ Sin ventana activa")
+                Log.e(TAG, " Sin ventana activa")
                 return@postDelayed
             }
 
@@ -139,7 +139,7 @@ class MyAccessibilityService : AccessibilityService() {
                 val nodos = root.findAccessibilityNodeInfosByViewId(id)
                 if (nodos.isNotEmpty()) {
                     campoTexto = nodos[0]
-                    Log.d(TAG, "🔍 Campo encontrado por ID: $id")
+                    Log.d(TAG, " Campo encontrado por ID: $id")
                     break
                 }
             }
@@ -169,7 +169,7 @@ class MyAccessibilityService : AccessibilityService() {
                 val args = Bundle()
                 args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, mensaje)
                 campoTexto.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                Log.d(TAG, "✅ Mensaje escrito: '$mensaje'")
+                Log.d(TAG, " Mensaje escrito: '$mensaje'")
 
                 // 4. Presionar el botón "Enviar"
                 handler.postDelayed({
@@ -177,7 +177,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }, 500)
 
             } else {
-                Log.e(TAG, "❌ No se encontró campo de texto")
+                Log.e(TAG, " No se encontró campo de texto")
             }
         }, 1500) // Esperar a que cargue el chat
     }
@@ -188,7 +188,7 @@ class MyAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow
 
         if (root == null) {
-            Log.e(TAG, "❌ rootInActiveWindow NULL")
+            Log.e(TAG, " rootInActiveWindow NULL")
             return
         }
 
@@ -219,14 +219,14 @@ class MyAccessibilityService : AccessibilityService() {
 
                 encontrado = true
 
-                Log.d(TAG, "✅ Botón Split Screen encontrado")
+                Log.d(TAG, " Botón Split Screen encontrado")
 
                 break
             }
         }
 
         if (!encontrado) {
-            Log.e(TAG, "❌ No se encontró botón Split Screen")
+            Log.e(TAG, " No se encontró botón Split Screen")
             return
         }
 
@@ -242,13 +242,13 @@ class MyAccessibilityService : AccessibilityService() {
 
         try {
 
-            Log.d(TAG, "📱 Abriendo segunda app")
+            Log.d(TAG, " Abriendo segunda app")
 
             val intent = packageManager
                 .getLaunchIntentForPackage(paquete2)
 
             if (intent == null) {
-                Log.e(TAG, "❌ No existe app: $paquete2")
+                Log.e(TAG, " No existe app: $paquete2")
                 return
             }
 
@@ -256,13 +256,13 @@ class MyAccessibilityService : AccessibilityService() {
 
             startActivity(intent)
 
-            Log.d(TAG, "✅ Split Screen completado")
+            Log.d(TAG, " Split Screen completado")
 
         } catch (e: Exception) {
 
             Log.e(
                 TAG,
-                "❌ Error abriendo segunda app: ${e.message}"
+                " Error abriendo segunda app: ${e.message}"
             )
         }
     }
@@ -272,7 +272,7 @@ class MyAccessibilityService : AccessibilityService() {
             val root = rootInActiveWindow ?: return@postDelayed
 
             // Candidatos de texto para el botón
-            val candidatos = listOf("Enviar", "Send", "send", "Enviar mensaje", "✓", "→", "▶", "➤")
+            val candidatos = listOf("Enviar", "Send", "send", "Enviar mensaje", "", "→", "▶", "")
 
             // IDs de WhatsApp
             val ids = listOf(
@@ -287,7 +287,7 @@ class MyAccessibilityService : AccessibilityService() {
             for (candidato in candidatos) {
                 nodoEncontrado = encontrarNodoPorTexto(root, candidato)
                 if (nodoEncontrado != null) {
-                    Log.d(TAG, "🔍 Botón por texto: '$candidato'")
+                    Log.d(TAG, " Botón por texto: '$candidato'")
                     break
                 }
             }
@@ -298,7 +298,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val nodos = root.findAccessibilityNodeInfosByViewId(id)
                     if (nodos.isNotEmpty()) {
                         nodoEncontrado = nodos[0]
-                        Log.d(TAG, "🔍 Botón por ID: $id")
+                        Log.d(TAG, " Botón por ID: $id")
                         break
                     }
                 }
@@ -313,7 +313,7 @@ class MyAccessibilityService : AccessibilityService() {
                         desc.contains("enviar mensaje")) {
                         if (nodo.isClickable) {
                             nodoEncontrado = nodo
-                            Log.d(TAG, "🔍 Botón por descripción: '$desc'")
+                            Log.d(TAG, " Botón por descripción: '$desc'")
                             return true
                         }
                     }
@@ -333,19 +333,19 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 if (nodoClick != null && nodoClick.isClickable) {
                     nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d(TAG, "✅ Botón enviar presionado")
+                    Log.d(TAG, " Botón enviar presionado")
                 } else {
                     // Fallback: tap en coordenadas
                     val bounds = Rect()
                     nodoEncontrado.getBoundsInScreen(bounds)
                     if (!bounds.isEmpty) {
                         tapCoordenadas(mapOf("x" to bounds.centerX(), "y" to bounds.centerY()))
-                        Log.d(TAG, "✅ Tap en coordenadas del botón")
+                        Log.d(TAG, " Tap en coordenadas del botón")
                     }
                 }
             } else {
                 // 5. Último recurso: tap en zona inferior derecha
-                Log.w(TAG, "⚠️ No se encontró botón enviar, tap en zona inferior derecha")
+                Log.w(TAG, " No se encontró botón enviar, tap en zona inferior derecha")
                 val metrics = resources.displayMetrics
                 val x = metrics.widthPixels * 0.85f
                 val y = metrics.heightPixels * 0.9f
@@ -353,19 +353,19 @@ class MyAccessibilityService : AccessibilityService() {
 
                 // También intentar con ENTER (teclado)
                 performGlobalAction(GLOBAL_ACTION_BACK)
-                Log.d(TAG, "✅ BACK presionado (fallback)")
+                Log.d(TAG, " BACK presionado (fallback)")
             }
         }, 500) // Esperar a que el mensaje esté escrito
     }
     private val actionsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d(TAG, "╔═══════════════════════════════════════════════════════════")
-            Log.d(TAG, "║ 📥 BROADCAST RECIBIDO")
+            Log.d(TAG, "║  BROADCAST RECIBIDO")
             Log.d(TAG, "╠═══════════════════════════════════════════════════════════")
             Log.d(TAG, "║ Action: ${intent?.action}")
 
             if (intent?.action != ACTION_EXECUTE) {
-                Log.w(TAG, "║ ⚠️ Action no coincide. Esperado: $ACTION_EXECUTE")
+                Log.w(TAG, "║  Action no coincide. Esperado: $ACTION_EXECUTE")
                 Log.d(TAG, "╚═══════════════════════════════════════════════════════════")
                 return
             }
@@ -374,7 +374,7 @@ class MyAccessibilityService : AccessibilityService() {
             Log.d(TAG, "║ JSON recibido: ${json?.take(200)}...")
 
             if (json == null) {
-                Log.e(TAG, "║ ❌ JSON es NULL - No hay acciones para ejecutar")
+                Log.e(TAG, "║  JSON es NULL - No hay acciones para ejecutar")
                 Log.d(TAG, "╚═══════════════════════════════════════════════════════════")
                 return
             }
@@ -403,11 +403,11 @@ class MyAccessibilityService : AccessibilityService() {
             }
 
             if (root == null) {
-                Log.e(TAG, "❌ [FALLO CRÍTICO] No se puede obtener rootInActiveWindow tras $intentos reintentos.")
+                Log.e(TAG, " [FALLO CRÍTICO] No se puede obtener rootInActiveWindow tras $intentos reintentos.")
                 return@launch
             }
 
-            Log.d(TAG, "📸 Captura manual iniciada sobre: ${root.packageName}")
+            Log.d(TAG, " Captura manual iniciada sobre: ${root.packageName}")
             actualizarSnapDePantalla(force = true)
 
             com.example.myapplication.core.memory.ScreenMemory.lastSnapshot = lastSnapshot
@@ -426,16 +426,16 @@ class MyAccessibilityService : AccessibilityService() {
                 delay(2500)
                 root = rootInActiveWindow
                 intentos++
-                Log.d(TAG, "🔄 Reintentando captura... intento $intentos")
+                Log.d(TAG, " Reintentando captura... intento $intentos")
             }
 
             if (root == null) {
-                Log.e(TAG, "❌ No se pudo obtener rootInActiveWindow después de $intentos intentos")
+                Log.e(TAG, " No se pudo obtener rootInActiveWindow después de $intentos intentos")
                 callback?.invoke(null)
                 return@launch
             }
 
-            Log.d(TAG, "📸 Captura manual iniciada sobre: ${root.packageName}")
+            Log.d(TAG, " Captura manual iniciada sobre: ${root.packageName}")
             actualizarSnapDePantalla(force = true)
             // Esperar a que se complete el escaneo
             delay(500)
@@ -446,7 +446,7 @@ class MyAccessibilityService : AccessibilityService() {
                 com.example.myapplication.core.memory.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
                 com.example.myapplication.core.memory.ScreenMemory.lastUpdateTimestamp = System.currentTimeMillis()
             }
-            Log.d(TAG, "✅ Captura completada: ${lastSnapshot?.elements?.size ?: 0} elementos")
+            Log.d(TAG, " Captura completada: ${lastSnapshot?.elements?.size ?: 0} elementos")
             callback?.invoke(lastSnapshot)
         }
     }
@@ -466,16 +466,16 @@ class MyAccessibilityService : AccessibilityService() {
                     actualizarSnapDePantalla()
                     com.example.myapplication.core.memory.ScreenMemory.lastSnapshot = lastSnapshot
                     com.example.myapplication.core.memory.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
-                    Log.d(TAG, "📸 Snapshot actualizado")
+                    Log.d(TAG, " Snapshot actualizado")
                     handler.post { diagnosticarScreenMemory() }
                 } else {
-                    Log.w(TAG, "⚠️ rootInActiveWindow es NULL")
+                    Log.w(TAG, " rootInActiveWindow es NULL")
                 }
             }
         }
     }
     private fun intentarReproducirPrimerVideo(root: AccessibilityNodeInfo) {
-        Log.d(TAG, "🔍 Buscando primer video para reproducir...")
+        Log.d(TAG, " Buscando primer video para reproducir...")
 
         // Lista de IDs comunes de contenedores de video en YouTube
         val idsVideo = listOf(
@@ -489,7 +489,7 @@ class MyAccessibilityService : AccessibilityService() {
             if (nodos.isNotEmpty()) {
                 val primerVideo = nodos[0]
                 if (hacerClicEnNodoOAncestros(primerVideo)) {
-                    Log.d(TAG, "✅ Reproducción iniciada mediante ID: $id")
+                    Log.d(TAG, " Reproducción iniciada mediante ID: $id")
                     return
                 }
             }
@@ -513,9 +513,9 @@ class MyAccessibilityService : AccessibilityService() {
         }
 
         if (buscarPorDescripcion(root)) {
-            Log.d(TAG, "✅ Reproducción iniciada por descripción")
+            Log.d(TAG, " Reproducción iniciada por descripción")
         } else {
-            Log.w(TAG, "❌ No se encontró un video clickable")
+            Log.w(TAG, " No se encontró un video clickable")
         }
     }
 
@@ -534,16 +534,16 @@ class MyAccessibilityService : AccessibilityService() {
         val memoria = com.example.myapplication.core.memory.ScreenMemory.lastSnapshot
 
         Log.d("DIAGNOSIS", "════════════════════════════════════════")
-        Log.d("DIAGNOSIS", "🔍 ESTADO DE SCREENMEMORY")
+        Log.d("DIAGNOSIS", " ESTADO DE SCREENMEMORY")
         Log.d("DIAGNOSIS", "════════════════════════════════════════")
 
         if (memoria == null) {
-            Log.e("DIAGNOSIS", "❌ ScreenMemory.lastSnapshot es NULL")
+            Log.e("DIAGNOSIS", " ScreenMemory.lastSnapshot es NULL")
         } else {
-            Log.d("DIAGNOSIS", "✅ ScreenMemory.lastSnapshot existe")
-            Log.d("DIAGNOSIS", "   📱 App: ${memoria.packageName}")
-            Log.d("DIAGNOSIS", "   🔢 Elementos totales: ${memoria.totalElements}")
-            Log.d("DIAGNOSIS", "   🖱️  Clickables: ${memoria.clickableElements}")
+            Log.d("DIAGNOSIS", " ScreenMemory.lastSnapshot existe")
+            Log.d("DIAGNOSIS", "    App: ${memoria.packageName}")
+            Log.d("DIAGNOSIS", "    Elementos totales: ${memoria.totalElements}")
+            Log.d("DIAGNOSIS", "     Clickables: ${memoria.clickableElements}")
         }
 
         Log.d("DIAGNOSIS", "════════════════════════════════════════")
@@ -554,7 +554,7 @@ class MyAccessibilityService : AccessibilityService() {
 
     private fun ejecutarAcciones(json: String) {
         Log.d(TAG, "╔═══════════════════════════════════════════════════════════")
-        Log.d(TAG, "║ 🔄 EJECUTAR_ACCIONES - Inicio")
+        Log.d(TAG, "║  EJECUTAR_ACCIONES - Inicio")
         Log.d(TAG, "╠═══════════════════════════════════════════════════════════")
         Log.d(TAG, "║ JSON recibido: ${json.take(300)}...")
 
@@ -563,7 +563,7 @@ class MyAccessibilityService : AccessibilityService() {
 
         try {
             currentActions = Gson().fromJson(json, listType)
-            Log.d(TAG, "║ ✅ JSON deserializado exitosamente")
+            Log.d(TAG, "║  JSON deserializado exitosamente")
             Log.d(TAG, "║ Acciones parseadas: ${currentActions?.size}")
 
             if (currentActions != null) {
@@ -572,7 +572,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "║ ❌ Error deserializando JSON: ${e.message}", e)
+            Log.e(TAG, "║  Error deserializando JSON: ${e.message}", e)
             Log.d(TAG, "╚═══════════════════════════════════════════════════════════")
             return
         }
@@ -581,11 +581,11 @@ class MyAccessibilityService : AccessibilityService() {
         retryCount = 0
 
         if (currentActions.isNullOrEmpty()) {
-            Log.w(TAG, "║ ⚠️ currentActions es null o vacío — actualizando snapshot")
+            Log.w(TAG, "║  currentActions es null o vacío — actualizando snapshot")
             Log.d(TAG, "╚═══════════════════════════════════════════════════════════")
             actualizarSnapDePantalla()
         } else {
-            Log.d(TAG, "║ ▶️ Iniciando ejecución secuencial...")
+            Log.d(TAG, "║ ▶ Iniciando ejecución secuencial...")
             Log.d(TAG, "╚═══════════════════════════════════════════════════════════")
             handler.post(stepRunnable)
         }
@@ -597,12 +597,12 @@ class MyAccessibilityService : AccessibilityService() {
 // En MyAccessibilityService.kt
 
     private fun iniciarPantallaDivididaUnificado(pkg1: String, pkg2: String) {
-        Log.d(TAG, "🚀 Iniciando Split Screen unificado: $pkg1 + $pkg2")
+        Log.d(TAG, " Iniciando Split Screen unificado: $pkg1 + $pkg2")
 
         // 1. Lanzar la primera app y asegurar que esté en primer plano
         val intent1 = packageManager.getLaunchIntentForPackage(pkg1)
         if (intent1 == null) {
-            Log.e(TAG, "❌ App '$pkg1' no encontrada")
+            Log.e(TAG, " App '$pkg1' no encontrada")
             return
         }
         intent1.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -610,19 +610,19 @@ class MyAccessibilityService : AccessibilityService() {
 
         // 2. Esperar a que la primera app se dibuje
         Handler(mainLooper).postDelayed({
-            Log.d(TAG, "💥 Activando split screen (GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)")
+            Log.d(TAG, " Activando split screen (GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)")
             val exito = performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)
             if (!exito) {
-                Log.e(TAG, "❌ El sistema no aceptó el comando de split screen. ¿Accesibilidad activa?")
+                Log.e(TAG, " El sistema no aceptó el comando de split screen. ¿Accesibilidad activa?")
                 return@postDelayed
             }
 
             // 3. Esperar a que el sistema prepare el espacio adyacente
             Handler(mainLooper).postDelayed({
-                Log.d(TAG, "📱 Lanzando segunda app: $pkg2")
+                Log.d(TAG, " Lanzando segunda app: $pkg2")
                 val intent2 = packageManager.getLaunchIntentForPackage(pkg2)
                 if (intent2 == null) {
-                    Log.e(TAG, "❌ App '$pkg2' no encontrada")
+                    Log.e(TAG, " App '$pkg2' no encontrada")
                     return@postDelayed
                 }
                 // Flags críticos para que se acople en el espacio libre
@@ -632,7 +632,7 @@ class MyAccessibilityService : AccessibilityService() {
                             Intent.FLAG_ACTIVITY_MULTIPLE_TASK
                 )
                 startActivity(intent2)
-                Log.d(TAG, "✅ Segunda app lanzada en el espacio dividido")
+                Log.d(TAG, " Segunda app lanzada en el espacio dividido")
             }, 800) // Ajustable según dispositivo
         }, 1200) // Espera suficiente para que la primera app esté activa
     }
@@ -640,7 +640,7 @@ class MyAccessibilityService : AccessibilityService() {
         override fun run() {
             val actions = currentActions ?: return
             if (currentIndex >= actions.size) {
-                Log.d(TAG, "✅ Todas las acciones completadas (${currentIndex}/${actions.size})")
+                Log.d(TAG, " Todas las acciones completadas (${currentIndex}/${actions.size})")
                 currentActions = null
                 return
             }
@@ -650,27 +650,27 @@ class MyAccessibilityService : AccessibilityService() {
             var detalleError: String? = null
 
             Log.d(TAG, "┌─────────────────────────────────────────────────")
-            Log.d(TAG, "│ ⏳ Acción [${currentIndex}/${actions.size}]: ${accion.tipo}")
+            Log.d(TAG, "│  Acción [${currentIndex}/${actions.size}]: ${accion.tipo}")
             Log.d(TAG, "│  Params: ${accion.params}")
 
             when (accion.tipo) {
                 "open_app" -> {
                     val pkg = accion.params?.get("package") as? String ?: ""
-                    Log.d(TAG, "│ 📱 open_app")
+                    Log.d(TAG, "│  open_app")
                     Log.d(TAG, "│    package='$pkg'")
 
                     if (pkg.isBlank()) {
-                        Log.e(TAG, "│ ❌ Package está vacío!")
+                        Log.e(TAG, "│  Package está vacío!")
                         exitoAccion = false
                         detalleError = "Package vacío"
                     } else {
                         try {
                             Log.d(TAG, "│    → Llamando ActionExecutor.openApp()...")
                             ActionExecutor.openApp(this@MyAccessibilityService, pkg)
-                            Log.d(TAG, "│    ✅ ActionExecutor.openApp() devolvió")
+                            Log.d(TAG, "│     ActionExecutor.openApp() devolvió")
                             waitTime = 2500L
                         } catch (e: Exception) {
-                            Log.e(TAG, "│ ❌ Exception en ActionExecutor.openApp(): ${e.message}", e)
+                            Log.e(TAG, "│  Exception en ActionExecutor.openApp(): ${e.message}", e)
                             exitoAccion = false
                             detalleError = "Exception: ${e.message}"
                         }
@@ -687,7 +687,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val minute = (accion.params?.get("minute") as? Number)?.toInt() ?: 0
                     val label = accion.params?.get("label") as? String ?: ""
 
-                    Log.d(TAG, "│ ⏰ set_alarm: $hour:$minute '$label'")
+                    Log.d(TAG, "│  set_alarm: $hour:$minute '$label'")
 
                     ActionExecutor.setAlarm(this@MyAccessibilityService, hour, minute, label)
                     waitTime = 2000L
@@ -733,12 +733,12 @@ class MyAccessibilityService : AccessibilityService() {
                         }
                     }
                     try {
-                        Log.d(TAG, "│ 📱 android_intent: $intentAction")
+                        Log.d(TAG, "│  android_intent: $intentAction")
                         this@MyAccessibilityService.startActivity(androidIntent)
-                        Log.d(TAG, "│ ✅ Intent lanzado")
+                        Log.d(TAG, "│  Intent lanzado")
                         waitTime = 300L
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Intent falló: ${e.message}")
+                        Log.e(TAG, "│  Intent falló: ${e.message}")
                         val pkg = accion.pkg ?: accion.params?.get("package") as? String
                         if (!pkg.isNullOrBlank()) {
                             Log.d(TAG, "│    Intentando fallback: openApp($pkg)")
@@ -770,7 +770,7 @@ class MyAccessibilityService : AccessibilityService() {
                         val maxVol = audioManager.getStreamMaxVolume(streamType)
                         val target = (maxVol * percent / 100.0).toInt()
                         audioManager.setStreamVolume(streamType, target, android.media.AudioManager.FLAG_SHOW_UI)
-                        Log.d(TAG, "│ 🔊 adjust_volume: percent=$percent% → nivel=$target/$maxVol")
+                        Log.d(TAG, "│  adjust_volume: percent=$percent% → nivel=$target/$maxVol")
                     } else {
                         val adjustFlag = if (direction == "up") android.media.AudioManager.ADJUST_RAISE
                         else android.media.AudioManager.ADJUST_LOWER
@@ -778,21 +778,21 @@ class MyAccessibilityService : AccessibilityService() {
                             audioManager.adjustStreamVolume(streamType, adjustFlag,
                                 if (i == 0) android.media.AudioManager.FLAG_SHOW_UI else 0)
                         }
-                        Log.d(TAG, "│ 🔊 adjust_volume: direction=$direction steps=$steps")
+                        Log.d(TAG, "│  adjust_volume: direction=$direction steps=$steps")
                     }
                     waitTime = 200L
                 }
 
                 "toggle_bluetooth" -> {
                     val shouldEnable = accion.params?.get("state") as? String ?: "toggle"
-                    Log.d(TAG, "│ 🔵 toggle_bluetooth: state='$shouldEnable'")
+                    Log.d(TAG, "│  toggle_bluetooth: state='$shouldEnable'")
 
                     try {
-                        // ✅ FIX: Usar Context explícitamente
+                        //  FIX: Usar Context explícitamente
                         // Verificación de permiso para evitar SecurityException
                         if (ContextCompat.checkSelfPermission(this@MyAccessibilityService, Manifest.permission.BLUETOOTH_CONNECT)
                             != PackageManager.PERMISSION_GRANTED && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            Log.e(TAG, "❌ Falta permiso BLUETOOTH_CONNECT")
+                            Log.e(TAG, " Falta permiso BLUETOOTH_CONNECT")
                             return@run
                         }
                         val bluetoothAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
@@ -805,31 +805,31 @@ class MyAccessibilityService : AccessibilityService() {
                                 "on" -> {
                                     if (!isEnabled) {
                                         bluetoothAdapter.enable()
-                                        Log.d(TAG, "│ ✅ Bluetooth ENCENDIDO")
+                                        Log.d(TAG, "│  Bluetooth ENCENDIDO")
                                         respuesta = "Bluetooth encendido."
                                     } else {
-                                        Log.d(TAG, "│ ⚠️ Bluetooth ya está encendido")
+                                        Log.d(TAG, "│  Bluetooth ya está encendido")
                                         respuesta = "Bluetooth ya estaba encendido."
                                     }
                                 }
                                 "off" -> {
                                     if (isEnabled) {
                                         bluetoothAdapter.disable()
-                                        Log.d(TAG, "│ ✅ Bluetooth APAGADO")
+                                        Log.d(TAG, "│  Bluetooth APAGADO")
                                         respuesta = "Bluetooth apagado."
                                     } else {
-                                        Log.d(TAG, "│ ⚠️ Bluetooth ya está apagado")
+                                        Log.d(TAG, "│  Bluetooth ya está apagado")
                                         respuesta = "Bluetooth ya estaba apagado."
                                     }
                                 }
                                 "toggle" -> {
                                     if (isEnabled) {
                                         bluetoothAdapter.disable()
-                                        Log.d(TAG, "│ ✅ Bluetooth APAGADO (toggle)")
+                                        Log.d(TAG, "│  Bluetooth APAGADO (toggle)")
                                         respuesta = "Bluetooth apagado."
                                     } else {
                                         bluetoothAdapter.enable()
-                                        Log.d(TAG, "│ ✅ Bluetooth ENCENDIDO (toggle)")
+                                        Log.d(TAG, "│  Bluetooth ENCENDIDO (toggle)")
                                         respuesta = "Bluetooth encendido."
                                     }
                                 }
@@ -849,13 +849,13 @@ class MyAccessibilityService : AccessibilityService() {
                             waitTime = 500L
 
                         } else {
-                            Log.e(TAG, "│ ❌ BluetoothAdapter no disponible")
+                            Log.e(TAG, "│  BluetoothAdapter no disponible")
                             exitoAccion = false
                             detalleError = "Bluetooth no disponible en este dispositivo"
                             waitTime = 300L
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error toggling Bluetooth: ${e.message}", e)
+                        Log.e(TAG, "│  Error toggling Bluetooth: ${e.message}", e)
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -863,7 +863,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 "toggle_wifi" -> {
                     val shouldEnable = accion.params?.get("state") as? String ?: "toggle"
-                    Log.d(TAG, "│ 📶 toggle_wifi: state='$shouldEnable'")
+                    Log.d(TAG, "│  toggle_wifi: state='$shouldEnable'")
 
                     try {
                         val wifiManager = getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
@@ -879,7 +879,7 @@ class MyAccessibilityService : AccessibilityService() {
                                     Log.d(TAG, "│  WiFi ENCENDIDO")
                                     respuesta = "WiFi encendido."
                                 } else {
-                                    Log.d(TAG, "│ ⚠ WiFi ya está encendido")
+                                    Log.d(TAG, "│  WiFi ya está encendido")
                                     respuesta = "WiFi ya estaba encendido."
                                 }
                             }
@@ -921,7 +921,7 @@ class MyAccessibilityService : AccessibilityService() {
                         waitTime = 500L
 
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error toggling WiFi: ${e.message}", e)
+                        Log.e(TAG, "│  Error toggling WiFi: ${e.message}", e)
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -929,7 +929,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 "toggle_flashlight" -> {
                     val shouldEnable = accion.params?.get("state") as? String ?: "on"
-                    Log.d(TAG, "│ 💡 toggle_flashlight: state='$shouldEnable'")
+                    Log.d(TAG, "│  toggle_flashlight: state='$shouldEnable'")
 
                     try {
                         val cameraManager = getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
@@ -972,7 +972,7 @@ class MyAccessibilityService : AccessibilityService() {
                 "open_camera" -> {
                     val modo = accion.params?.get("mode") as? String ?: "photo"
                     val frontal = (accion.params?.get("frontal") as? Boolean) ?: false
-                    Log.d(TAG, "│ 📷 open_camera: modo='$modo' frontal=$frontal")
+                    Log.d(TAG, "│  open_camera: modo='$modo' frontal=$frontal")
 
                     try {
                         //  NUEVO: Verificar permiso ANTES de abrir cámara
@@ -1003,11 +1003,11 @@ class MyAccessibilityService : AccessibilityService() {
                             }
                         }
                         startActivity(intent)
-                        Log.d(TAG, "│ ✅ Cámara abierta (foto)")
+                        Log.d(TAG, "│  Cámara abierta (foto)")
                         exitoAccion = true
                         waitTime = 2500L
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error abriendo cámara: ${e.message}")
+                        Log.e(TAG, "│  Error abriendo cámara: ${e.message}")
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -1016,9 +1016,9 @@ class MyAccessibilityService : AccessibilityService() {
                 "take_photo_auto" -> {
                     val frontal = accion.params?.get("frontal") as? Boolean ?: false
                     val portrait = accion.params?.get("portrait") as? Boolean ?: false
-                    val delay = (accion.params?.get("delay_seconds") as? Number)?.toInt() ?: 0  // 🔥 0 = sin temporizador
+                    val delay = (accion.params?.get("delay_seconds") as? Number)?.toInt() ?: 0  //  0 = sin temporizador
 
-                    Log.d(TAG, "│ 📸 take_photo_auto: frontal=$frontal, portrait=$portrait, delay=$delay")
+                    Log.d(TAG, "│  take_photo_auto: frontal=$frontal, portrait=$portrait, delay=$delay")
 
                     try {
                         // 1. Verificar permiso de cámara
@@ -1045,9 +1045,9 @@ class MyAccessibilityService : AccessibilityService() {
                         val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-                            // 🔥 NO poner extras de temporizador
+                            //  NO poner extras de temporizador
 
-                            // 📌 Cámara FRONTAL o TRASERA
+                            //  Cámara FRONTAL o TRASERA
                             if (frontal) {
                                 putExtra("android.intent.extras.CAMERA_FACING", 1)
                                 putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
@@ -1055,9 +1055,9 @@ class MyAccessibilityService : AccessibilityService() {
                                 putExtra("front_camera", true)
                                 putExtra("isFrontCamera", true)
                                 putExtra("front", true)
-                                Log.d(TAG, "│ 📷 Cámara FRONTAL seleccionada")
+                                Log.d(TAG, "│  Cámara FRONTAL seleccionada")
                             } else {
-                                Log.d(TAG, "│ 📷 Cámara TRASERA seleccionada")
+                                Log.d(TAG, "│  Cámara TRASERA seleccionada")
                             }
 
                             if (portrait) {
@@ -1065,11 +1065,11 @@ class MyAccessibilityService : AccessibilityService() {
                                 putExtra("MODE", "PORTRAIT")
                             }
 
-                            // ⚠️ IMPORTANTE: NO poner EXTRA_OUTPUT para que Samsung guarde automáticamente
+                            //  IMPORTANTE: NO poner EXTRA_OUTPUT para que Samsung guarde automáticamente
                         }
 
                         if (intent.resolveActivity(packageManager) == null) {
-                            Log.e(TAG, "│ ❌ No hay app de cámara")
+                            Log.e(TAG, "│  No hay app de cámara")
                             exitoAccion = false
                             waitTime = 300L
                             return@run
@@ -1077,7 +1077,7 @@ class MyAccessibilityService : AccessibilityService() {
 
                         // 3. ABRIR LA CÁMARA
                         startActivity(intent)
-                        Log.d(TAG, "│ ✅ Cámara abierta (sin temporizador)")
+                        Log.d(TAG, "│  Cámara abierta (sin temporizador)")
 
                         // 4. NOTIFICACIÓN POR VOZ
                         val mensaje = if (frontal) "Tomando selfie" else "Tomando foto"
@@ -1093,7 +1093,7 @@ class MyAccessibilityService : AccessibilityService() {
                         if (frontal) {
                             // Esperar a que la cámara cargue y forzar cambio a frontal
                             handler.postDelayed({
-                                Log.d(TAG, "🔄 Forzando cambio a cámara frontal...")
+                                Log.d(TAG, " Forzando cambio a cámara frontal...")
                                 presionarBotonCambiarCamara()
                             }, 1500) // 1.5 segundos para que cargue
                         }
@@ -1105,7 +1105,7 @@ class MyAccessibilityService : AccessibilityService() {
                         val tiempoCaptura = if (frontal) 3000L else 2000L // 3s si es frontal, 2s si es trasera
 
                         handler.postDelayed({
-                            Log.d(TAG, "📸 Capturando foto...")
+                            Log.d(TAG, " Capturando foto...")
                             buscarYPresionarBotonCaptura()
 
                             // Cerrar diálogo de confirmación después de capturar
@@ -1118,7 +1118,7 @@ class MyAccessibilityService : AccessibilityService() {
                         waitTime = tiempoCaptura + 4000L
 
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error en take_photo_auto: ${e.message}")
+                        Log.e(TAG, "│  Error en take_photo_auto: ${e.message}")
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -1128,9 +1128,9 @@ class MyAccessibilityService : AccessibilityService() {
                     // Siempre frontal
                     val frontal = true
                     val portrait = accion.params?.get("portrait") as? Boolean ?: false
-                    val delay = 0 // 🔥 SIN temporizador
+                    val delay = 0 //  SIN temporizador
 
-                    Log.d(TAG, "│ 📸 take_selfie: frontal=$frontal, portrait=$portrait, delay=$delay")
+                    Log.d(TAG, "│  take_selfie: frontal=$frontal, portrait=$portrait, delay=$delay")
 
                     try {
                         // Verificar permiso de cámara
@@ -1158,14 +1158,14 @@ class MyAccessibilityService : AccessibilityService() {
                         }
 
                         if (intent.resolveActivity(packageManager) == null) {
-                            Log.e(TAG, "│ ❌ No hay app de cámara")
+                            Log.e(TAG, "│  No hay app de cámara")
                             exitoAccion = false
                             waitTime = 300L
                             return@run
                         }
 
                         startActivity(intent)
-                        Log.d(TAG, "│ ✅ Cámara abierta para selfie (sin temporizador)")
+                        Log.d(TAG, "│  Cámara abierta para selfie (sin temporizador)")
 
                         // Notificar
                         val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
@@ -1176,7 +1176,7 @@ class MyAccessibilityService : AccessibilityService() {
 
                         // Forzar cambio a frontal
                         handler.postDelayed({
-                            Log.d(TAG, "🔄 Forzando cámara frontal para selfie...")
+                            Log.d(TAG, " Forzando cámara frontal para selfie...")
                             presionarBotonCambiarCamara()
                         }, 1500)
 
@@ -1192,7 +1192,7 @@ class MyAccessibilityService : AccessibilityService() {
                         waitTime = 5000L
 
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error: ${e.message}")
+                        Log.e(TAG, "│  Error: ${e.message}")
                         exitoAccion = false
                         waitTime = 300L
                     }
@@ -1201,14 +1201,14 @@ class MyAccessibilityService : AccessibilityService() {
                     val frontal = accion.params?.get("frontal") as? Boolean ?: false
                     val portrait = accion.params?.get("portrait") as? Boolean ?: false
 
-                    Log.d(TAG, "│ 📸 take_photo: frontal=$frontal, portrait=$portrait")
+                    Log.d(TAG, "│  take_photo: frontal=$frontal, portrait=$portrait")
 
                     try {
                         // Verificar permiso de cámara
                         if (ContextCompat.checkSelfPermission(this@MyAccessibilityService, Manifest.permission.CAMERA)
                             != PackageManager.PERMISSION_GRANTED) {
 
-                            Log.e(TAG, "│ ❌ Permiso de cámara no concedido - solicitando...")
+                            Log.e(TAG, "│  Permiso de cámara no concedido - solicitando...")
 
                             // Notificar al usuario
                             val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
@@ -1246,7 +1246,7 @@ class MyAccessibilityService : AccessibilityService() {
                         // Verificar que hay una app de cámara disponible
                         if (intent.resolveActivity(packageManager) != null) {
                             startActivity(intent)
-                            Log.d(TAG, "│ ✅ Intent de cámara enviado - tomando foto")
+                            Log.d(TAG, "│  Intent de cámara enviado - tomando foto")
 
                             // Notificar al usuario
                             val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
@@ -1258,14 +1258,14 @@ class MyAccessibilityService : AccessibilityService() {
                             exitoAccion = true
                             waitTime = 3000L
                         } else {
-                            Log.e(TAG, "│ ❌ No hay app de cámara disponible")
+                            Log.e(TAG, "│  No hay app de cámara disponible")
                             exitoAccion = false
                             detalleError = "No hay app de cámara"
                             waitTime = 300L
                         }
 
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error tomando foto: ${e.message}", e)
+                        Log.e(TAG, "│  Error tomando foto: ${e.message}", e)
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -1273,7 +1273,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 "call" -> {
                     val contact = accion.params?.get("contact") as? String ?: ""
-                    Log.d(TAG, "│ ☎️ call: '$contact'")
+                    Log.d(TAG, "│  call: '$contact'")
                     ActionExecutor.callContact(this@MyAccessibilityService, contact)
                     waitTime = 3000L
                 }
@@ -1282,7 +1282,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val hour   = (accion.params?.get("hour") as? Number)?.toInt() ?: 7
                     val minute = (accion.params?.get("minute") as? Number)?.toInt() ?: 0
                     val label  = accion.params?.get("label") as? String ?: "Alarma"
-                    Log.d(TAG, "│ ⏰ set_alarm: $hour:$minute '$label'")
+                    Log.d(TAG, "│  set_alarm: $hour:$minute '$label'")
                     val intent = Intent(android.provider.AlarmClock.ACTION_SET_ALARM).apply {
                         putExtra(android.provider.AlarmClock.EXTRA_HOUR, hour)
                         putExtra(android.provider.AlarmClock.EXTRA_MINUTES, minute)
@@ -1298,12 +1298,12 @@ class MyAccessibilityService : AccessibilityService() {
                     val query = accion.params?.get("query") as? String ?: ""
                     val packageName = accion.params?.get("package") as? String ?: "com.spotify.music"
 
-                    Log.d(TAG, "│ 🎵 play_music: query='$query' pkg='$packageName'")
+                    Log.d(TAG, "│  play_music: query='$query' pkg='$packageName'")
 
                     if (query.isNotBlank()) {
                         ActionExecutor.playMusic(this@MyAccessibilityService, query, packageName)
                     } else {
-                        Log.w(TAG, "│ ⚠️ Query vacía, abriendo app por defecto")
+                        Log.w(TAG, "│  Query vacía, abriendo app por defecto")
                         ActionExecutor.openApp(this@MyAccessibilityService, packageName)
                     }
                     waitTime = 3000L  // Esperar más tiempo para que la app cargue y reproduzca
@@ -1311,7 +1311,7 @@ class MyAccessibilityService : AccessibilityService() {
 
                 "play_video" -> {
                     val query = accion.params?.get("query") as? String ?: ""
-                    Log.d(TAG, "│ 🎬 play_video: query='$query'")
+                    Log.d(TAG, "│  play_video: query='$query'")
                     if (query.isNotBlank()) {
                         ActionExecutor.playVideo(this@MyAccessibilityService, query)
                     } else {
@@ -1321,7 +1321,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 "navigate_to" -> {
                     val destination = accion.params?.get("destination") as? String ?: ""
-                    Log.d(TAG, "│ 🗺️ navigate_to: '$destination'")
+                    Log.d(TAG, "│  navigate_to: '$destination'")
                     val uri = Uri.parse("google.navigation:q=${Uri.encode(destination)}")
                     val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                         setPackage("com.google.android.apps.maps")
@@ -1339,7 +1339,7 @@ class MyAccessibilityService : AccessibilityService() {
 
                 "search_web" -> {
                     val query = accion.params?.get("query") as? String ?: ""
-                    Log.d(TAG, "│ 🔍 search_web: '$query'")
+                    Log.d(TAG, "│  search_web: '$query'")
                     val intent = Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://www.google.com/search?q=${Uri.encode(query)}")).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -1351,7 +1351,7 @@ class MyAccessibilityService : AccessibilityService() {
                 "toggle_setting" -> {
                     val setting = accion.params?.get("setting") as? String ?: ""
                     val state   = accion.params?.get("state") as? String ?: "on"
-                    Log.d(TAG, "│ ⚙️ toggle_setting: $setting → $state")
+                    Log.d(TAG, "│  toggle_setting: $setting → $state")
                     when (setting) {
                         "flashlight" -> {
                             val cam = getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
@@ -1372,7 +1372,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val modo = accion.params?.get("mode") as? String ?: "normal"  // normal, portrait, frontal
                     val duracion = (accion.params?.get("duration") as? Number)?.toInt() ?: 0  // 0 = sin límite
 
-                    Log.d(TAG, "│ 🎥 record_video: modo='$modo' duracion=${duracion}s")
+                    Log.d(TAG, "│  record_video: modo='$modo' duracion=${duracion}s")
 
                     try {
                         val intent = Intent("android.media.action.VIDEO_CAPTURE").apply {
@@ -1393,7 +1393,7 @@ class MyAccessibilityService : AccessibilityService() {
                             }
                         }
                         startActivity(intent)
-                        Log.d(TAG, "│ ✅ Intent de video enviado")
+                        Log.d(TAG, "│  Intent de video enviado")
 
                         val intent_speak = Intent("JARVIS.SPEAK_TEXT").apply {
                             putExtra("texto", "Abriendo cámara para grabar video")
@@ -1404,7 +1404,7 @@ class MyAccessibilityService : AccessibilityService() {
                         exitoAccion = true
                         waitTime = 2500L
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error grabando video: ${e.message}")
+                        Log.e(TAG, "│  Error grabando video: ${e.message}")
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -1412,7 +1412,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 "switch_camera" -> {
                     val targetCamera = accion.params?.get("target") as? String ?: "toggle"  // frontal, trasera, toggle
-                    Log.d(TAG, "│ 🔄 switch_camera: target='$targetCamera'")
+                    Log.d(TAG, "│  switch_camera: target='$targetCamera'")
 
                     try {
                         // Este es un poco más complejo porque necesita acceso directo a la cámara
@@ -1434,11 +1434,11 @@ class MyAccessibilityService : AccessibilityService() {
                         }
 
                         startActivity(intent)
-                        Log.d(TAG, "│ ✅ Cámara cambiada a: $targetCamera")
+                        Log.d(TAG, "│  Cámara cambiada a: $targetCamera")
                         exitoAccion = true
                         waitTime = 1500L
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error cambiando cámara: ${e.message}")
+                        Log.e(TAG, "│  Error cambiando cámara: ${e.message}")
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -1459,7 +1459,7 @@ class MyAccessibilityService : AccessibilityService() {
                     }
 
                     try {
-                        // ✅ MÉTODO 1: Cambiar brillo del sistema (requiere WRITE_SETTINGS)
+                        //  MÉTODO 1: Cambiar brillo del sistema (requiere WRITE_SETTINGS)
                         val puedeEscribir = android.provider.Settings.System.canWrite(this@MyAccessibilityService)
 
                         if (puedeEscribir) {
@@ -1491,7 +1491,7 @@ class MyAccessibilityService : AccessibilityService() {
                                 newBrightness
                             )
 
-                            Log.d(TAG, "│ ☀️ adjust_brightness (SYSTEM): ${if (percent != null) "$percent%" else "$direction x$steps"} → $newBrightness/255")
+                            Log.d(TAG, "│  adjust_brightness (SYSTEM): ${if (percent != null) "$percent%" else "$direction x$steps"} → $newBrightness/255")
 
                             // Hablar la confirmación
                             val pct = if (percent != null) percent else {
@@ -1504,9 +1504,9 @@ class MyAccessibilityService : AccessibilityService() {
                             sendBroadcast(intent)
 
                         } else {
-                            // ✅ MÉTODO 2: Sin permiso → abrir configuración de brillo
+                            //  MÉTODO 2: Sin permiso → abrir configuración de brillo
                             // Y también intentar cambio mediante Quick Settings tile
-                            Log.w(TAG, "│ ⚠️ Sin permiso WRITE_SETTINGS — solicitando permiso")
+                            Log.w(TAG, "│  Sin permiso WRITE_SETTINGS — solicitando permiso")
 
                             // Pedir permiso al usuario
                             val settingsIntent = Intent(
@@ -1524,7 +1524,7 @@ class MyAccessibilityService : AccessibilityService() {
                             sendBroadcast(intent)
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ adjust_brightness error: ${e.message}")
+                        Log.e(TAG, "│  adjust_brightness error: ${e.message}")
                         exitoAccion = false
                     }
                     waitTime = 300L
@@ -1536,7 +1536,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val periodo = if (hora < 12) "de la mañana" else if (hora < 18) "de la tarde" else "de la noche"
                     val hora12 = if (hora == 0) 12 else if (hora > 12) hora - 12 else hora
                     val textoHora = "Son las $hora12:$minuto $periodo"
-                    Log.d(TAG, "│ 🕐 query_time: $textoHora")
+                    Log.d(TAG, "│  query_time: $textoHora")
 
                     // Busca el controlador de voz para hablar
                     val intent = Intent("JARVIS.SPEAK_TEXT").apply {
@@ -1558,7 +1558,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val mes       = meses[cal.get(java.util.Calendar.MONTH)]
                     val anio      = cal.get(java.util.Calendar.YEAR)
                     val textoFecha = "Hoy es $diaSemana $diaMes de $mes de $anio"
-                    Log.d(TAG, "│ 📅 query_date: $textoFecha")
+                    Log.d(TAG, "│  query_date: $textoFecha")
 
                     val intent = Intent("JARVIS.SPEAK_TEXT").apply {
                         putExtra("texto", textoFecha)
@@ -1569,7 +1569,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 "write_and_confirm" -> {
                     val mensaje = accion.params?.get("message") as? String ?: ""
-                    Log.d(TAG, "│ ✏️ write_and_confirm: '$mensaje'")
+                    Log.d(TAG, "│  write_and_confirm: '$mensaje'")
 
                     // Aumentamos el delay antes de escribir para asegurar que el chat cambió
                     handler.postDelayed({
@@ -1609,7 +1609,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val duracion = (accion.params?.get("duration") as? Number)?.toInt() ?: 0
                     val delay = (accion.params?.get("delay_seconds") as? Number)?.toInt() ?: 0 // Por defecto 3s
 
-                    Log.d(TAG, "│ 🎥 record_video_auto: frontal=$frontal, duracion=${duracion}s, delay=${delay}s")
+                    Log.d(TAG, "│  record_video_auto: frontal=$frontal, duracion=${duracion}s, delay=${delay}s")
 
                     try {
                         // 1. Verificar permiso de cámara
@@ -1636,7 +1636,7 @@ class MyAccessibilityService : AccessibilityService() {
                         val intent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-                            // 🔥 ACTIVAR TEMPORIZADOR NATIVO para video
+                            //  ACTIVAR TEMPORIZADOR NATIVO para video
                             if (delay > 0) {
                                 putExtra("timer", delay)
                                 putExtra("selfie_timer", delay)
@@ -1644,10 +1644,10 @@ class MyAccessibilityService : AccessibilityService() {
                                 putExtra("TIMER_VALUE", delay)
                                 putExtra("com.sec.android.app.camera.extra.TIMER", delay)
                                 putExtra("capture_timer", delay)
-                                Log.d(TAG, "│ ⏱️ Temporizador Samsung activado para video: ${delay}s")
+                                Log.d(TAG, "│  Temporizador Samsung activado para video: ${delay}s")
                             }
 
-                            // 📌 Cámara FRONTAL o TRASERA
+                            //  Cámara FRONTAL o TRASERA
                             if (frontal) {
                                 putExtra("android.intent.extras.CAMERA_FACING", 1)
                                 putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
@@ -1655,24 +1655,24 @@ class MyAccessibilityService : AccessibilityService() {
                                 putExtra("front_camera", true)
                                 putExtra("isFrontCamera", true)
                                 putExtra("front", true)
-                                Log.d(TAG, "│ 📷 Cámara FRONTAL seleccionada para video")
+                                Log.d(TAG, "│  Cámara FRONTAL seleccionada para video")
                             } else {
-                                Log.d(TAG, "│ 📷 Cámara TRASERA seleccionada para video")
+                                Log.d(TAG, "│  Cámara TRASERA seleccionada para video")
                             }
 
-                            // ⏱️ Duración límite (si se especificó)
+                            //  Duración límite (si se especificó)
                             if (duracion > 0) {
                                 putExtra(MediaStore.EXTRA_DURATION_LIMIT, duracion)
                                 putExtra("android.intent.extra.DURATION_LIMIT", duracion)
-                                Log.d(TAG, "│ ⏱️ Límite de duración: ${duracion}s")
+                                Log.d(TAG, "│  Límite de duración: ${duracion}s")
                             }
 
-                            // 🔥 IMPORTANTE: NO poner EXTRA_OUTPUT
+                            //  IMPORTANTE: NO poner EXTRA_OUTPUT
                             // Samsung guarda automáticamente en su galería
                         }
 
                         if (intent.resolveActivity(packageManager) == null) {
-                            Log.e(TAG, "│ ❌ No hay app de cámara para video")
+                            Log.e(TAG, "│  No hay app de cámara para video")
                             exitoAccion = false
                             waitTime = 300L
                             return@run
@@ -1680,7 +1680,7 @@ class MyAccessibilityService : AccessibilityService() {
 
                         // 3. ABRIR LA CÁMARA DE VIDEO
                         startActivity(intent)
-                        Log.d(TAG, "│ ✅ Cámara de video abierta")
+                        Log.d(TAG, "│  Cámara de video abierta")
 
                         // 4. NOTIFICACIÓN POR VOZ
                         val mensaje = buildString {
@@ -1695,7 +1695,7 @@ class MyAccessibilityService : AccessibilityService() {
                         sendBroadcast(speakIntent)
 
                         // ════════════════════════════════════════════════════════════════
-                        // 5. 🚀 INICIAR GRABACIÓN AUTOMÁTICAMENTE (¡NUEVO!)
+                        // 5.  INICIAR GRABACIÓN AUTOMÁTICAMENTE (¡NUEVO!)
                         // ════════════════════════════════════════════════════════════════
 
                         // Calcular tiempo de espera según si hay temporizador
@@ -1707,11 +1707,11 @@ class MyAccessibilityService : AccessibilityService() {
                             1500L
                         }
 
-                        // 🔥 Intentar iniciar la grabación después de que la cámara esté lista
+                        //  Intentar iniciar la grabación después de que la cámara esté lista
                         handler.postDelayed({
-                            Log.d(TAG, "⏺️ Intentando iniciar grabación automáticamente...")
+                            Log.d(TAG, " Intentando iniciar grabación automáticamente...")
                             buscarYPresionarBotonGrabar()
-                            Log.d(TAG, "✅ Proceso de inicio de grabación completado")
+                            Log.d(TAG, " Proceso de inicio de grabación completado")
                         }, tiempoEspera)
 
                         // ════════════════════════════════════════════════════════════════
@@ -1721,7 +1721,7 @@ class MyAccessibilityService : AccessibilityService() {
                             val tiempoCierreDialogo = (delay * 1000L) + (duracion * 1000L) + 2500L
 
                             handler.postDelayed({
-                                Log.d(TAG, "⏰ Cerrando diálogo de confirmación (video con duración límite)...")
+                                Log.d(TAG, " Cerrando diálogo de confirmación (video con duración límite)...")
                                 cerrarDialogoConfirmacionSamsung()
                             }, tiempoCierreDialogo)
 
@@ -1729,14 +1729,14 @@ class MyAccessibilityService : AccessibilityService() {
 
                         } else {
                             // Grabación continua
-                            Log.d(TAG, "ℹ️ Grabación continua - di 'detener grabación' para parar")
+                            Log.d(TAG, " Grabación continua - di 'detener grabación' para parar")
                             waitTime = 120000L // 2 minutos
                         }
 
                         exitoAccion = true
 
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error en record_video_auto: ${e.message}")
+                        Log.e(TAG, "│  Error en record_video_auto: ${e.message}")
                         exitoAccion = false
                         detalleError = "Error: ${e.message}"
                         waitTime = 300L
@@ -1744,13 +1744,13 @@ class MyAccessibilityService : AccessibilityService() {
                 }
 
                 "pause_video" -> {
-                    Log.d(TAG, "│ ⏸️ pause_video")
+                    Log.d(TAG, "│  pause_video")
                     try {
                         // Buscar botón de pausa en la interfaz de cámara
                         val root = rootInActiveWindow
                         if (root != null) {
                             // Buscar por texto "Pausa", "Pause", "II"
-                            val candidatosPausa = listOf("Pausa", "Pause", "II", "⏸️")
+                            val candidatosPausa = listOf("Pausa", "Pause", "II", "")
                             var botonPausa: AccessibilityNodeInfo? = null
 
                             for (candidato in candidatosPausa) {
@@ -1775,10 +1775,10 @@ class MyAccessibilityService : AccessibilityService() {
 
                             if (botonPausa != null) {
                                 hacerClicEnNodoOAncestros(botonPausa)
-                                Log.d(TAG, "│ ✅ Video pausado")
+                                Log.d(TAG, "│  Video pausado")
                             } else {
                                 // Fallback: tap en coordenadas típicas del botón de pausa
-                                Log.w(TAG, "│ ⚠️ Botón pausa no encontrado, usando coordenadas")
+                                Log.w(TAG, "│  Botón pausa no encontrado, usando coordenadas")
                                 val metrics = resources.displayMetrics
                                 tapCoordenadas(mapOf(
                                     "x" to (metrics.widthPixels * 0.85f),
@@ -1789,19 +1789,19 @@ class MyAccessibilityService : AccessibilityService() {
                         exitoAccion = true
                         waitTime = 500L
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error pausando: ${e.message}")
+                        Log.e(TAG, "│  Error pausando: ${e.message}")
                         exitoAccion = false
                         waitTime = 300L
                     }
                 }
 
                 "resume_video" -> {
-                    Log.d(TAG, "│ ▶️ resume_video")
+                    Log.d(TAG, "│ ▶ resume_video")
                     try {
                         val root = rootInActiveWindow
                         if (root != null) {
                             // Buscar botón de reanudar/grabar
-                            val candidatosReanudar = listOf("Reanudar", "Resume", "Grabar", "▶️", "⏺️")
+                            val candidatosReanudar = listOf("Reanudar", "Resume", "Grabar", "▶", "")
                             var botonReanudar: AccessibilityNodeInfo? = null
 
                             for (candidato in candidatosReanudar) {
@@ -1811,13 +1811,13 @@ class MyAccessibilityService : AccessibilityService() {
 
                             if (botonReanudar != null) {
                                 hacerClicEnNodoOAncestros(botonReanudar)
-                                Log.d(TAG, "│ ✅ Video reanudado")
+                                Log.d(TAG, "│  Video reanudado")
                             }
                         }
                         exitoAccion = true
                         waitTime = 500L
                     } catch (e: Exception) {
-                        Log.e(TAG, "│ ❌ Error reanudando: ${e.message}")
+                        Log.e(TAG, "│  Error reanudando: ${e.message}")
                         exitoAccion = false
                         waitTime = 300L
                     }
@@ -1825,47 +1825,47 @@ class MyAccessibilityService : AccessibilityService() {
                 "send_sms" -> {
                     val contact = accion.params?.get("contact") as? String ?: ""
                     val message = accion.params?.get("message") as? String ?: ""
-                    Log.d(TAG, "│ 📱 send_sms → '$contact': '$message'")
+                    Log.d(TAG, "│  send_sms → '$contact': '$message'")
                     ActionExecutor.sendSms(this@MyAccessibilityService, contact, message)
                     waitTime = 2000L
                 }
 
                 "call_contact" -> {
                     val contact = accion.params?.get("contact") as? String ?: ""
-                    Log.d(TAG, "│ ☎️ call_contact: '$contact'")
+                    Log.d(TAG, "│  call_contact: '$contact'")
                     ActionExecutor.callContact(this@MyAccessibilityService, contact)
                     waitTime = 3000L
                 }
 
                 "global_action" -> {
-                    Log.d(TAG, "│ 🌍 global_action: ${accion.params}")
+                    Log.d(TAG, "│  global_action: ${accion.params}")
                     ejecutarAccionGlobal(accion.params)
                     waitTime = 800L
                 }
 
                 "scroll" -> {
                     val direction = accion.params?.get("direction") as? String ?: "down"
-                    Log.d(TAG, "│ 📜 scroll: $direction")
+                    Log.d(TAG, "│  scroll: $direction")
                     scroll(direction)
                     waitTime = 1200L
                 }
 
                 "swipe" -> {
                     val direction = accion.params?.get("direction") as? String ?: "left"
-                    Log.d(TAG, "│ 👉 swipe: $direction")
+                    Log.d(TAG, "│  swipe: $direction")
                     scroll(direction)
                     waitTime = 800L
                 }
 
                 "tap" -> {
-                    Log.d(TAG, "│ 🖱️ tap: ${accion.params}")
+                    Log.d(TAG, "│  tap: ${accion.params}")
                     tapCoordenadas(accion.params)
                     waitTime = 1000L
                 }
 
                 "ocr_tap" -> {
                     val textoABuscar = accion.params?.get("texto") as? String ?: ""
-                    Log.d(TAG, "│ 🔍 ocr_tap: '$textoABuscar'")
+                    Log.d(TAG, "│  ocr_tap: '$textoABuscar'")
 
                     val esBotoEnviar = textoABuscar.lowercase() in setOf(
                         "enviar", "send", "enviar mensaje", "enviar ahora", "submit"
@@ -1883,10 +1883,10 @@ class MyAccessibilityService : AccessibilityService() {
                     }
                     val elemento = buscarElementoPorTexto(textoABuscar)
                     if (elemento != null) {
-                        Log.d(TAG, "│    ✅ Elemento encontrado en (${elemento.centerX}, ${elemento.centerY})")
+                        Log.d(TAG, "│     Elemento encontrado en (${elemento.centerX}, ${elemento.centerY})")
                         tapCoordenadas(mapOf("x" to elemento.centerX, "y" to elemento.centerY))
                     } else {
-                        Log.w(TAG, "│ ❌ Elemento '$textoABuscar' NO encontrado")
+                        Log.w(TAG, "│  Elemento '$textoABuscar' NO encontrado")
                         exitoAccion = false
                         detalleError = "Elemento '$textoABuscar' no visible"
                     }
@@ -1898,15 +1898,15 @@ class MyAccessibilityService : AccessibilityService() {
                         ?: accion.params?.get("text") as? String  // fallback por si Gemini usa "text"
                         ?: ""
                     ultimoTextoEscrito = texto
-                    Log.d(TAG, "│ ⌨️ type_text: '$texto'")
+                    Log.d(TAG, "│  type_text: '$texto'")
 
                     if (texto.isBlank()) {
-                        Log.w(TAG, "│ ⚠️ Texto vacío, ignorando")
+                        Log.w(TAG, "│  Texto vacío, ignorando")
                         exitoAccion = false
                     } else {
                         val root = rootInActiveWindow
                         if (root == null) {
-                            Log.e(TAG, "│ ❌ Sin ventana activa")
+                            Log.e(TAG, "│  Sin ventana activa")
                             exitoAccion = false
                         } else {
                             // Intento 1: campo con foco actual
@@ -1915,7 +1915,7 @@ class MyAccessibilityService : AccessibilityService() {
                                 val args = Bundle()
                                 args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto)
                                 val ok = focusNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                                Log.d(TAG, "│ ${if (ok) "✅" else "❌"} type_text con foco: '$texto'")
+                                Log.d(TAG, "│ ${if (ok) "" else ""} type_text con foco: '$texto'")
                                 exitoAccion = ok
                             } else {
                                 // Intento 2: primer campo editable en árbol
@@ -1937,13 +1937,13 @@ class MyAccessibilityService : AccessibilityService() {
                                                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto
                                             )
                                             val ok = focusRetry.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                                            Log.d(TAG, "│ ${if (ok) "✅" else "❌"} type_text retry: '$texto'")
+                                            Log.d(TAG, "│ ${if (ok) "" else ""} type_text retry: '$texto'")
                                         } else {
-                                            Log.e(TAG, "│ ❌ No se encontró campo editable tras tap")
+                                            Log.e(TAG, "│  No se encontró campo editable tras tap")
                                         }
                                     }, 600L)
                                 } else {
-                                    Log.w(TAG, "│ ⚠️ No hay campo editable en pantalla")
+                                    Log.w(TAG, "│  No hay campo editable en pantalla")
                                     exitoAccion = false
                                 }
                             }
@@ -1953,7 +1953,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
 
                 "tap_send_button" -> {
-                    Log.d(TAG, "│ 📤 tap_send_button")
+                    Log.d(TAG, "│  tap_send_button")
                     val candidatos = accion.params?.get("candidatos")
                         ?.toString()
                         ?.split(",")
@@ -1961,7 +1961,7 @@ class MyAccessibilityService : AccessibilityService() {
 
                     val root = rootInActiveWindow
                     if (root == null) {
-                        Log.w(TAG, "│ ❌ Sin ventana activa")
+                        Log.w(TAG, "│  Sin ventana activa")
                         exitoAccion = false
                     } else {
                         var enviado = false
@@ -1974,7 +1974,7 @@ class MyAccessibilityService : AccessibilityService() {
                                 }
                                 if (nodoClick != null && nodoClick.isClickable) {
                                     nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                                    Log.d(TAG, "│ ✅ Tap en '$candidato'")
+                                    Log.d(TAG, "│  Tap en '$candidato'")
                                     enviado = true
                                     break
                                 }
@@ -1982,7 +1982,7 @@ class MyAccessibilityService : AccessibilityService() {
                                 nodo.getBoundsInScreen(bounds)
                                 if (!bounds.isEmpty) {
                                     tapCoordenadas(mapOf("x" to bounds.centerX(), "y" to bounds.centerY()))
-                                    Log.d(TAG, "│ ✅ Tap coords para '$candidato'")
+                                    Log.d(TAG, "│  Tap coords para '$candidato'")
                                     enviado = true
                                     break
                                 }
@@ -1993,9 +1993,9 @@ class MyAccessibilityService : AccessibilityService() {
                                 ?: buscarElementoPorTexto("Send")
                             if (elemento != null) {
                                 tapCoordenadas(mapOf("x" to elemento.centerX, "y" to elemento.centerY))
-                                Log.d(TAG, "│ ✅ Tap fallback snapshot")
+                                Log.d(TAG, "│  Tap fallback snapshot")
                             } else {
-                                Log.w(TAG, "│ ⚠️ Botón no encontrado")
+                                Log.w(TAG, "│  Botón no encontrado")
                                 exitoAccion = false
                             }
                         }
@@ -2005,10 +2005,10 @@ class MyAccessibilityService : AccessibilityService() {
                 }
 
                 "clear_text_field" -> {
-                    Log.d(TAG, "│ 🗑️ clear_text_field")
+                    Log.d(TAG, "│  clear_text_field")
                     val root = rootInActiveWindow
                     if (root == null) {
-                        Log.w(TAG, "│ ❌ Sin ventana activa")
+                        Log.w(TAG, "│  Sin ventana activa")
                         exitoAccion = false
                     } else {
                         val campo = encontrarCampoEditable(root)
@@ -2018,10 +2018,10 @@ class MyAccessibilityService : AccessibilityService() {
                                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, ""
                             )
                             val ok = campo.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                            Log.d(TAG, "│ ${if (ok) "✅" else "❌"} Campo limpiado")
+                            Log.d(TAG, "│ ${if (ok) "" else ""} Campo limpiado")
                             exitoAccion = ok
                         } else {
-                            Log.w(TAG, "│ ⚠️ Sin campo editable")
+                            Log.w(TAG, "│  Sin campo editable")
                             exitoAccion = false
                         }
                     }
@@ -2031,7 +2031,7 @@ class MyAccessibilityService : AccessibilityService() {
 
                 "open_notification" -> {
                     val pkg = accion.params?.get("package") as? String ?: ""
-                    Log.d(TAG, "│ 🔔 open_notification: '$pkg'")
+                    Log.d(TAG, "│  open_notification: '$pkg'")
                     JarvisNotificationListener.instance?.openNotification(
                         this@MyAccessibilityService, pkg
                     )
@@ -2041,7 +2041,7 @@ class MyAccessibilityService : AccessibilityService() {
                 "reply_notification" -> {
                     val pkg   = accion.params?.get("package") as? String ?: ""
                     val texto = accion.params?.get("texto") as? String ?: ""
-                    Log.d(TAG, "│ 💬 reply_notification: '$pkg' → '$texto'")
+                    Log.d(TAG, "│  reply_notification: '$pkg' → '$texto'")
                     if (texto.isNotBlank()) {
                         JarvisNotificationListener.instance?.replyToNotification(pkg, texto)
                     }
@@ -2058,20 +2058,20 @@ class MyAccessibilityService : AccessibilityService() {
                         waitTime = 1500L   // tiempo para que se abra Maps
                         exitoAccion = true
                     } else {
-                        Log.e(TAG, "│ ❌ URL vacía")
+                        Log.e(TAG, "│  URL vacía")
                         exitoAccion = false
                         detalleError = "URL vacía"
                         waitTime = 300L
                     }
                 }
                 "unlock_screen" -> {
-                    Log.d(TAG, "│ 🔓 unlock_screen")
+                    Log.d(TAG, "│  unlock_screen")
                     performGlobalAction(GLOBAL_ACTION_KEYCODE_HEADSETHOOK)
                     waitTime = 500L
                 }
 
                 else -> {
-                    Log.w(TAG, "│ ⚠️ Tipo desconocido: ${accion.tipo}")
+                    Log.w(TAG, "│  Tipo desconocido: ${accion.tipo}")
                     exitoAccion = false
                     detalleError = "Tipo desconocido: ${accion.tipo}"
                 }
@@ -2079,7 +2079,7 @@ class MyAccessibilityService : AccessibilityService() {
             }
 
             reportarAlServidor(textoUltimaOrden, intencionUltimaOrden, actions, exitoAccion, detalleError)
-            Log.d(TAG, "└─ ⏱️ Esperando ${waitTime}ms antes de siguiente acción")
+            Log.d(TAG, "└─  Esperando ${waitTime}ms antes de siguiente acción")
             handler.postDelayed(this, waitTime)
         }
     }
@@ -2099,7 +2099,7 @@ class MyAccessibilityService : AccessibilityService() {
                 if (currentPkg != null) {
                     iniciarPantallaDivididaUnificado(currentPkg, pkg2)
                 } else {
-                    Log.e(TAG, "❌ No se conoce la primera app")
+                    Log.e(TAG, " No se conoce la primera app")
                 }
             }
         }
@@ -2134,7 +2134,7 @@ class MyAccessibilityService : AccessibilityService() {
 
             if (nodoEncontrado != null) {
                 hacerClicEnNodoOAncestros(nodoEncontrado)
-                Log.d(TAG, "✅ Cámara cambiada para video")
+                Log.d(TAG, " Cámara cambiada para video")
             }
         }, 800)
     }
@@ -2144,11 +2144,11 @@ class MyAccessibilityService : AccessibilityService() {
         var resultado = false
 
         val candidatos = listOf(
-            "Grabar", "Record", "Iniciar", "⏺️", "●", "Start",
+            "Grabar", "Record", "Iniciar", "", "●", "Start",
             "Iniciar grabación", "Comenzar",
             "Grabar video", "Iniciar grabación", "Comenzar grabación",
             "Iniciar", "Comenzar", "graba un video",
-            // 🔥 Más variantes para Samsung
+            //  Más variantes para Samsung
             "Grabar vídeo", "Grabar video ahora", "Empezar",
             "Start recording", "Record video", "Iniciar grabación de video"
         )
@@ -2157,7 +2157,7 @@ class MyAccessibilityService : AccessibilityService() {
             "com.google.android.GoogleCamera:id/shutter_button",
             "com.android.camera2:id/shutter_button",
             "com.sec.android.app.camera:id/record_button",
-            // 🔥 IDs extra de Samsung
+            //  IDs extra de Samsung
             "com.sec.android.app.camera:id/recording_button",
             "com.sec.android.app.camera:id/video_record_button",
             "com.sec.android.app.camera:id/start_recording",
@@ -2166,7 +2166,7 @@ class MyAccessibilityService : AccessibilityService() {
 
         handler.postDelayed({
             val root = rootInActiveWindow ?: run {
-                Log.w(TAG, "❌ rootInActiveWindow es NULL")
+                Log.w(TAG, " rootInActiveWindow es NULL")
                 return@postDelayed
             }
 
@@ -2176,7 +2176,7 @@ class MyAccessibilityService : AccessibilityService() {
             for (candidato in candidatos) {
                 botonEncontrado = encontrarNodoPorTexto(root, candidato)
                 if (botonEncontrado != null) {
-                    Log.d(TAG, "🔍 Botón 'Grabar' encontrado por texto: '$candidato'")
+                    Log.d(TAG, " Botón 'Grabar' encontrado por texto: '$candidato'")
                     break
                 }
             }
@@ -2188,7 +2188,7 @@ class MyAccessibilityService : AccessibilityService() {
                     if (nodos.isNotEmpty()) {
                         botonEncontrado = nodos.firstOrNull { it.isClickable }
                         if (botonEncontrado != null) {
-                            Log.d(TAG, "🔍 Botón 'Grabar' encontrado por ID: $id")
+                            Log.d(TAG, " Botón 'Grabar' encontrado por ID: $id")
                             break
                         }
                     }
@@ -2204,7 +2204,7 @@ class MyAccessibilityService : AccessibilityService() {
                         desc.contains("iniciar") || desc.contains("start")) {
                         if (nodo.isClickable) {
                             botonEncontrado = nodo
-                            Log.d(TAG, "🔍 Botón 'Grabar' encontrado por descripción: '$desc'")
+                            Log.d(TAG, " Botón 'Grabar' encontrado por descripción: '$desc'")
                             return true
                         }
                     }
@@ -2219,17 +2219,17 @@ class MyAccessibilityService : AccessibilityService() {
             // 4. Si encontramos el botón, hacer clic
             if (botonEncontrado != null) {
                 hacerClicEnNodoOAncestros(botonEncontrado)
-                Log.d(TAG, "✅ Grabación iniciada (clic en botón)")
+                Log.d(TAG, " Grabación iniciada (clic en botón)")
                 resultado = true
             } else {
                 // 5. Fallback: tap en centro-inferior
-                Log.w(TAG, "⚠️ No se encontró botón Grabar, usando tap en centro-inferior")
+                Log.w(TAG, " No se encontró botón Grabar, usando tap en centro-inferior")
                 val metrics = resources.displayMetrics
                 tapCoordenadas(mapOf(
                     "x" to (metrics.widthPixels / 2f),
                     "y" to (metrics.heightPixels * 0.78f)
                 ))
-                Log.d(TAG, "✅ Tap en centro-inferior (fallback)")
+                Log.d(TAG, " Tap en centro-inferior (fallback)")
                 resultado = true
             }
 
@@ -2240,14 +2240,14 @@ class MyAccessibilityService : AccessibilityService() {
 
     private fun presionarBotonAceptarFoto() {
         val candidatos = listOf(
-            "Aceptar", "Guardar", "OK", "✓", "✔", "Listo", "Done",
+            "Aceptar", "Guardar", "OK", "", "", "Listo", "Done",
             "Aceptar foto", "Guardar foto"
         )
 
         handler.postDelayed({
             val root = rootInActiveWindow
             if (root == null) {
-                Log.w(TAG, "❌ No se puede acceder a la ventana activa para aceptar foto")
+                Log.w(TAG, " No se puede acceder a la ventana activa para aceptar foto")
                 return@postDelayed
             }
 
@@ -2281,17 +2281,17 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 if (nodoClick != null && nodoClick.isClickable) {
                     nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d(TAG, "✅ Botón Aceptar/Guardar presionado")
+                    Log.d(TAG, " Botón Aceptar/Guardar presionado")
                 } else {
                     val bounds = Rect()
                     nodoEncontrado.getBoundsInScreen(bounds)
                     if (!bounds.isEmpty) {
                         tapCoordenadas(mapOf("x" to bounds.centerX(), "y" to bounds.centerY()))
-                        Log.d(TAG, "✅ Tap en coordenadas del botón Aceptar")
+                        Log.d(TAG, " Tap en coordenadas del botón Aceptar")
                     }
                 }
             } else {
-                Log.w(TAG, "⚠️ No se encontró botón Aceptar/Guardar. La foto puede que ya se haya guardado.")
+                Log.w(TAG, " No se encontró botón Aceptar/Guardar. La foto puede que ya se haya guardado.")
             }
         }, 500) // esperar 500ms para que la pantalla de confirmación se estabilice
     }
@@ -2299,8 +2299,8 @@ class MyAccessibilityService : AccessibilityService() {
         val permisosFaltantes = PermissionHelper.getMissingPermissions(this)
 
         if (permisosFaltantes.isNotEmpty()) {
-            Log.w(TAG, "⚠️ Permisos faltantes: ${permisosFaltantes.joinToString(", ")}")
-            Log.i(TAG, "📋 Los permisos se solicitarán cuando se use la cámara")
+            Log.w(TAG, " Permisos faltantes: ${permisosFaltantes.joinToString(", ")}")
+            Log.i(TAG, " Los permisos se solicitarán cuando se use la cámara")
 
             // Notificar al usuario
             val intent = Intent("JARVIS.SPEAK_TEXT").apply {
@@ -2309,12 +2309,12 @@ class MyAccessibilityService : AccessibilityService() {
             }
             sendBroadcast(intent)
         } else {
-            Log.d(TAG, "✅ Todos los permisos de cámara están otorgados")
+            Log.d(TAG, " Todos los permisos de cámara están otorgados")
         }
     }
 
     private fun activarSplitScreenConAccessibility(package1: String, package2: String) {
-        Log.d(TAG, "🛠️ Forzando Split Screen vía Gestos de Accesibilidad Nativos")
+        Log.d(TAG, " Forzando Split Screen vía Gestos de Accesibilidad Nativos")
 
         // Paso 1: Asegurar que la primera app esté abierta y al frente
         val intent1 = packageManager.getLaunchIntentForPackage(package1)?.apply {
@@ -2322,26 +2322,26 @@ class MyAccessibilityService : AccessibilityService() {
         }
 
         if (intent1 == null) {
-            Log.e(TAG, "❌ No se obtuvo el intent para $package1")
+            Log.e(TAG, " No se obtuvo el intent para $package1")
             return
         }
         startActivity(intent1)
 
         // Paso 2: Esperar a que Android dibuje la primera app por completo (Crucial)
         handler.postDelayed({
-            Log.d(TAG, "💥 Disparando comando GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN")
+            Log.d(TAG, " Disparando comando GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN")
 
             // Esto le dice al SystemUI de Android: "Parte la pantalla actual a la mitad"
             val exitoComando = performGlobalAction(AccessibilityService.GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)
 
             if (!exitoComando) {
-                Log.e(TAG, "❌ El sistema operativo rechazó el comando de pantalla dividida. ¿Está el permiso activo?")
+                Log.e(TAG, " El sistema operativo rechazó el comando de pantalla dividida. ¿Está el permiso activo?")
                 return@postDelayed
             }
 
             // Paso 3: Darle tiempo al SystemUI para encoger la primera app y abrir el puerto adyacente
             handler.postDelayed({
-                Log.d(TAG, "🚀 Lanzando la segunda app en el espacio dividido: $package2")
+                Log.d(TAG, " Lanzando la segunda app en el espacio dividido: $package2")
 
                 val intent2 = packageManager.getLaunchIntentForPackage(package2)?.apply {
                     // IMPORTANTÍSIMO: Estos flags obligan a la app a no pisar a la anterior
@@ -2352,9 +2352,9 @@ class MyAccessibilityService : AccessibilityService() {
 
                 if (intent2 != null) {
                     startActivity(intent2)
-                    Log.d(TAG, "✅ Segunda app acoplada con éxito: $package2")
+                    Log.d(TAG, " Segunda app acoplada con éxito: $package2")
                 } else {
-                    Log.e(TAG, "❌ No se pudo obtener el intent para $package2")
+                    Log.e(TAG, " No se pudo obtener el intent para $package2")
                 }
             }, 800) // 800ms de retraso para que Android termine la animación de división
 
@@ -2378,7 +2378,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 if (nodoClick != null && nodoClick.isClickable) {
                     nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d(TAG, "✅ Split screen activado: $texto")
+                    Log.d(TAG, " Split screen activado: $texto")
                     return
                 }
             }
@@ -2393,7 +2393,7 @@ class MyAccessibilityService : AccessibilityService() {
                 desc.contains("multivista", ignoreCase = true)) {
                 if (nodo.isClickable) {
                     nodo.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d(TAG, "✅ Split screen por descripción: $desc")
+                    Log.d(TAG, " Split screen por descripción: $desc")
                     return true
                 }
             }
@@ -2428,7 +2428,7 @@ class MyAccessibilityService : AccessibilityService() {
             for (candidato in candidatos) {
                 nodoEncontrado = encontrarNodoPorTexto(root, candidato)
                 if (nodoEncontrado != null) {
-                    Log.d(TAG, "🔍 Encontrado por texto: '$candidato'")
+                    Log.d(TAG, " Encontrado por texto: '$candidato'")
                     break
                 }
             }
@@ -2439,7 +2439,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val nodos = root.findAccessibilityNodeInfosByViewId(id)
                     if (nodos.isNotEmpty()) {
                         nodoEncontrado = nodos[0]
-                        Log.d(TAG, "🔍 Encontrado por ID: $id")
+                        Log.d(TAG, " Encontrado por ID: $id")
                         break
                     }
                 }
@@ -2452,7 +2452,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 if (nodoClick != null && nodoClick.isClickable) {
                     nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d(TAG, "✅ Cámara frontal activada")
+                    Log.d(TAG, " Cámara frontal activada")
                 }
             } else {
                 // Fallback: tap en esquina superior derecha
@@ -2461,7 +2461,7 @@ class MyAccessibilityService : AccessibilityService() {
                     "x" to (metrics.widthPixels * 0.88f),
                     "y" to (metrics.heightPixels * 0.08f)
                 ))
-                Log.d(TAG, "✅ Tap en esquina superior derecha (fallback)")
+                Log.d(TAG, " Tap en esquina superior derecha (fallback)")
             }
         }, 800)
     }
@@ -2504,7 +2504,7 @@ class MyAccessibilityService : AccessibilityService() {
         handler.postDelayed({
             val root = rootInActiveWindow
             if (root == null) {
-                Log.w(TAG, "❌ No se puede acceder a la ventana activa")
+                Log.w(TAG, " No se puede acceder a la ventana activa")
                 return@postDelayed
             }
 
@@ -2532,7 +2532,7 @@ class MyAccessibilityService : AccessibilityService() {
 
             // 3. Si aún no se encuentra, hacer un tap en el centro inferior de la pantalla (fallback)
             if (botonEncontrado == null) {
-                Log.w(TAG, "⚠️ No se encontró el botón de captura, usando tap en centro inferior")
+                Log.w(TAG, " No se encontró el botón de captura, usando tap en centro inferior")
                 val metrics = resources.displayMetrics
                 val x = metrics.widthPixels / 2f
                 val y = metrics.heightPixels * 0.85f // cerca del borde inferior
@@ -2547,16 +2547,16 @@ class MyAccessibilityService : AccessibilityService() {
             }
             if (nodoClick != null && nodoClick.isClickable) {
                 nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                Log.d(TAG, "✅ Botón de captura presionado")
+                Log.d(TAG, " Botón de captura presionado")
             } else {
                 // Fallback: tap en coordenadas del nodo
                 val bounds = Rect()
                 botonEncontrado.getBoundsInScreen(bounds)
                 if (!bounds.isEmpty) {
                     tapCoordenadas(mapOf("x" to bounds.centerX(), "y" to bounds.centerY()))
-                    Log.d(TAG, "✅ Tap en coordenadas del botón")
+                    Log.d(TAG, " Tap en coordenadas del botón")
                 } else {
-                    Log.e(TAG, "❌ No se pudo hacer clic en el botón")
+                    Log.e(TAG, " No se pudo hacer clic en el botón")
                 }
             }
         }, 1000) // esperar 1 segundo adicional para que la cámara se estabilice
@@ -2564,7 +2564,7 @@ class MyAccessibilityService : AccessibilityService() {
     private fun escribirEnChatActual(mensaje: String) {
         val root = rootInActiveWindow
         if (root == null) {
-            Log.e(TAG, "❌ escribirEnChatActual: sin ventana activa")
+            Log.e(TAG, " escribirEnChatActual: sin ventana activa")
             return
         }
 
@@ -2589,7 +2589,7 @@ class MyAccessibilityService : AccessibilityService() {
                         AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, mensaje
                     )
                     val ok = campoActual.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                    Log.d(TAG, "${if (ok) "✅" else "❌"} Escrito en chat: '$mensaje'")
+                    Log.d(TAG, "${if (ok) "" else ""} Escrito en chat: '$mensaje'")
 
                     if (ok) {
                         ultimoTextoEscrito = mensaje
@@ -2606,12 +2606,12 @@ class MyAccessibilityService : AccessibilityService() {
     private fun pausarParaConfirmacion(textoBoton: String) {
         val mensaje  = ultimoTextoEscrito
         val pregunta = "¿Enviar el mensaje?"
-        Log.d(TAG, "⏸️ Pausa para confirmación: '$mensaje'")
+        Log.d(TAG, " Pausa para confirmación: '$mensaje'")
 
         ActionExecutor.onConfirmacionPendiente = { confirmado ->
             if (confirmado) {
-                Log.d(TAG, "✅ Confirmado → tap Enviar")
-                // ✅ FIX: refrescar snapshot antes de buscar el botón
+                Log.d(TAG, " Confirmado → tap Enviar")
+                //  FIX: refrescar snapshot antes de buscar el botón
                 lastFingerprint = ""
                 actualizarSnapDePantalla()
                 handler.postDelayed({
@@ -2619,15 +2619,15 @@ class MyAccessibilityService : AccessibilityService() {
                         ?: buscarElementoPorTexto("Send")
                     if (elemento != null) {
                         tapCoordenadas(mapOf("x" to elemento.centerX, "y" to elemento.centerY))
-                        Log.d(TAG, "✅ Tap en botón Enviar")
+                        Log.d(TAG, " Tap en botón Enviar")
                     } else {
-                        Log.w(TAG, "⚠️ Botón '$textoBoton' no encontrado en snapshot")
+                        Log.w(TAG, " Botón '$textoBoton' no encontrado en snapshot")
                     }
                     ultimoTextoEscrito = ""
                     handler.postDelayed(stepRunnable, 800L)
                 }, 500L)
             } else {
-                Log.d(TAG, "❌ Cancelado → borrando texto")
+                Log.d(TAG, " Cancelado → borrando texto")
                 val root = rootInActiveWindow
                 if (root != null) {
                     val campo = encontrarCampoEditable(root)
@@ -2647,7 +2647,7 @@ class MyAccessibilityService : AccessibilityService() {
             }
         }
 
-        // ✅ FIX CRÍTICO: delay de 800ms antes de enviar el broadcast
+        //  FIX CRÍTICO: delay de 800ms antes de enviar el broadcast
         // Esto da tiempo al SR para terminar de iniciar y evita ERROR_CLIENT
         handler.postDelayed({
             val intent = Intent("JARVIS.PEDIR_CONFIRMACION").apply {
@@ -2655,7 +2655,7 @@ class MyAccessibilityService : AccessibilityService() {
                 setPackage(packageName)
             }
             sendBroadcast(intent)
-            Log.d(TAG, "📡 Broadcast PEDIR_CONFIRMACION enviado")
+            Log.d(TAG, " Broadcast PEDIR_CONFIRMACION enviado")
         }, 800L)
     }
 
@@ -2731,7 +2731,7 @@ class MyAccessibilityService : AccessibilityService() {
             val args = Bundle()
             args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto)
             val ok = focusNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-            Log.d(TAG, "${if (ok) "✅" else "❌"} escribirTexto con foco: '$texto'")
+            Log.d(TAG, "${if (ok) "" else ""} escribirTexto con foco: '$texto'")
             return
         }
 
@@ -2745,7 +2745,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val args = Bundle()
                     args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto)
                     val ok = focusRetry.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                    Log.d(TAG, "  ${if (ok) "✅" else "❌"} escribirTexto retry: '$texto'")
+                    Log.d(TAG, "  ${if (ok) "" else ""} escribirTexto retry: '$texto'")
                 }
             }, 600L)
         }
@@ -2823,18 +2823,18 @@ class MyAccessibilityService : AccessibilityService() {
     }
     private fun cerrarDialogoConfirmacionSamsung() {
         // ════════════════════════════════════════════════════════════
-        // 🔥 CERRAR DIÁLOGO DE CONFIRMACIÓN DE SAMSUNG (VERSIÓN ULTRA COMPLETA)
+        //  CERRAR DIÁLOGO DE CONFIRMACIÓN DE SAMSUNG (VERSIÓN ULTRA COMPLETA)
         // ════════════════════════════════════════════════════════════
 
         val candidatos = listOf(
-            "Aceptar", "Guardar", "OK", "✓", "✔", "Listo", "Done",
+            "Aceptar", "Guardar", "OK", "", "", "Listo", "Done",
             "Aceptar foto", "Guardar foto", "Confirmar", "Continuar",
             // Samsung One UI
             "Guardar en la galería", "Guardar en Galería", "Guardar",
             "Aceptar y guardar", "Hecho", "Finalizar",
             "Guardar en galería", "Galería",
             "Reintentar", "Reintentar foto", "Tomar de nuevo", "Cancelar",
-            // 🔥 NUEVOS (Samsung A/M series)
+            //  NUEVOS (Samsung A/M series)
             "Aceptar y guardar en galería", "Guardar en dispositivo",
             "Guardar en la tarjeta SD", "Guardar ahora",
             "Sí", "Si", "Confirmar foto"  // Algunas versiones usan estos
@@ -2843,7 +2843,7 @@ class MyAccessibilityService : AccessibilityService() {
         handler.postDelayed({
             val root = rootInActiveWindow
             if (root == null) {
-                Log.d(TAG, "ℹ️ No hay ventana activa, probablemente ya se cerró el diálogo.")
+                Log.d(TAG, " No hay ventana activa, probablemente ya se cerró el diálogo.")
                 return@postDelayed
             }
 
@@ -2853,7 +2853,7 @@ class MyAccessibilityService : AccessibilityService() {
             for (candidato in candidatos) {
                 nodoEncontrado = encontrarNodoPorTexto(root, candidato)
                 if (nodoEncontrado != null) {
-                    Log.d(TAG, "🔍 Encontrado por texto: '$candidato'")
+                    Log.d(TAG, " Encontrado por texto: '$candidato'")
                     break
                 }
             }
@@ -2867,9 +2867,9 @@ class MyAccessibilityService : AccessibilityService() {
                     "com.sec.android.app.camera:id/button_confirm",
                     "com.sec.android.app.camera:id/confirm_button",
                     "com.sec.android.app.camera:id/save_button",
-                    "com.sec.android.app.camera:id/okay_button",        // 🔥 Nuevo
-                    "com.sec.android.app.camera:id/btn_ok",             // 🔥 Nuevo
-                    "com.sec.android.app.camera:id/positive_button",    // 🔥 Nuevo
+                    "com.sec.android.app.camera:id/okay_button",        //  Nuevo
+                    "com.sec.android.app.camera:id/btn_ok",             //  Nuevo
+                    "com.sec.android.app.camera:id/positive_button",    //  Nuevo
                     "com.google.android.GoogleCamera:id/done_button",
                     "com.android.camera2:id/done_button"
                 )
@@ -2877,7 +2877,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val nodos = root.findAccessibilityNodeInfosByViewId(id)
                     if (nodos.isNotEmpty()) {
                         nodoEncontrado = nodos[0]
-                        Log.d(TAG, "🔍 Encontrado por ID: $id")
+                        Log.d(TAG, " Encontrado por ID: $id")
                         break
                     }
                 }
@@ -2891,28 +2891,28 @@ class MyAccessibilityService : AccessibilityService() {
                 }
                 if (nodoClick != null && nodoClick.isClickable) {
                     nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d(TAG, "✅ Diálogo de confirmación cerrado (clic en botón)")
+                    Log.d(TAG, " Diálogo de confirmación cerrado (clic en botón)")
                 } else {
                     val bounds = Rect()
                     nodoEncontrado.getBoundsInScreen(bounds)
                     if (!bounds.isEmpty) {
                         tapCoordenadas(mapOf("x" to bounds.centerX(), "y" to bounds.centerY()))
-                        Log.d(TAG, "✅ Tap en coordenadas del botón (fallback)")
+                        Log.d(TAG, " Tap en coordenadas del botón (fallback)")
                     }
                 }
             } else {
                 // 4. ÚLTIMO RECURSO: Presionar BACK (solo si estamos seguros de que es un diálogo)
                 // Verificamos si el paquete activo es la cámara para no cerrar la app
                 if (root.packageName?.contains("camera") == true) {
-                    Log.d(TAG, "ℹ️ No se encontró botón, presionando BACK para cerrar diálogo")
+                    Log.d(TAG, " No se encontró botón, presionando BACK para cerrar diálogo")
                     performGlobalAction(GLOBAL_ACTION_BACK)
-                    Log.d(TAG, "✅ BACK presionado")
+                    Log.d(TAG, " BACK presionado")
                 } else {
-                    Log.d(TAG, "ℹ️ No hay diálogo de confirmación visible. Foto guardada automáticamente.")
+                    Log.d(TAG, " No hay diálogo de confirmación visible. Foto guardada automáticamente.")
                 }
             }
 
-            // ✅ La cámara queda abierta para más fotos
+            //  La cámara queda abierta para más fotos
 
         }, 600) // esperar 600ms para que el diálogo aparezca
     }
@@ -2937,14 +2937,14 @@ class MyAccessibilityService : AccessibilityService() {
             val isScrollable = nodo.isScrollable
             val isCheckable = nodo.isCheckable
 
-            // ✅ CAPTURAR TODO LO CLICKEABLE/EDITABLE/SCROLLABLE
+            //  CAPTURAR TODO LO CLICKEABLE/EDITABLE/SCROLLABLE
             val tieneContenido = !text.isNullOrBlank() ||
                     !contentDesc.isNullOrBlank() ||
                     !hint.isNullOrBlank()
             val esInteractivo = isClickable || isEditable || isCheckable || isScrollable
 
             if (tieneContenido || esInteractivo) {
-                // ✅ INFORMACIÓN UNIVERSAL
+                //  INFORMACIÓN UNIVERSAL
                 val searchableText = getSearchableText(
                     text = text,
                     contentDesc = contentDesc,
@@ -2969,7 +2969,7 @@ class MyAccessibilityService : AccessibilityService() {
                     isChecked = nodo.isChecked,
                     isScrollable = isScrollable,
                     importance = calculateImportance(isClickable, text, contentDesc),
-                    // ✅ INFORMACIÓN UNIVERSAL
+                    //  INFORMACIÓN UNIVERSAL
                     isPassword = nodo.isPassword,
                     isEnabled = nodo.isEnabled,
                     isFocusable = nodo.isFocusable,
@@ -3001,7 +3001,7 @@ class MyAccessibilityService : AccessibilityService() {
             scrollableContainers = elementos.count { it.isScrollable }
         )
     }
-    // ✅ FUNCIÓN UNIVERSAL: Extraer texto buscable
+    //  FUNCIÓN UNIVERSAL: Extraer texto buscable
     private fun getSearchableText(
         text: String?,
         contentDesc: String?,
@@ -3060,7 +3060,7 @@ class MyAccessibilityService : AccessibilityService() {
             try {
                 RetrofitClient.feedbackApi.enviarFeedback(reporte)
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Feedback: ${e.message}")
+                Log.e(TAG, " Feedback: ${e.message}")
             }
         }
     }
@@ -3071,9 +3071,9 @@ class MyAccessibilityService : AccessibilityService() {
         try { unregisterReceiver(writeMessageReceiver) } catch (_: Exception) {}
         try {
             unregisterReceiver(actionsReceiver)
-            Log.d(TAG, "✅ BroadcastReceiver desregistrado")
+            Log.d(TAG, " BroadcastReceiver desregistrado")
         } catch (e: Exception) {
-            Log.e(TAG, "⚠️ Error desregistrando receiver: ${e.message}")
+            Log.e(TAG, " Error desregistrando receiver: ${e.message}")
         }
         unregisterReceiver(splitScreenReceiver)
         handler.removeCallbacks(stepRunnable)

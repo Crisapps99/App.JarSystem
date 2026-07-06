@@ -113,7 +113,7 @@ object ActionExecutor {
             setPackage(context.packageName)
         }
         context.sendBroadcast(confirmIntent)
-        Log.d("JARVIS_ACTION", "❓ Confirmación de navegación solicitada")
+        Log.d("JARVIS_ACTION", " Confirmación de navegación solicitada")
     }
     // ─────────────────────────────────────────────────────────────────────────
     // WHATSAPP - VERSIÓN MEJORADA CON CONFIRMACIÓN DE VOZ
@@ -121,7 +121,7 @@ object ActionExecutor {
     // ActionExecutor.kt
     // ActionExecutor.kt - MEJORAR sendWhatsAppMessage
     fun sendWhatsAppMessage(context: Context, contactName: String, message: String) {
-        Log.d("JARVIS_ACTION", "📱 sendWhatsAppMessage: contacto='$contactName', mensaje='$message'")
+        Log.d("JARVIS_ACTION", " sendWhatsAppMessage: contacto='$contactName', mensaje='$message'")
 
         // 1. Buscar contacto
         var contact = ContactsManager.findContact(context, contactName)
@@ -137,7 +137,7 @@ object ActionExecutor {
         }
 
         if (contact == null) {
-            Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado. Abriendo WhatsApp.")
+            Log.w("JARVIS_ACTION", " Contacto '$contactName' no encontrado. Abriendo WhatsApp.")
             openApp(context, "com.whatsapp")
             return
         }
@@ -150,7 +150,7 @@ object ActionExecutor {
         pendingWhatsappContact = contact.name
         pendingWhatsappMessage = message
 
-        // ✅ NUEVO: Usar el método directo de WhatsApp con Intent
+        //  NUEVO: Usar el método directo de WhatsApp con Intent
         val intent = Intent(Intent.ACTION_VIEW).apply {
             data = Uri.parse("https://wa.me/$numero?text=${Uri.encode(message)}")
             setPackage("com.whatsapp")
@@ -159,11 +159,11 @@ object ActionExecutor {
 
         try {
             context.startActivity(intent)
-            Log.d("JARVIS_ACTION", "✅ Intent enviado para chat de: $numero")
+            Log.d("JARVIS_ACTION", " Intent enviado para chat de: $numero")
 
-            // ✅ Esperar a que WhatsApp cargue y escribir el mensaje con Accessibility
+            //  Esperar a que WhatsApp cargue y escribir el mensaje con Accessibility
             Handler(Looper.getMainLooper()).postDelayed({
-                Log.d("JARVIS_ACTION", "✏️ Escribiendo mensaje con Accessibility...")
+                Log.d("JARVIS_ACTION", " Escribiendo mensaje con Accessibility...")
 
                 // Enviar broadcast para escribir el mensaje y presionar enviar
                 val writeIntent = Intent("JARVIS.WRITE_MESSAGE_AND_SEND").apply {
@@ -183,7 +183,7 @@ object ActionExecutor {
             }, 2500)
 
         } catch (e: Exception) {
-            Log.e("JARVIS_ACTION", "❌ Error al abrir chat: ${e.message}")
+            Log.e("JARVIS_ACTION", " Error al abrir chat: ${e.message}")
             openApp(context, "com.whatsapp")
         }
     }
@@ -203,7 +203,7 @@ object ActionExecutor {
         dropoffName: String,
         deeplink: String = ""
     ) {
-        Log.d("ActionExecutor", "🚗 Abriendo Uber: $dropoffName ($dropoffLat, $dropoffLng)")
+        Log.d("ActionExecutor", " Abriendo Uber: $dropoffName ($dropoffLat, $dropoffLng)")
 
         try {
             // 1. Intentar con el deep link recibido del servidor
@@ -212,13 +212,13 @@ object ActionExecutor {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
-                Log.d("ActionExecutor", "✅ Uber abierto con deep link")
+                Log.d("ActionExecutor", " Uber abierto con deep link")
                 return
             }
 
             // 2. Si no vino deep link, construirlo localmente con el client_id
             // (debes tener tu client_id de Uber Developer)
-            val clientId = "-bgm1W1aZztFFGNDFPnAcvVNhLlRxHNQ" // ⚠️ Reemplazar con el real
+            val clientId = "-bgm1W1aZztFFGNDFPnAcvVNhLlRxHNQ" //  Reemplazar con el real
             val params = mapOf(
                 "client_id" to clientId,
                 "action" to "setPickup",
@@ -235,11 +235,11 @@ object ActionExecutor {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-            Log.d("ActionExecutor", "✅ Uber abierto con fallback deep link")
+            Log.d("ActionExecutor", " Uber abierto con fallback deep link")
 
         } catch (e: Exception) {
             // 3. Si no está instalada la app, abrir versión web
-            Log.e("ActionExecutor", "❌ Error abriendo Uber: ${e.message}")
+            Log.e("ActionExecutor", " Error abriendo Uber: ${e.message}")
             try {
                 val webUrl = "https://m.uber.com/ul/?client_id=${Uri.encode("TU_CLIENT_ID_DE_UBER")}" +
                         "&action=setPickup&pickup[latitude]=$pickupLat&pickup[longitude]=$pickupLng" +
@@ -248,14 +248,14 @@ object ActionExecutor {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(webIntent)
-                Log.d("ActionExecutor", "✅ Uber abierto en navegador (fallback)")
+                Log.d("ActionExecutor", " Uber abierto en navegador (fallback)")
             } catch (e2: Exception) {
-                Log.e("ActionExecutor", "❌ Fallback web también falló: ${e2.message}")
+                Log.e("ActionExecutor", " Fallback web también falló: ${e2.message}")
             }
         }
     }
     fun callWhatsApp(context: Context, contactName: String) {
-        Log.d("JARVIS_ACTION", "📞 callWhatsApp: contacto='$contactName'")
+        Log.d("JARVIS_ACTION", " callWhatsApp: contacto='$contactName'")
 
         // ─── 1. Buscar el contacto localmente ───────────────────────────────────
         var contact = ContactsManager.findContact(context, contactName)
@@ -271,7 +271,7 @@ object ActionExecutor {
         }
 
         if (contact == null) {
-            Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado")
+            Log.w("JARVIS_ACTION", " Contacto '$contactName' no encontrado")
             speakText(context, "No encontré el contacto $contactName")
             return
         }
@@ -279,7 +279,7 @@ object ActionExecutor {
         // ─── 2. Limpiar el número para buscar en la base de datos de Android ────
         val numeroLimpio = contact.phoneNumber.replace(Regex("[^0-9]"), "")
         if (numeroLimpio.isEmpty()) {
-            Log.w("JARVIS_ACTION", "⚠️ El contacto no tiene un número telefónico válido.")
+            Log.w("JARVIS_ACTION", " El contacto no tiene un número telefónico válido.")
             speakText(context, "${contact.name} no tiene un número válido.")
             return
         }
@@ -287,7 +287,7 @@ object ActionExecutor {
         // Tip: Extraemos los últimos 9 dígitos para asegurar compatibilidad en Ecuador
         // (así coincide si está guardado con o sin el +593)
         val subNumero = if (numeroLimpio.length >= 9) numeroLimpio.substring(numeroLimpio.length - 9) else numeroLimpio
-        Log.d("JARVIS_ACTION", "📱 Buscando registro de llamada WhatsApp para: ...$subNumero")
+        Log.d("JARVIS_ACTION", " Buscando registro de llamada WhatsApp para: ...$subNumero")
 
         // ─── 3. MÉTODO DEFINITIVO: Buscar el Row ID de WhatsApp VoIP ───────────
         try {
@@ -315,14 +315,14 @@ object ActionExecutor {
                 }
 
                 context.startActivity(whatsappCallIntent)
-                Log.d("JARVIS_ACTION", "✅ Llamada directa de WhatsApp iniciada con éxito.")
+                Log.d("JARVIS_ACTION", " Llamada directa de WhatsApp iniciada con éxito.")
                 speakText(context, "Llamando a ${contact.name} por WhatsApp")
                 return
             }
             cursor?.close()
-            Log.w("JARVIS_ACTION", "⚠️ No se encontró una cuenta de WhatsApp vinculada para este número en Contactos.")
+            Log.w("JARVIS_ACTION", " No se encontró una cuenta de WhatsApp vinculada para este número en Contactos.")
         } catch (e: Exception) {
-            Log.e("JARVIS_ACTION", "❌ Error al interactuar con el ContentResolver: ${e.message}")
+            Log.e("JARVIS_ACTION", " Error al interactuar con el ContentResolver: ${e.message}")
         }
 
         // ─── 4. FALLBACK FINAL: Si el método nativo falla, abrir el chat ───────
@@ -333,10 +333,10 @@ object ActionExecutor {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(chatIntent)
-            Log.d("JARVIS_ACTION", "✅ Chat de WhatsApp abierto como alternativa.")
+            Log.d("JARVIS_ACTION", " Chat de WhatsApp abierto como alternativa.")
             speakText(context, "No pude iniciar la llamada directa. Te abro el chat de ${contact.name}")
         } catch (e: Exception) {
-            Log.e("JARVIS_ACTION", "❌ Error crítico en el fallback: ${e.message}")
+            Log.e("JARVIS_ACTION", " Error crítico en el fallback: ${e.message}")
             openApp(context, "com.whatsapp")
         }
     }
@@ -355,7 +355,7 @@ object ActionExecutor {
     // TELEGRAM
     // ─────────────────────────────────────────────────────────────────────────
     fun sendTelegramMessage(context: Context, contactName: String, message: String) {
-        Log.d("JARVIS_ACTION", "📱 sendTelegramMessage: contacto='$contactName'")
+        Log.d("JARVIS_ACTION", " sendTelegramMessage: contacto='$contactName'")
 
         val contact = ContactsManager.findContact(context, contactName)
         val nombreMostrar = contact?.name ?: contactName
@@ -385,12 +385,12 @@ object ActionExecutor {
     ) {
         // ── Guard: evitar doble disparo ───────────────────────────────────────
         if (confirmacionEnCurso || onConfirmacionPendiente != null) {
-            Log.w("JARVIS_ACTION", "⚠️ Confirmación ya en curso — ignorando duplicado")
+            Log.w("JARVIS_ACTION", " Confirmación ya en curso — ignorando duplicado")
             return
         }
         confirmacionEnCurso = true
 
-        Log.d("JARVIS_ACTION", "🙈 Preparando confirmación para $appPackage")
+        Log.d("JARVIS_ACTION", " Preparando confirmación para $appPackage")
         Log.d("JARVIS_ACTION", "   Contacto: $nombreContacto")
         Log.d("JARVIS_ACTION", "   Mensaje: ${mensaje.take(50)}...")
 
@@ -408,7 +408,7 @@ object ActionExecutor {
             onConfirmacionPendiente = null
 
             if (confirmado) {
-                Log.d("JARVIS_ACTION", "✅ Confirmado → enviando mensaje")
+                Log.d("JARVIS_ACTION", " Confirmado → enviando mensaje")
                 _ejecutarTapEnviar(context)
 
                 // Avisar al controlador: restaurar orbe
@@ -417,7 +417,7 @@ object ActionExecutor {
                 }
                 context.sendBroadcast(sentIntent)
             } else {
-                Log.d("JARVIS_ACTION", "❌ Cancelado → limpiando y volviendo a inicio")
+                Log.d("JARVIS_ACTION", " Cancelado → limpiando y volviendo a inicio")
                 _cancelarEnvioYHome(context)
 
                 // Avisar al controlador: restaurar orbe
@@ -437,11 +437,11 @@ object ActionExecutor {
                 setPackage(context.packageName)
             }
             context.sendBroadcast(confirmIntent)
-            Log.d("JARVIS_ACTION", "❓ Confirmación solicitada para $nombreContacto")
+            Log.d("JARVIS_ACTION", " Confirmación solicitada para $nombreContacto")
         }, 500) // 500ms para que el broadcast de ocultar orbe llegue primero
     }
     fun controlYoutube(context: Context, comando: String, valor: Int = 0) {
-        Log.d("JARVIS_ACTION", "🎬 Control YouTube: $comando ($valor)")
+        Log.d("JARVIS_ACTION", " Control YouTube: $comando ($valor)")
 
         when (comando) {
             "pausar" -> YoutubeController.pausar(context)
@@ -483,7 +483,7 @@ object ActionExecutor {
     // ─────────────────────────────────────────────────────────────────────────
     private fun _ejecutarTapEnviar(context: Context) {
         // Intentar diferentes textos comunes para el botón de enviar
-        val candidatos = listOf("Enviar", "Send", "send", "Enviar mensaje", "✓", "→", "▶")
+        val candidatos = listOf("Enviar", "Send", "send", "Enviar mensaje", "", "→", "▶")
 
         val accion = ActionDto(
             tipo = "tap_send_button",
@@ -522,7 +522,7 @@ object ActionExecutor {
             setPackage(context.packageName)
         }
         context.sendBroadcast(intent)
-        Log.d("JARVIS_ACTION", "📡 Broadcast enviado: $intencion")
+        Log.d("JARVIS_ACTION", " Broadcast enviado: $intencion")
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -535,19 +535,19 @@ object ActionExecutor {
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
-                Log.d("ACTION_EXEC", "✅ App abierta: $packageName")
+                Log.d("ACTION_EXEC", " App abierta: $packageName")
             } else {
-                Log.e("ACTION_EXEC", "❌ Intent es null para: $packageName")
+                Log.e("ACTION_EXEC", " Intent es null para: $packageName")
             }
         } catch (e: Exception) {
-            Log.e("ACTION_EXEC", "❌ Error abriendo app: ${e.message}", e)
+            Log.e("ACTION_EXEC", " Error abriendo app: ${e.message}", e)
         }
     }
 
     fun sendSms(context: Context, contactName: String, message: String) {
         val contact = ContactsManager.findContact(context, contactName)
         if (contact != null) MessagingManager.openSmsChat(context, contact.phoneNumber, message)
-        else Log.w("JARVIS_ACTION", "⚠️ Contacto '$contactName' no encontrado para SMS")
+        else Log.w("JARVIS_ACTION", " Contacto '$contactName' no encontrado para SMS")
     }
 
     fun callContact(context: Context, contactName: String) {
@@ -569,25 +569,25 @@ object ActionExecutor {
     // ActionExecutor.kt - Agregar esta función
     fun openAppsInSplitScreen(context: Context, packageNames: List<String>) {
         if (packageNames.size < 2) {
-            Log.e("ActionExecutor", "❌ Se requieren 2 apps, recibidas: ${packageNames.size}")
+            Log.e("ActionExecutor", " Se requieren 2 apps, recibidas: ${packageNames.size}")
             return
         }
 
         val pkg1 = packageNames[0]
         val pkg2 = packageNames[1]
 
-        Log.d("ActionExecutor", "🚀 Solicitando split screen: $pkg1 + $pkg2")
+        Log.d("ActionExecutor", " Solicitando split screen: $pkg1 + $pkg2")
 
-        // ✅ Verificar que las apps existen
+        //  Verificar que las apps existen
         val pm = context.packageManager
         val intent1 = pm.getLaunchIntentForPackage(pkg1)
         val intent2 = pm.getLaunchIntentForPackage(pkg2)
 
         if (intent1 == null) {
-            Log.e("ActionExecutor", "❌ App no instalada: $pkg1")
+            Log.e("ActionExecutor", " App no instalada: $pkg1")
         }
         if (intent2 == null) {
-            Log.e("ActionExecutor", "❌ App no instalada: $pkg2")
+            Log.e("ActionExecutor", " App no instalada: $pkg2")
         }
 
         if (intent1 == null || intent2 == null) {
@@ -620,13 +620,13 @@ object ActionExecutor {
                 if (intent != null) {
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
-                    Log.d("ActionExecutor", "✅ Abriendo app: $pkg")
+                    Log.d("ActionExecutor", " Abriendo app: $pkg")
                     Thread.sleep(500)
                 }
             }
-            Log.d("ActionExecutor", "⚠️ Fallback: apps abiertas secuencialmente")
+            Log.d("ActionExecutor", " Fallback: apps abiertas secuencialmente")
         } catch (e: Exception) {
-            Log.e("ActionExecutor", "❌ Fallback falló: ${e.message}")
+            Log.e("ActionExecutor", " Fallback falló: ${e.message}")
         }
     }
 
@@ -635,7 +635,7 @@ object ActionExecutor {
         val packageManager = context.packageManager
         val appNameLower = appName.lowercase().trim()
 
-        // 🔥 Mapa de nombres comunes a paquetes (más completo)
+        //  Mapa de nombres comunes a paquetes (más completo)
         val appMap = mapOf(
             "facebook" to "com.facebook.katana",
             "face" to "com.facebook.katana",
@@ -664,7 +664,7 @@ object ActionExecutor {
         // 1. Buscar en el mapa (búsqueda exacta o parcial)
         for ((key, pkg) in appMap) {
             if (appNameLower == key || appNameLower.contains(key) || key.contains(appNameLower)) {
-                Log.d("ActionExecutor", "✅ Mapa: '$appName' → $pkg")
+                Log.d("ActionExecutor", " Mapa: '$appName' → $pkg")
                 return pkg
             }
         }
@@ -675,7 +675,7 @@ object ActionExecutor {
             for (app in installedApps) {
                 val appLabel = packageManager.getApplicationLabel(app).toString().lowercase()
                 if (appLabel.contains(appNameLower) || appNameLower.contains(appLabel)) {
-                    Log.d("ActionExecutor", "✅ Instalada: '$appName' → ${app.packageName}")
+                    Log.d("ActionExecutor", " Instalada: '$appName' → ${app.packageName}")
                     return app.packageName
                 }
             }
@@ -683,12 +683,12 @@ object ActionExecutor {
             Log.e("ActionExecutor", "Error buscando apps: ${e.message}")
         }
 
-        Log.w("ActionExecutor", "❌ No se encontró app: '$appName'")
+        Log.w("ActionExecutor", " No se encontró app: '$appName'")
         return null
     }
 
     fun setAlarm(context: Context, hour: Int, minute: Int, label: String = "") {
-        Log.d("ActionExecutor", "⏰ Configurando alarma: $hour:$minute - '$label'")
+        Log.d("ActionExecutor", " Configurando alarma: $hour:$minute - '$label'")
 
         try {
             val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
@@ -701,7 +701,7 @@ object ActionExecutor {
                 putExtra(AlarmClock.EXTRA_SKIP_UI, false)
             }
             context.startActivity(intent)
-            Log.d("ActionExecutor", "✅ Intent de alarma enviado")
+            Log.d("ActionExecutor", " Intent de alarma enviado")
 
             val speakIntent = Intent("JARVIS.SPEAK_TEXT").apply {
                 val hora12 = if (hour > 12) hour - 12 else if (hour == 0) 12 else hour
@@ -720,7 +720,7 @@ object ActionExecutor {
                     context.startActivity(it)
                 }
             } catch (e2: Exception) {
-                Log.e("ActionExecutor", "❌ Fallback falló: ${e2.message}")
+                Log.e("ActionExecutor", " Fallback falló: ${e2.message}")
             }
         }
     }
@@ -751,14 +751,14 @@ object ActionExecutor {
      * @param portrait true para modo retrato
      */
     fun takePhoto(context: Context, frontal: Boolean = false, portrait: Boolean = false) {
-        Log.d("ActionExecutor", "📸 takePhoto: frontal=$frontal, portrait=$portrait")
+        Log.d("ActionExecutor", " takePhoto: frontal=$frontal, portrait=$portrait")
 
         try {
             // Verificar permiso
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
 
-                Log.e("ActionExecutor", "❌ Permiso de cámara no concedido")
+                Log.e("ActionExecutor", " Permiso de cámara no concedido")
 
                 // Abrir ajustes
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -781,13 +781,13 @@ object ActionExecutor {
 
             if (intent.resolveActivity(context.packageManager) != null) {
                 context.startActivity(intent)
-                Log.d("ActionExecutor", "✅ Cámara abierta para tomar foto")
+                Log.d("ActionExecutor", " Cámara abierta para tomar foto")
             } else {
-                Log.e("ActionExecutor", "❌ No hay app de cámara")
+                Log.e("ActionExecutor", " No hay app de cámara")
             }
 
         } catch (e: Exception) {
-            Log.e("ActionExecutor", "❌ Error: ${e.message}")
+            Log.e("ActionExecutor", " Error: ${e.message}")
         }
     }
     fun navigateTo(context: Context, lat: Double, lng: Double, name: String) {
@@ -798,7 +798,7 @@ object ActionExecutor {
         }
         try {
             context.startActivity(navIntent)
-            Log.d("ActionExecutor", "🚗 Navegación iniciada hacia $name ($lat, $lng)")
+            Log.d("ActionExecutor", " Navegación iniciada hacia $name ($lat, $lng)")
         } catch (e: Exception) {
             // Fallback: abrir con URL web
             val webUri = "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving&dir_action=navigate"
@@ -813,7 +813,7 @@ object ActionExecutor {
             reproducirPorId(context, cachedId)
             return
         }
-        Log.d("ActionExecutor", "🎬 playVideo: query='$query'")
+        Log.d("ActionExecutor", " playVideo: query='$query'")
         if (query.isBlank()) {
             openApp(context, "com.google.android.youtube")
             return
@@ -825,10 +825,10 @@ object ActionExecutor {
                 val videoId = buscarVideoIdEnYouTube(query)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     if (videoId != null) {
-                        Log.d("ActionExecutor", "✅ Video ID encontrado: $videoId")
+                        Log.d("ActionExecutor", " Video ID encontrado: $videoId")
                         reproducirPorId(context, videoId)
                     } else {
-                        Log.w("ActionExecutor", "⚠️ No se encontró ID, usando fallback")
+                        Log.w("ActionExecutor", " No se encontró ID, usando fallback")
                         reproducirFallback(context, query)
                     }
                 }
@@ -854,32 +854,32 @@ object ActionExecutor {
             val response = client.newCall(request).execute()
             val responseCode = response.code
             val responseBody = response.body?.string() ?: ""
-            Log.d("ActionExecutor", "📡 Código de respuesta YouTube: $responseCode")
+            Log.d("ActionExecutor", " Código de respuesta YouTube: $responseCode")
 
             if (!response.isSuccessful) {
-                Log.e("ActionExecutor", "❌ YouTube API error: ${response.code}")
+                Log.e("ActionExecutor", " YouTube API error: ${response.code}")
                 return null
             }
 
             if (responseBody.isNullOrBlank()) {
-                Log.e("ActionExecutor", "❌ El cuerpo de la respuesta está vacío")
+                Log.e("ActionExecutor", " El cuerpo de la respuesta está vacío")
                 return null
             }
             // IMPRIMIR EL JSON COMPLETO PARA ANÁLISIS
-            Log.d("ActionExecutor", "📦 JSON RECIBIDO DE YOUTUBE: $responseBody")
+            Log.d("ActionExecutor", " JSON RECIBIDO DE YOUTUBE: $responseBody")
 
             val json = org.json.JSONObject(responseBody)
             val items = json.optJSONArray("items")
             if (items != null && items.length() > 0) {
                 val videoId = items.getJSONObject(0).getJSONObject("id").getString("videoId")
-                Log.d("ActionExecutor", "🎯 Video ID: $videoId para query: '$query'")
+                Log.d("ActionExecutor", " Video ID: $videoId para query: '$query'")
                 videoId
             } else {
-                Log.w("ActionExecutor", "⚠️ Sin resultados para: '$query'")
+                Log.w("ActionExecutor", " Sin resultados para: '$query'")
                 null
             }
         } catch (e: Exception) {
-            Log.e("ActionExecutor", "❌ Error YouTube API: ${e.message}")
+            Log.e("ActionExecutor", " Error YouTube API: ${e.message}")
             null
         }
     }
@@ -892,7 +892,7 @@ object ActionExecutor {
         }
         try {
             context.startActivity(intent)
-            Log.d("ActionExecutor", "✅ Reproduciendo video: $videoId")
+            Log.d("ActionExecutor", " Reproduciendo video: $videoId")
         } catch (e: Exception) {
             // Si falla vnd.youtube, intentar con https
             val fallbackIntent = Intent(Intent.ACTION_VIEW,

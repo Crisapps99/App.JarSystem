@@ -90,7 +90,7 @@ private fun PreviewScreen() {
     ) {
         // ─── TÍTULO ───
         Text(
-            "🎨 Vista Previa - Barra Nexus",
+            " Vista Previa - Barra Nexus",
             color = Color.White,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(bottom = 8.dp)
@@ -124,7 +124,7 @@ private fun PreviewScreen() {
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    if (isConversationMode) "💬 Modo Conversación ON" else "💬 Activar Conversación",
+                    if (isConversationMode) " Modo Conversación ON" else " Activar Conversación",
                     color = if (isConversationMode) Color.Black else Color.White,
                     fontSize = 12.sp
                 )
@@ -141,7 +141,7 @@ private fun PreviewScreen() {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A)),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("🗑 Limpiar", color = Color.White, fontSize = 12.sp)
+                Text(" Limpiar", color = Color.White, fontSize = 12.sp)
             }
         }
 
@@ -165,7 +165,7 @@ private fun PreviewScreen() {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954)),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("🎵 Mostrar Música", color = Color.White, fontSize = 11.sp)
+                Text(" Mostrar Música", color = Color.White, fontSize = 11.sp)
             }
 
             Button(
@@ -176,7 +176,7 @@ private fun PreviewScreen() {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A)),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("✕ Ocultar", color = Color.White, fontSize = 11.sp)
+                Text(" Ocultar", color = Color.White, fontSize = 11.sp)
             }
         }
 
@@ -195,7 +195,7 @@ private fun PreviewScreen() {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("💬 WhatsApp Preview", color = Color.White, fontSize = 11.sp)
+                Text(" WhatsApp Preview", color = Color.White, fontSize = 11.sp)
             }
 
             Button(
@@ -206,7 +206,7 @@ private fun PreviewScreen() {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A)),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("✕ Cerrar", color = Color.White, fontSize = 11.sp)
+                Text(" Cerrar", color = Color.White, fontSize = 11.sp)
             }
         }
 
@@ -218,9 +218,9 @@ private fun PreviewScreen() {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
             listOf(
                 JarvisState.IDLE to "IDLE",
-                JarvisState.LISTENING to "🎤",
-                JarvisState.THINKING to "💭",
-                JarvisState.SPEAKING to "🔊"
+                JarvisState.LISTENING to "",
+                JarvisState.THINKING to "",
+                JarvisState.SPEAKING to ""
             ).forEach { (state, label) ->
                 Button(
                     onClick = {
@@ -252,14 +252,14 @@ private fun PreviewScreen() {
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0d2e2e))
             ) {
-                Text("📄 Texto/HTML", color = Color(0xFF4DEEE9), fontSize = 11.sp)
+                Text(" Texto/HTML", color = Color(0xFF4DEEE9), fontSize = 11.sp)
             }
 
             Button(
                 onClick = { uiState.hidePanel() },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1A1A))
             ) {
-                Text("✕ Ocultar panel", color = Color.White, fontSize = 11.sp)
+                Text(" Ocultar panel", color = Color.White, fontSize = 11.sp)
             }
         }
 
@@ -268,7 +268,7 @@ private fun PreviewScreen() {
         // ─── MENSAJES DE CHAT (Vista previa) ───
         if (isConversationMode && chatMessages.isNotEmpty()) {
             Text(
-                "💬 Mensajes de prueba:",
+                " Mensajes de prueba:",
                 color = Color(0xFF888899),
                 fontSize = 12.sp,
                 modifier = Modifier.padding(bottom = 4.dp)

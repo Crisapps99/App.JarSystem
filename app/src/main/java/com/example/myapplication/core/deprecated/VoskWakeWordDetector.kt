@@ -46,11 +46,11 @@
 //            { unpackedModel ->
 //                model = unpackedModel
 //                modelListo = true
-//                Log.d(TAG, "✅ Modelo Vosk listo")
+//                Log.d(TAG, " Modelo Vosk listo")
 //                mainHandler.post { onReady() }
 //            },
 //            { exception ->
-//                Log.e(TAG, "❌ Error cargando modelo: ${exception.message}")
+//                Log.e(TAG, " Error cargando modelo: ${exception.message}")
 //                mainHandler.post { onError(exception.message ?: "Error desconocido") }
 //            }
 //        )
@@ -59,7 +59,7 @@
 //    fun start() {
 //        if (isActive) { Log.w(TAG, "Ya activo"); return }
 //        if (!modelListo || model == null) {
-//            Log.w(TAG, "⚠️ Modelo no cargado — llama init() primero")
+//            Log.w(TAG, " Modelo no cargado — llama init() primero")
 //            return
 //        }
 //
@@ -74,9 +74,9 @@
 //            speechService = SpeechService(recognizer, 16000.0f)
 //            speechService?.startListening(this)
 //            isActive = true
-//            Log.d(TAG, "🎙️ Escuchando wake word")
+//            Log.d(TAG, " Escuchando wake word")
 //        } catch (e: Exception) {
-//            Log.e(TAG, "❌ Error iniciando: ${e.message}", e)
+//            Log.e(TAG, " Error iniciando: ${e.message}", e)
 //            isActive = false
 //        }
 //    }
@@ -91,7 +91,7 @@
 //            Log.e(TAG, "Error deteniendo: ${e.message}")
 //        }
 //        speechService = null
-//        Log.d(TAG, "⏹️ Wake word detenido")
+//        Log.d(TAG, " Wake word detenido")
 //    }
 //
 //    fun destroy() {
@@ -157,7 +157,7 @@
 //    private fun disparar() {
 //        if (detectado) return
 //        detectado = true
-//        Log.i(TAG, "🔥 Wake word detectado")
+//        Log.i(TAG, " Wake word detectado")
 //        stop()
 //        mainHandler.post { onWakeWordDetected.invoke() }
 //    }

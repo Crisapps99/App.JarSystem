@@ -111,7 +111,7 @@ fun MusicResultCard(
                         .clickable { onClose() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("✕", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -141,7 +141,7 @@ fun MusicResultCard(
                             .background(Color(0xFF2A2A3A)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("🎵", fontSize = 36.sp)
+                        Text("", fontSize = 36.sp)
                     }
                 }
 

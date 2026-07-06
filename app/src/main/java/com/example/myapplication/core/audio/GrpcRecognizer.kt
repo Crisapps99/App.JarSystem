@@ -37,7 +37,7 @@ class GrpcVoiceRecognizer(
     private var requestObserver: ClientStream<StreamingRecognizeRequest>? = null
     private var isStreamActive = false
 
-    // ✅ Flag para evitar múltiples resultados finales
+    //  Flag para evitar múltiples resultados finales
     private var haEnviadoFinal = false
     private var ultimoTextoEnviado = ""
     private var ultimoTimestamp = 0L
@@ -54,9 +54,9 @@ class GrpcVoiceRecognizer(
                     }
                     .build()
                 speechClient = SpeechClient.create(settings)
-                Log.d(TAG, "✅ Cliente gRPC inicializado")
+                Log.d(TAG, " Cliente gRPC inicializado")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error inicializando gRPC: ${e.message}")
+                Log.e(TAG, " Error inicializando gRPC: ${e.message}")
                 onError("Error de inicialización: ${e.message}")
             }
         }
@@ -68,7 +68,7 @@ class GrpcVoiceRecognizer(
             return
         }
 
-        // ✅ Resetear flags al iniciar
+        //  Resetear flags al iniciar
         haEnviadoFinal = false
         ultimoTextoEnviado = ""
         ultimoTimestamp = 0L
@@ -99,9 +99,9 @@ class GrpcVoiceRecognizer(
                                 Log.d(TAG, " Resultado final: $textoLimpio")
                                 onFinalResult(textoLimpio)
                             } else if (esDuplicado) {
-                                Log.d(TAG, "️ Resultado duplicado ignorado: $textoLimpio")
+                                Log.d(TAG, " Resultado duplicado ignorado: $textoLimpio")
                             } else if (haEnviadoFinal) {
-                                Log.d(TAG, "⏭️ Ya se envió un resultado final, ignorando: $textoLimpio")
+                                Log.d(TAG, " Ya se envió un resultado final, ignorando: $textoLimpio")
                             }
                         } else if (textoLimpio.isNotBlank()) {
                             // Resultados parciales siempre se envían
@@ -121,13 +121,13 @@ class GrpcVoiceRecognizer(
                     return false
                 }
                 override fun onError(t: Throwable?) {
-                    Log.e(TAG, "❌ Error en stream: ${t?.message}")
+                    Log.e(TAG, " Error en stream: ${t?.message}")
                     isStreamActive = false
                     onError("Error en streaming: ${t?.message}")
                 }
 
                 override fun onComplete() {
-                    Log.d(TAG, "⏹️ Stream completado")
+                    Log.d(TAG, " Stream completado")
                     isStreamActive = false
                 }
             }
@@ -153,10 +153,10 @@ class GrpcVoiceRecognizer(
             )
 
             isStreamActive = true
-            Log.d(TAG, "🎙️ Streaming iniciado para: $language")
+            Log.d(TAG, " Streaming iniciado para: $language")
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error iniciando streaming: ${e.message}")
+            Log.e(TAG, " Error iniciando streaming: ${e.message}")
             onError("Error iniciando stream: ${e.message}")
         }
     }
@@ -181,7 +181,7 @@ class GrpcVoiceRecognizer(
                     .build()
             )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error enviando chunk: ${e.message}")
+            Log.e(TAG, " Error enviando chunk: ${e.message}")
             isStreamActive = false
         }
     }
@@ -190,7 +190,7 @@ class GrpcVoiceRecognizer(
         try {
             requestObserver?.closeSend()
             isStreamActive = false
-            Log.d(TAG, "⏹️ Streaming detenido")
+            Log.d(TAG, " Streaming detenido")
         } catch (e: Exception) {
             Log.e(TAG, "Error deteniendo stream: ${e.message}")
         }
@@ -199,7 +199,7 @@ class GrpcVoiceRecognizer(
     fun destroy() {
         stopStreaming()
         speechClient?.close()
-        Log.d(TAG, "🗑️ Recursos liberados")
+        Log.d(TAG, " Recursos liberados")
     }
 
     private fun loadCredentials(): InputStream {
