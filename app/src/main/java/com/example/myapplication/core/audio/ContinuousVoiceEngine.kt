@@ -104,15 +104,7 @@ class ContinuousVoiceEngine(
     private val timeoutRunnable = Runnable {
         if (engineMode == EngineMode.LISTENING) {
             Log.d(TAG, " Timeout de silencio en Google Cloud STT")
-            // ✅ Forzar finalización de la sesión de STT
-            if (grpcActivo) {
-                grpcActivo = false
-                grpcRecognizer.stopStreaming()
-            }
-            resetVad()
-            engineMode = EngineMode.WAKE_WORD
-            startVoskWakeWordMode()
-            mainHandler.post { onSpeechEnded() }
+            detenerSesion(notificarSpeechEnded = true)
         }
     }
 
@@ -493,14 +485,27 @@ class ContinuousVoiceEngine(
     }
 
     fun detenerSesion(notificarSpeechEnded: Boolean = true) {
-        if (!grpcActivo) return
-        Log.d(TAG, " Deteniendo sesión Google Cloud STT")
-        grpcActivo = false
-        grpcRecognizer.stopStreaming()
+        Log.d(TAG, " Deteniendo sesión y volviendo a WAKE_WORD")
+
+        // 1. Detenemos gRPC solo si estaba activo
+        if (grpcActivo) {
+            grpcActivo = false
+            try {
+                grpcRecognizer.stopStreaming()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deteniendo stream: ${e.message}")
+            }
+        }
+
+        // 2. Limpiamos los timeouts
         timeoutHandler.removeCallbacks(timeoutRunnable)
+
+        // 3. ¡LO MÁS IMPORTANTE! Siempre forzamos el regreso al modo Wake Word
         engineMode = EngineMode.WAKE_WORD
         startVoskWakeWordMode()
         resetVad()
+
+        // 4. Notificamos a la UI/Controller
         if (notificarSpeechEnded) {
             mainHandler.post { onSpeechEnded() }
         }
