@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.myapplication.core.JarvisState
+import com.example.myapplication.core.voice.JarvisState
 import com.example.myapplication.ui.*
 import com.example.myapplication.viewmodel.JarPhase
 import com.example.myapplication.viewmodel.JarVm

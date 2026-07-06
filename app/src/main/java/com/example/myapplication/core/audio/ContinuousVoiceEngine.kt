@@ -1,6 +1,6 @@
 // ContinuousVoiceEngine.kt — VERSIÓN CON WAKE WORD ESTRICTO Y PROFESIONAL
 
-package com.example.myapplication.core
+package com.example.myapplication.core.audio
 
 import android.Manifest
 import android.content.Context

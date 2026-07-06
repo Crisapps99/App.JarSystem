@@ -1,5 +1,5 @@
 // ARCHIVO: app/src/main/java/com/example/myapplication/core/MessagingManager.kt
-package com.example.myapplication.core
+package com.example.myapplication.core.integrations
 
 import android.content.Context
 import android.content.Intent

@@ -25,7 +25,12 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.core.app.NotificationCompat
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.myapplication.activity.JarActivity
-import com.example.myapplication.core.*
+import com.example.myapplication.core.audio.ContinuousVoiceEngine
+import com.example.myapplication.core.memory.ScreenMemory
+import com.example.myapplication.core.voice.JarvisState
+import com.example.myapplication.core.voice.JarvisUi
+import com.example.myapplication.core.voice.JarvisVoiceController
+import com.example.myapplication.core.voice.PorcupineController
 import com.example.myapplication.data.ChatDatabase
 import com.example.myapplication.data.ChatRepository
 import com.example.myapplication.ui.*
@@ -178,7 +183,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
                         onPauseClick = {
                             if (::controller.isInitialized) {
                                 controller.detenerAudio()
-                                renderState(com.example.myapplication.core.JarvisState.IDLE)
+                                renderState(com.example.myapplication.core.voice.JarvisState.IDLE)
                             }
                         },
                         onBackgroundClick = {
@@ -313,10 +318,10 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             uiState.applyText(text)
             uiState.showPanel = true
 
-            if (uiState.jarvisState == com.example.myapplication.core.JarvisState.IDLE && text.length < 50) {
+            if (uiState.jarvisState == com.example.myapplication.core.voice.JarvisState.IDLE && text.length < 50) {
                 mainHandler.removeCallbacksAndMessages(null)
                 mainHandler.postDelayed({
-                    if (uiState.jarvisState == com.example.myapplication.core.JarvisState.IDLE &&
+                    if (uiState.jarvisState == com.example.myapplication.core.voice.JarvisState.IDLE &&
                         uiState.showPanel &&
                         (uiState.transcription.length) < 100) {
                         ocultarPanelResultados()

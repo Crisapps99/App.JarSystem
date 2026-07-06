@@ -9,7 +9,7 @@ import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import com.example.myapplication.core.NotificationMemory
+import com.example.myapplication.core.memory.NotificationMemory
 import com.google.android.gms.common.config.GservicesValue.isInitialized
 
 class JarvisNotificationListener : NotificationListenerService() {

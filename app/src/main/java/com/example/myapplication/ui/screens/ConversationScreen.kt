@@ -32,7 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.myapplication.core.JarvisState
+import com.example.myapplication.core.voice.JarvisState
 
 // Colores del sistema Nexus
 private val ColorBgDark     = Color(0xFF1C1C1E)

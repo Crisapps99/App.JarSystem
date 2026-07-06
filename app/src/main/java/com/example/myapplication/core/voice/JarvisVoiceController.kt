@@ -1,4 +1,4 @@
-package com.example.myapplication.core
+package com.example.myapplication.core.voice
 
 import android.Manifest
 import android.content.BroadcastReceiver
@@ -16,6 +16,12 @@ import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import com.example.myapplication.activity.ActionExecutor
+import com.example.myapplication.core.audio.AudioManager
+import com.example.myapplication.core.audio.ContinuousVoiceEngine
+import com.example.myapplication.core.audio.MusicRecognizerRest
+import com.example.myapplication.core.integrations.LocationHelper
+import com.example.myapplication.core.memory.ScreenMemory
+import com.example.myapplication.core.overlay.NumberedElementsOverlay
 import com.example.myapplication.api.*
 import com.example.myapplication.service.MyAccessibilityService
 import com.google.gson.Gson

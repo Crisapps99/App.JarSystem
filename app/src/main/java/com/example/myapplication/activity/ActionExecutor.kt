@@ -12,10 +12,10 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.example.myapplication.api.ActionDto
-import com.example.myapplication.core.ContactsManager
-import com.example.myapplication.core.MessagingManager
-import com.example.myapplication.core.YoutubeController
-import com.example.myapplication.core.YoutubeController.YouTubeCache
+import com.example.myapplication.core.integrations.ContactsManager
+import com.example.myapplication.core.integrations.MessagingManager
+import com.example.myapplication.core.integrations.YoutubeController
+import com.example.myapplication.core.integrations.YoutubeController.YouTubeCache
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import android.provider.ContactsContract

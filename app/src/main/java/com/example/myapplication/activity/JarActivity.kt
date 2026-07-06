@@ -14,7 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
-import com.example.myapplication.core.ContinuousVoiceEngine
+import com.example.myapplication.core.audio.ContinuousVoiceEngine
 import com.example.myapplication.service.JarvisOverlayService
 import com.example.myapplication.ui.screens.MainScreen
 import com.example.myapplication.viewmodel.JarPhase

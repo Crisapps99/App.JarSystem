@@ -1,4 +1,4 @@
-package com.example.myapplication.core
+package com.example.myapplication.core.memory
 import com.example.myapplication.model.ScreenSnapshot
 object ScreenMemory {
     // Aquí guardaremos la lista de textos detectados para que sea accesible desde cualquier parte

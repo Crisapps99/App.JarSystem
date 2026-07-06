@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/myapplication/core/ContactsManager.kt
-package com.example.myapplication.core
+package com.example.myapplication.core.integrations
 
 import android.content.ContentResolver
 import android.content.ContentValues

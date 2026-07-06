@@ -16,8 +16,8 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.core.JarvisState
-import com.example.myapplication.core.MusicRecognizerRest
+import com.example.myapplication.core.voice.JarvisState
+import com.example.myapplication.core.audio.MusicRecognizerRest
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
 import kotlin.math.sin

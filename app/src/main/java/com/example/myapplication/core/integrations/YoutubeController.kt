@@ -1,4 +1,4 @@
-package com.example.myapplication.core
+package com.example.myapplication.core.integrations
 
 import android.content.ComponentName
 import android.content.Context

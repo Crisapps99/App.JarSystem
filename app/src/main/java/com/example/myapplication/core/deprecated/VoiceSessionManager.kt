@@ -1,4 +1,4 @@
-//package com.example.myapplication.core
+//package com.example.myapplication.core.deprecated
 //
 //import android.util.Log
 //import kotlinx.coroutines.CoroutineScope

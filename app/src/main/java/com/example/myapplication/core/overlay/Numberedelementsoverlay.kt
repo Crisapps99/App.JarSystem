@@ -1,4 +1,4 @@
-package com.example.myapplication.core
+package com.example.myapplication.core.overlay
 
 import android.content.Context
 import android.graphics.Canvas

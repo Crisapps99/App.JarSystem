@@ -1,4 +1,4 @@
-package com.example.myapplication.core
+package com.example.myapplication.core.integrations
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers

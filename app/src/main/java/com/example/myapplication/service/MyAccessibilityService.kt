@@ -18,7 +18,7 @@ import com.example.myapplication.activity.ActionExecutor
 import com.example.myapplication.api.ActionDto
 import com.example.myapplication.api.ReporteFeedback
 import com.example.myapplication.api.RetrofitClient
-import com.example.myapplication.core.NotificationMemory
+import com.example.myapplication.core.memory.NotificationMemory
 import com.example.myapplication.model.ScreenElement
 import com.example.myapplication.model.ScreenSnapshot
 import com.google.gson.Gson
@@ -410,8 +410,8 @@ class MyAccessibilityService : AccessibilityService() {
             Log.d(TAG, "📸 Captura manual iniciada sobre: ${root.packageName}")
             actualizarSnapDePantalla(force = true)
 
-            com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
-            com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
+            com.example.myapplication.core.memory.ScreenMemory.lastSnapshot = lastSnapshot
+            com.example.myapplication.core.memory.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
         }
     }
 
@@ -442,9 +442,9 @@ class MyAccessibilityService : AccessibilityService() {
 
             // Asegurar que el snapshot se guarde en ScreenMemory
             if (lastSnapshot != null) {
-                com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
-                com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
-                com.example.myapplication.core.ScreenMemory.lastUpdateTimestamp = System.currentTimeMillis()
+                com.example.myapplication.core.memory.ScreenMemory.lastSnapshot = lastSnapshot
+                com.example.myapplication.core.memory.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
+                com.example.myapplication.core.memory.ScreenMemory.lastUpdateTimestamp = System.currentTimeMillis()
             }
             Log.d(TAG, "✅ Captura completada: ${lastSnapshot?.elements?.size ?: 0} elementos")
             callback?.invoke(lastSnapshot)
@@ -464,8 +464,8 @@ class MyAccessibilityService : AccessibilityService() {
                 delay(1000L)
                 if (rootInActiveWindow != null) {
                     actualizarSnapDePantalla()
-                    com.example.myapplication.core.ScreenMemory.lastSnapshot = lastSnapshot
-                    com.example.myapplication.core.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
+                    com.example.myapplication.core.memory.ScreenMemory.lastSnapshot = lastSnapshot
+                    com.example.myapplication.core.memory.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
                     Log.d(TAG, "📸 Snapshot actualizado")
                     handler.post { diagnosticarScreenMemory() }
                 } else {
@@ -531,7 +531,7 @@ class MyAccessibilityService : AccessibilityService() {
         return false
     }
     private fun diagnosticarScreenMemory() {
-        val memoria = com.example.myapplication.core.ScreenMemory.lastSnapshot
+        val memoria = com.example.myapplication.core.memory.ScreenMemory.lastSnapshot
 
         Log.d("DIAGNOSIS", "════════════════════════════════════════")
         Log.d("DIAGNOSIS", "🔍 ESTADO DE SCREENMEMORY")

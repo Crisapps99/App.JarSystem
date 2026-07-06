@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.myapplication.activity.ActionExecutor
-import com.example.myapplication.core.JarvisState
+import com.example.myapplication.core.voice.JarvisState
 import com.example.myapplication.data.ChatMessageEntity
 import com.example.myapplication.data.ChatRepository
 import kotlinx.coroutines.Dispatchers

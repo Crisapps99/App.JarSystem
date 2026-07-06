@@ -1,4 +1,4 @@
-package com.example.myapplication.core
+package com.example.myapplication.core.memory
 
 import android.app.Notification
 import android.app.PendingIntent
