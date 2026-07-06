@@ -29,9 +29,9 @@ class MusicRecognizerRest(
     companion object {
         private const val TAG = "MUSIC_REST"
 
-        // ⚠️ CAMBIA ESTOS VALORES desde https://console.acrcloud.com/
-        private const val ACCESS_KEY = "1d2662be97a95de33ae5a111a6a895ff"
-        private const val ACCESS_SECRET = "BFf6SmDETpRrJck7Gw75HUAQTuT2bUhWF4rUkRjM"
+        // Credenciales cargadas desde local.properties (ver local.properties.example)
+        private val ACCESS_KEY = com.example.myapplication.BuildConfig.ACRCLOUD_ACCESS_KEY
+        private val ACCESS_SECRET = com.example.myapplication.BuildConfig.ACRCLOUD_ACCESS_SECRET
         private const val HOST = "identify-us-west-2.acrcloud.com"
 
         private const val SAMPLE_RATE = 16000

@@ -76,7 +76,7 @@ interface PorcupineController {
     fun esPorcupinePausado(): Boolean
 }
 object ElevenLabsConfig {
-    const val API_KEY          = "9dcae6842f3e53c4f885e4dcf30bf5635e8284c41df98d93f8b432b5f4383e90"
+    val API_KEY                = com.example.myapplication.BuildConfig.ELEVENLABS_API_KEY
     const val VOICE_ID         = "eqx5NtkvZtmylCCnpta7"
     const val MODEL_ID         = "eleven_multilingual_v2"
     const val STABILITY        = 0.5f
@@ -786,8 +786,8 @@ class JarvisVoiceController(
                     val jsonBody = JSONObject().apply {
                         put(
                             "api_key",
-                            "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"
-                        ) // 🔑 REEMPLAZA CON TU API KEY REAL DE TAVILY
+                            com.example.myapplication.BuildConfig.TAVILY_API_KEY
+                        )
                         put("query", query)
                         put("include_images", true)
                         put("max_results", 6) // El carrusel aguanta bien hasta 6 imágenes
@@ -1043,7 +1043,8 @@ class JarvisVoiceController(
                 "$host:$port"
             } else {
                 // Fallback al endpoint directo de Modal
-                "mausand2499--jarvoice-nexus-api-fastapi-server-dev.modal.run"        }
+                com.example.myapplication.BuildConfig.NEXUS_WS_HOST
+            }
 
             Log.d(TAG, "📡 Conectando a WebSocket en: $urlCompleta")
 

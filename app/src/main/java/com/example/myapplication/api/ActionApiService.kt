@@ -20,7 +20,7 @@ import retrofit2.http.Part
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
-private const val BASE_URL = " https://mausand2499--jarvoice-nexus-api-nexusserver-serve-dev.modal.run"
+private val BASE_URL = com.example.myapplication.BuildConfig.NEXUS_BASE_URL
 
 val logging = HttpLoggingInterceptor().apply {
     level = HttpLoggingInterceptor.Level.BODY

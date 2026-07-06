@@ -23,7 +23,7 @@ import android.provider.ContactsContract
 
 object ActionExecutor {
 
-    private val YOUTUBE_API_KEY = "AIzaSyDbkFoz0-6cj2AR8cXGJVci2RPK_0oAxos"
+    private val YOUTUBE_API_KEY = com.example.myapplication.BuildConfig.YOUTUBE_API_KEY
     // ── Callback de confirmación (lo setea MyAccessibilityService) ────────────
     var onConfirmacionPendiente: ((confirmado: Boolean) -> Unit)? = null
 
