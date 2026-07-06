@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.unit.dp
 import android.widget.TextView
 import android.text.method.LinkMovementMethod
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
 
 // ─── DEFINIR TODOS LOS COLORES AQUÍ (INCLUYENDO ColorCyanNexus) ─────────────
@@ -188,6 +189,7 @@ fun JarvisOverlayContent(
             exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier
                 .width(400.dp)
+                .height(350.dp)
                 .padding(bottom = 150.dp)  //  Subido un poco más para que no tape la barra de 130.dp
         ) {
             ResultsPanel(uiState = uiState)
@@ -248,7 +250,7 @@ fun UnifiedNexusBottomBar(
 
     Box(
         modifier = modifier
-                .fillMaxWidth()
+            .fillMaxWidth()
             .height(barHeight)
             .padding(horizontal = 15.dp, vertical = 8.dp)
     ) {
@@ -369,16 +371,76 @@ fun UnifiedNexusBottomBar(
                     }
                 }
             } else {
+                // ═══ DETECTAR CUANDO EL TEXTO DEBE ESTAR OPAQUE ═══
+                val estaPensandoOProcesando = uiState.jarvisState == JarvisState.THINKING ||
+                        uiState.serverProcessing
+
+                val estaEscuchando = uiState.jarvisState == JarvisState.LISTENING
+
+                // ═══ DETERMINAR COLOR DEL TEXTO ═══
+                val colorTextoPrincipal by animateColorAsState(
+                    targetValue = when {
+                        // 🔹 Caso 1: Pensando/procesando -> Texto opaco
+                        estaPensandoOProcesando -> {
+                            Color(uiState.labelColor).copy(alpha = 0.4f)
+                        }
+                        // 🔹 Caso 2: Escuchando y hay texto -> Texto completo (sin opacidad)
+                        estaEscuchando && uiState.userTranscription.isNotBlank() -> {
+                            Color(uiState.labelColor).copy(alpha = 1.0f)
+                        }
+                        // 🔹 Caso 3: Escuchando sin texto -> Mostrar "Escuchando..."
+                        estaEscuchando -> {
+                            Color(uiState.labelColor).copy(alpha = 0.8f)
+                        }
+                        // 🔹 Caso 4: IDLE (wake word) -> Blanco normal
+                        uiState.jarvisState == JarvisState.IDLE -> {
+                            Color(uiState.labelColor).copy(alpha = 1.0f)
+                        }
+                        // 🔹 Caso 5: Otros estados (SPEAKING, etc.)
+                        else -> Color(uiState.labelColor).copy(alpha = 1.0f)
+                    },
+                    animationSpec = tween(400),
+                    label = "textoOpaco"
+                )
+
                 Text(
                     text = when {
+                        //  Modo IDLE (wake word)
                         uiState.jarvisState == JarvisState.IDLE -> "¿En qué puedo ayudarte?"
-                        uiState.userTranscription.isNotBlank() -> uiState.userTranscription
-                        uiState.jarvisState == JarvisState.LISTENING -> " Escuchando..."
-                        uiState.jarvisState == JarvisState.THINKING -> " Pensando..."
-                        uiState.jarvisState == JarvisState.SPEAKING -> " Hablando..."
+
+                        //  Modo LISTENING con transcripción
+                        uiState.jarvisState == JarvisState.LISTENING &&
+                                uiState.userTranscription.isNotBlank() -> {
+                            uiState.userTranscription  // ← Texto en tiempo real
+                        }
+
+                        //  Modo LISTENING sin transcripción aún
+                        uiState.jarvisState == JarvisState.LISTENING -> {
+                            if (uiState.userTranscription.isBlank()) "Escuchando..." else uiState.userTranscription
+                        }
+
+                        //  Modo THINKING - Mostrar "Pensando..." pero CON la transcripción opaca
+                        uiState.jarvisState == JarvisState.THINKING -> {
+                            if (uiState.userTranscription.isNotBlank()) {
+                                uiState.userTranscription  // Mantener visible pero opaco
+                            } else {
+                                "Pensando..."
+                            }
+                        }
+
+                        //  Modo SPEAKING
+                        uiState.jarvisState == JarvisState.SPEAKING -> {
+                            if (uiState.userTranscription.isNotBlank()) {
+                                uiState.userTranscription
+                            } else {
+                                "Hablando..."
+                            }
+                        }
+
+                        //  Fallback
                         else -> "NEXUS"
                     },
-                    color = Color(uiState.labelColor),
+                    color = colorTextoPrincipal,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -926,13 +988,14 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+//            .padding(horizontal = 16.dp)
             .shadow(elevation = 20.dp, shape = RoundedCornerShape(24.dp))
             .background(Color(0xFF1C1C1E), RoundedCornerShape(24.dp))
             .border(1.dp, Color(0xFF3A3A50), RoundedCornerShape(24.dp))
             .padding(20.dp)
-            .heightIn(max = 350.dp)  // ← altura máxima con scroll
-            .verticalScroll(rememberScrollState()),
+//            .heightIn(max = 350.dp)  // ← altura máxima con scroll
+//            .verticalScroll(rememberScrollState())
+           ,
     horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // --- SECCIÓN DE TÍTULO / HEADER TIPO BUSCADOR ---
@@ -950,7 +1013,10 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "Resultados de búsqueda",
+                text = if (uiState.jarvisState == JarvisState.THINKING && uiState.processingSteps.isNotEmpty())
+                    "Procesando tu solicitud"
+                else
+                    "Resultados de búsqueda",
                 color = Color.White,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
@@ -964,12 +1030,19 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
         Spacer(modifier = Modifier.height(16.dp))
 
         // Contenido con scroll
+        // Contenido con scroll
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
-            if (uiState.fullHtmlText.isNotBlank()) {
+            val mostrandoProceso = uiState.jarvisState == JarvisState.THINKING &&
+                    uiState.processingSteps.isNotEmpty()
+
+            if (mostrandoProceso) {
+                ProcessingStepsList(steps = uiState.processingSteps)
+            } else if (uiState.fullHtmlText.isNotBlank()) {
                 HtmlText(html = uiState.fullHtmlText)
             } else if (uiState.typewriterText.isNotBlank()) {
                 Text(
@@ -1040,9 +1113,13 @@ private fun SourceChip(url: String) {
             .clickable {
                 try {
                     context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse(url)
+                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                }
             }
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
@@ -1136,11 +1213,6 @@ fun JarvisOverlayUiState.applyJarvisState(state: JarvisState) {
                 sourceUrls = emptyList()
             }
             serverProcessing = false
-            transcription = ""
-            typewriterText = ""
-            fullHtmlText = ""
-
-            userTranscription = ""
             processingSteps = emptyList()
             showWhatsappPreview = false
             pendingWhatsappContact = ""
@@ -1210,5 +1282,100 @@ fun HtmlText(html: String, modifier: Modifier = Modifier) {
         update = { textView ->
             textView.text = Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY)
         }
+    )
+}// ─── PREVIEW: Estado de prueba ──────────────────────────────
+@Composable
+fun previewUiState(): JarvisOverlayUiState {
+    return remember {
+        JarvisOverlayUiState().apply {
+            // Configura un estado típico para mostrar en el preview
+            jarvisState = JarvisState.IDLE
+            labelText = "NEXUS"
+            showPanel = true
+            transcription = "Aquí aparecerán los resultados de búsqueda."
+            fullHtmlText = "<b>Resultado de ejemplo</b><br>• Punto 1<br>• Punto 2"
+            sourceUrls = listOf("https://ejemplo.com/fuente1", "https://ejemplo.com/fuente2")
+            // Si quieres mostrar música (nota: aún no está integrado en ResultsPanel)
+            showMusicResult = true
+            musicTitle = "Bohemian Rhapsody"
+            musicArtist = "Queen"
+            musicCoverUrl = "https://i.scdn.co/image/ab67616d0000b273e8b066f70c206551210d4f3b"
+        }
+    }
+}
+
+@Composable
+fun previewBarState(): ListeningBarState {
+    return remember { ListeningBarState() }
+}
+// ─── CHAT REPOSITORY PARA PREVIEW ──────────────────────────
+// IMPORTANTE: ChatRepository es una clase CONCRETA, no una interfaz.
+// Debemos instanciarla con su constructor.
+// Si tu ChatRepository necesita parámetros adicionales (ej: Database),
+// ajústalo aquí.
+@Composable
+fun previewChatRepository(): ChatRepository {
+    val context = LocalContext.current
+    // Intenta instanciar el repositorio con el contexto de la aplicación.
+    // Si tu repositorio necesita una base de datos, puedes pasar
+    // Room.inMemoryDatabaseBuilder(context, ...) para el preview.
+    return remember { ChatRepository(context.applicationContext) }
+}
+
+// ─── PREVIEWS ──────────────────────────────────────────────────────────────
+
+@Preview(
+    name = "Overlay Principal",
+    showBackground = true,
+    widthDp = 400,
+    heightDp = 850,
+    backgroundColor = 0xFF000000
+)
+@Composable
+fun PreviewJarvisOverlay() {
+    val uiState = previewUiState()
+    val barState = previewBarState()
+    val chatRepo = previewChatRepository()
+
+    val onMicClick: () -> Unit = {}
+    val onPauseClick: () -> Unit = {}
+    val onBackgroundClick: () -> Unit = {}
+    val onOrbClick: () -> Unit = {}
+    val onSendMessage: (String) -> Unit = {}
+
+    JarvisOverlayContent(
+        uiState = uiState,
+        barState = barState,
+        chatRepository = chatRepo,
+        onMicClick = onMicClick,
+        onPauseClick = onPauseClick,
+        onBackgroundClick = onBackgroundClick,
+        onOrbClick = onOrbClick,
+        onSendMessage = onSendMessage
+    )
+}
+
+@Preview(name = "Panel de Resultados")
+@Composable
+fun PreviewResultsPanel() {
+    val uiState = previewUiState()
+    ResultsPanel(uiState = uiState)
+}
+
+@Preview(name = "Barra Inferior")
+@Composable
+fun PreviewUnifiedBottomBar() {
+    val uiState = previewUiState()
+    val barState = previewBarState()
+    UnifiedNexusBottomBar(
+        uiState = uiState,
+        barState = barState,
+        inputText = "",
+        onInputChange = {},
+        onMicClick = {},
+        onPauseClick = {},
+        onOrbClick = {},
+        onSendClick = {},
+        onConversationToggle = {}
     )
 }

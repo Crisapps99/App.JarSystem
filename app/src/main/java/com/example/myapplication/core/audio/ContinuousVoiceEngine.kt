@@ -1,4 +1,4 @@
-// ContinuousVoiceEngine.kt — VERSIÓN CON WAKE WORD ESTRICTO Y PROFESIONAL
+// ContinuousVoiceEngine.kt — VERSIÓN CORREGIDA
 
 package com.example.myapplication.core.audio
 
@@ -22,11 +22,6 @@ import kotlin.math.sqrt
 
 /**
  * ContinuousVoiceEngine — Motor de voz con Vosk (wake word) + Google Cloud STT (transcripción)
- *
- * FLUJO:
- *   WAKE_WORD ──[Vosk detecta "hey nexus" o "nexus"]──► LISTENING (Google Cloud STT)
- *   LISTENING ──[usuario habla]──► Google Cloud transcribe ──► onFinalResult
- *   LISTENING ──[silencio 5s]──► WAKE_WORD
  */
 class ContinuousVoiceEngine(
     private val context: Context,
@@ -47,10 +42,12 @@ class ContinuousVoiceEngine(
 
         // SOLO ESTAS DOS PALABRAS CLAVE
         private val WAKE_WORDS = listOf("hey nexus", "nexus")
-        // Expresión regular: palabra clave al inicio de la frase o como palabra completa
         private val WAKE_REGEX = Regex("""(?i)^(hey\s+nexus|nexus)\b""")
         private val COOLDOWN_MS = 1500L
-        private val RMS_THRESHOLD = 0.3f   // Umbral mínimo para considerar voz
+        private val RMS_THRESHOLD = 0.3f
+        private const val VAD_FRAMES_INICIO = 3
+        private const val VAD_SILENCIO_FIN_MS = 900L
+        private const val VAD_WARMUP_MS = 450L
     }
 
     // ── Modos del motor ──────────────────────────────────────────────────────
@@ -61,7 +58,7 @@ class ContinuousVoiceEngine(
     private var captureJob: Job? = null
     private val engineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     @Volatile private var isRunning = false
-
+    private val onSpeechEndedCallback = onSpeechEnded
     // ── Vosk (WAKE_WORD) ────────────────────────────────────────────────────
     private var voskModel: Model? = null
     private var voskRecognizer: Recognizer? = null
@@ -77,9 +74,21 @@ class ContinuousVoiceEngine(
     @Volatile private var engineMode = EngineMode.WAKE_WORD
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // ── RMS suavizado ────────────────────────────────────────────────────────
+    // ── RMS ──────────────────────────────────────────────────────────────────
     private var lastRms = 0f
     private val smoothing = 0.15f
+
+    // ── VAD ──────────────────────────────────────────────────────────────────
+    @Volatile private var vadHablando = false
+    private var vadFramesSobreUmbral = 0
+    private var vadTimestampUltimoSonido = 0L
+    private var sesionListeningStartTimestamp = 0L
+
+    private fun resetVad() {
+        vadHablando = false
+        vadFramesSobreUmbral = 0
+        vadTimestampUltimoSonido = 0L
+    }
 
     // ── Music Recognition ──────────────────────────────────────────────────
     private var musicRecognizer: MusicRecognizerRest? = null
@@ -88,15 +97,22 @@ class ContinuousVoiceEngine(
     private var musicWaveJob: Job? = null
     private val musicScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    // ── Timeout para volver a WAKE_WORD ─────────────────────────────────────
+    // ── Timeout ─────────────────────────────────────────────────────────────
     private val timeoutHandler = Handler(Looper.getMainLooper())
     private val TIMEOUT_SILENCIO_MS = 5000L
 
     private val timeoutRunnable = Runnable {
         if (engineMode == EngineMode.LISTENING) {
             Log.d(TAG, " Timeout de silencio en Google Cloud STT")
+            // ✅ Forzar finalización de la sesión de STT
+            if (grpcActivo) {
+                grpcActivo = false
+                grpcRecognizer.stopStreaming()
+            }
+            resetVad()
             engineMode = EngineMode.WAKE_WORD
             startVoskWakeWordMode()
+            mainHandler.post { onSpeechEnded() }
         }
     }
 
@@ -129,12 +145,13 @@ class ContinuousVoiceEngine(
     private fun initGrpcRecognizer() {
         grpcRecognizer = GrpcVoiceRecognizer(
             context,
-            onPartialResult = { texto ->
-                timeoutHandler.removeCallbacks(timeoutRunnable)
+            onPartialResult = { parcial ->
+                Log.v(TAG, "Parcial: '$parcial'")
+                // ✅ Usar callback en lugar de referencia directa a ui
                 mainHandler.post {
-                    onPartialResult(texto)
-                    timeoutHandler.postDelayed(timeoutRunnable, TIMEOUT_SILENCIO_MS)
+                    onPartialResult(parcial)  // ← Esto notifica al controlador
                 }
+                timeoutHandler.removeCallbacks(timeoutRunnable)
             },
             onSpeechStarted = {
                 timeoutHandler.removeCallbacks(timeoutRunnable)
@@ -339,7 +356,7 @@ class ContinuousVoiceEngine(
                 when (engineMode) {
                     EngineMode.LISTENING -> {
                         if (grpcActivo && grpcListo) {
-                            grpcRecognizer.sendAudioChunk(buffer.copyOf(read))
+                            procesarFrameVad(rms, buffer, read)
                         }
                     }
                     EngineMode.MUSIC_RECOGNITION -> {
@@ -349,7 +366,6 @@ class ContinuousVoiceEngine(
                         if (voskListo && !wakeWordCooldown && rms > RMS_THRESHOLD) {
                             voskLock.withLock {
                                 voskRecognizer?.let { rec ->
-                                    // Primero revisar resultado parcial (más rápido)
                                     val partial = JSONObject(rec.partialResult).optString("partial", "").lowercase().trim()
                                     if (partial.isNotEmpty() && partial.matches(WAKE_REGEX)) {
                                         Log.i(TAG, " WAKE WORD DETECTADO (partial): '$partial'")
@@ -357,7 +373,6 @@ class ContinuousVoiceEngine(
                                         return@let
                                     }
 
-                                    // Si no hay partial, revisar resultado final
                                     if (rec.acceptWaveForm(buffer, read)) {
                                         val text = JSONObject(rec.result).optString("text", "").lowercase().trim()
                                         if (text.isNotEmpty() && text.matches(WAKE_REGEX)) {
@@ -376,11 +391,62 @@ class ContinuousVoiceEngine(
         }
     }
 
+    private fun procesarFrameVad(rms: Float, buffer: ShortArray, read: Int) {
+        val ahora = System.currentTimeMillis()
+        if (ahora - sesionListeningStartTimestamp < VAD_WARMUP_MS) {
+            return
+        }
+        val sobreUmbral = rms > RMS_THRESHOLD
+
+        if (!vadHablando) {
+            if (sobreUmbral) {
+                vadFramesSobreUmbral++
+                if (vadFramesSobreUmbral >= VAD_FRAMES_INICIO) {
+                    vadHablando = true
+                    vadTimestampUltimoSonido = ahora
+                    vadFramesSobreUmbral = 0
+                    Log.d(TAG, " VAD: inicio de habla REAL (rms=$rms)")
+                    mainHandler.post { onSpeechStarted() }
+                    grpcRecognizer.sendAudioChunk(buffer.copyOf(read))
+                }
+            } else {
+                vadFramesSobreUmbral = 0
+            }
+        } else {
+            grpcRecognizer.sendAudioChunk(buffer.copyOf(read))
+
+            if (sobreUmbral) {
+                vadTimestampUltimoSonido = ahora
+            } else {
+                val silencioMs = ahora - vadTimestampUltimoSonido
+                if (silencioMs >= VAD_SILENCIO_FIN_MS) {
+                    vadHablando = false
+                    Log.d(TAG, " VAD: fin de habla REAL (silencio ${silencioMs}ms)")
+
+                    // ✅ DETENER la sesión de Google Cloud STT inmediatamente
+                    if (grpcActivo) {
+                        grpcActivo = false
+                        grpcRecognizer.stopStreaming()
+                        Log.d(TAG, " Sesión STT detenida por fin de habla")
+                    }
+
+                    // ✅ NOTIFICAR fin de habla
+                    mainHandler.post {
+                        onSpeechEndedCallback()
+                    }
+
+                    // ✅ VOLVER a modo WAKE_WORD inmediatamente
+                    engineMode = EngineMode.WAKE_WORD
+                    startVoskWakeWordMode()
+                }
+            }
+        }
+    }
+
     private fun handleWakeWordDetected() {
         wakeWordCooldown = true
         mainHandler.postDelayed({ wakeWordCooldown = false }, COOLDOWN_MS)
 
-        // Reiniciar recognizer para evitar acumulación
         voskLock.withLock {
             voskRecognizer?.close()
             voskRecognizer = Recognizer(voskModel, SAMPLE_RATE.toFloat(),
@@ -389,7 +455,7 @@ class ContinuousVoiceEngine(
 
         engineMode = EngineMode.LISTENING
         mainHandler.post {
-            onWakeWordDetected()
+            onWakeWordDetected()  // ← Esto notifica al controlador
             iniciarSesionContinua()
         }
     }
@@ -425,16 +491,17 @@ class ContinuousVoiceEngine(
 
         engineMode = EngineMode.LISTENING
         grpcActivo = true
+        resetVad()
+        sesionListeningStartTimestamp = System.currentTimeMillis()
         grpcRecognizer.startStreaming(language)
 
         timeoutHandler.removeCallbacks(timeoutRunnable)
         timeoutHandler.postDelayed(timeoutRunnable, TIMEOUT_SILENCIO_MS)
 
-        mainHandler.post { onSpeechStarted() }
-        Log.d(TAG, " Google Cloud STT iniciado (timeout: ${TIMEOUT_SILENCIO_MS}ms)")
+        Log.d(TAG, " Google Cloud STT iniciado, esperando VAD real (timeout total: ${TIMEOUT_SILENCIO_MS}ms)")
     }
 
-    fun detenerSesion() {
+    fun detenerSesion(notificarSpeechEnded: Boolean = true) {
         if (!grpcActivo) return
         Log.d(TAG, " Deteniendo sesión Google Cloud STT")
         grpcActivo = false
@@ -442,8 +509,7 @@ class ContinuousVoiceEngine(
         timeoutHandler.removeCallbacks(timeoutRunnable)
         engineMode = EngineMode.WAKE_WORD
         startVoskWakeWordMode()
-        mainHandler.post { onSpeechEnded() }
-        Log.d(TAG, " Volviendo a modo WAKE_WORD")
+        resetVad()
     }
 
     fun reiniciarEscucha() {

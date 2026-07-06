@@ -187,6 +187,7 @@ class JarvisVoiceController(
 
         voiceEngine = ContinuousVoiceEngine(
             context = context,
+            // En JarvisVoiceController.kt - En el bloque onWakeWordDetected
             onWakeWordDetected = {
                 Log.d(TAG, "Wakeword detectado por Vosk")
                 mainHandler.post {
@@ -194,18 +195,41 @@ class JarvisVoiceController(
                     estaEnviandoAlServidor = false
                     estaProcesandoComando = false
                     timeoutServidor?.let { mainHandler.removeCallbacks(it) }
+
+                    // 1. Mostrar la barra
                     ui.setOrbVisibility(true)
-                    ui.showText(" Escuchando...")
-                    // Activar sesión de escucha con Google Cloud STT
+
+                    // 2. Limpiar cualquier texto anterior y mostrar "Escuchando..."
+                    uiState?.userTranscription = ""
+                    uiState?.applyJarvisState(JarvisState.LISTENING)
+
+                    // 3. IMPORTANTE: Mostrar el panel de transcripción (si no está visible)
+                    uiState?.showPanel = false  // No queremos el panel grande, solo la barra
+
+                    // 4. Activar sesión de escucha
                     sesionActiva = true
                     isProcessing = false
                     setState(JarvisState.LISTENING)
+
+                    // 5. Iniciar reconocimiento de voz continuo
+                    iniciarSRContinuo()
                 }
             },
             onFinalResult = { texto ->
                 Log.d(TAG, "resultado final:  $texto")
+                isProcessing = false
                 if (esperandoRespuestaServidor) {
                     Log.d(TAG, "Ignorando voz mientras se espera respuesta del servidor")
+                    if (sesionActiva) iniciarSRContinuo()
+                    return@ContinuousVoiceEngine
+                }
+                //  Filtro de basura — antes de mostrar y antes de procesar
+                if (esResultadoBasura(texto)) {
+                    Log.d(TAG, " Resultado descartado por ser basura/muletilla: '$texto'")
+                    // Seguimos escuchando en vez de procesar como comando
+                    if (sesionActiva && !isProcessing && voiceEngine.isSrSessionActive().not()) {
+                        iniciarSRContinuo()
+                    }
                     return@ContinuousVoiceEngine
                 }
                 ui.updateUserTranscription(texto)
@@ -241,8 +265,8 @@ class JarvisVoiceController(
             },
             onSpeechEnded = {
                 Log.d(TAG, "Usuario dejó de hablar")
-                // Iniciar timeout después de que termine de hablar
-                mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
+//                // Iniciar timeout después de que termine de hablar
+//                mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
             },
 
 
@@ -254,31 +278,31 @@ class JarvisVoiceController(
         setState(JarvisState.IDLE)
         Log.i(TAG, " Controlador inicializado")
     }
-
-    private fun iniciarModoConversacional() {
-        Log.d(TAG, " Iniciando modo conversacional - esperando 5 segundos")
-
-        // Cancelar timeout anterior si existe
-        timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
-
-        // Pausar wake word
-        porcupineController?.pausarPorcupine()
-
-        // Iniciar escucha continua si no está activa
-        if (!voiceEngine.isSrSessionActive()) {
-            voiceEngine.iniciarSesionContinua("es")
-        }
-
-        // Configurar timeout para volver a modo wake word
-        timeoutConversacional = Runnable {
-            Log.d(TAG, " 5 segundos sin actividad - volviendo a modo wake word")
-            finalizarSesionConversacional()
-        }
-        mainHandler.postDelayed(timeoutConversacional!!, TIMEOUT_CONVERSACIONAL_MS)
-
-        // Reiniciar timeout cada vez que el usuario habla
-        // Esto se hará desde onSpeechStarted o onFinalResult
-    }
+//
+//    private fun iniciarModoConversacional() {
+//        Log.d(TAG, " Iniciando modo conversacional - esperando 5 segundos")
+//
+//        // Cancelar timeout anterior si existe
+//        timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
+//
+//        // Pausar wake word
+//        porcupineController?.pausarPorcupine()
+//
+//        // Iniciar escucha continua si no está activa
+//        if (!voiceEngine.isSrSessionActive()) {
+//            voiceEngine.iniciarSesionContinua("es")
+//        }
+//
+//        // Configurar timeout para volver a modo wake word
+//        timeoutConversacional = Runnable {
+//            Log.d(TAG, " 5 segundos sin actividad - volviendo a modo wake word")
+//            finalizarSesionConversacional()
+//        }
+//        mainHandler.postDelayed(timeoutConversacional!!, TIMEOUT_CONVERSACIONAL_MS)
+//
+//        // Reiniciar timeout cada vez que el usuario habla
+//        // Esto se hará desde onSpeechStarted o onFinalResult
+//    }
 
     private fun reiniciarTimeoutConversacional() {
         timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
@@ -339,6 +363,7 @@ class JarvisVoiceController(
                 // La UI se actualiza automáticamente via Flow en ConversationViewInsideOverlay
             }
         }
+        setState(JarvisState.THINKING)
         if (estaHablando) {
             Log.d(TAG, " Ignorando comando porque el asistente está hablando: '$texto'")
             detenerTTS()
@@ -1136,8 +1161,7 @@ class JarvisVoiceController(
                         }
                         //  Hablar la respuesta y después iniciar modo conversacional
                         hablar(responseText) {
-                            // 🆕 Después de TTS, iniciar modo conversacional (esperar 5 segundos)
-                            iniciarModoConversacional()
+                            manejarFinDeTTS(permitirConversacion = true)
                         }
                         return
                     }
@@ -1815,7 +1839,6 @@ class JarvisVoiceController(
             voiceEngine.detenerSesion()
         }
         setState(JarvisState.SPEAKING)
-        modoConversacionActivo = true
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(id: String?) {
                 Log.d(TAG, "TTS INICIÓ")
@@ -1854,6 +1877,28 @@ class JarvisVoiceController(
     private fun finalizarInteraccion() {
         Log.d(TAG, "Finalizando interacción, volviendo a modo IDLE")
         stopListeningCompletamente()   // sets sesionActiva = false, stops STT
+    }
+    /**
+     * Único punto de decisión al terminar CUALQUIER TTS.
+     * @param permitirConversacion si el servidor marcó esta respuesta como conversacional
+     */
+    private fun manejarFinDeTTS(permitirConversacion: Boolean) {
+        if (!permitirConversacion) {
+            // Camino normal: vuelve a wake word
+            finalizarInteraccion()
+            return
+        }
+
+        Log.d(TAG, " Abriendo ventana conversacional (${TIMEOUT_CONVERSACIONAL_MS}ms) sin exigir wake word")
+        modoConversacionActivo = true
+        porcupineController?.pausarPorcupine()
+
+        if (!voiceEngine.isSrSessionActive()) {
+            voiceEngine.iniciarSesionContinua("es")
+        }
+        setState(JarvisState.LISTENING)
+
+        reiniciarTimeoutConversacional()
     }
 
     fun detenerAudio() {
@@ -1961,7 +2006,10 @@ class JarvisVoiceController(
     }
 
     private fun iniciarSRContinuo(timeoutMs: Long = TIMEOUT_ESCUCHA_MS) {
-        if (!sesionActiva) return
+        if (!sesionActiva) {
+            Log.d(TAG, " Sesión inactiva, no iniciar SR")
+            return
+        }
         if (estaHablando) {
             Log.d(TAG, " No iniciar SR porque el asistente está hablando")
             return
@@ -2078,6 +2126,12 @@ class JarvisVoiceController(
      */
     private val timeoutRunnable: Runnable = object : Runnable {
         override fun run() {
+            // ✅ Si la sesión de voz ya no está activa, no hacer nada
+            if (!voiceEngine.isSrSessionActive()) {
+                Log.d(TAG, "Timeout ignorado - STT ya no está activo")
+                return
+            }
+
             if (sesionActiva && !isProcessing && voiceEngine.isSrSessionActive()) {
                 if (esperandoConfirmacion) {
                     Log.d(TAG, "Timeout ignorado — esperando confirmación")
@@ -2461,7 +2515,37 @@ class JarvisVoiceController(
         for ((palabra, numero) in palabras) { if (texto.contains(palabra)) return numero }
         return null
     }
+    private val MULETILLAS_Y_RUIDO = setOf(
+        "eh", "ehh", "eeh", "ah", "ahh", "aah", "mmm", "mm", "m",
+        "uh", "uhh", "um", "umm", "este", "esteee", "ay", "aja",
+        "aha", "ajá", "okay", "ok", "eso", "bueno", "y", "o", "pero",
+        "gracias",)
+    /**
+     * Devuelve true si el texto es "basura": muy corto, una sola palabra común,
+     * o solo signos de puntuación / silencio mal transcripto.
+     */
+    private fun esResultadoBasura(texto: String): Boolean {
+        val limpio = texto.lowercase().trim().removeSuffix(".").removeSuffix("¿").removeSuffix("?")
 
+        if (limpio.isBlank()) return true
+
+        // Muy corto (menos de 2 caracteres) casi siempre es ruido mal transcripto
+        if (limpio.length < 2) return true
+
+        val palabras = limpio.split(Regex("\\s+")).filter { it.isNotBlank() }
+
+        // Una sola palabra Y esa palabra está en la lista de muletillas
+        if (palabras.size == 1 && palabras[0] in MULETILLAS_Y_RUIDO) {
+            return true
+        }
+
+        // Todas las palabras son muletillas (ej: "eh eh mmm")
+        if (palabras.isNotEmpty() && palabras.all { it in MULETILLAS_Y_RUIDO }) {
+            return true
+        }
+
+        return false
+    }
     // ────────────────────────────────────────────────────────────────────────
     // UTILIDADES
     // ────────────────────────────────────────────────────────────────────────

@@ -1,7 +1,10 @@
 package com.example.myapplication.core.audio
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import com.google.api.gax.core.FixedCredentialsProvider
 import com.google.api.gax.rpc.ClientStream
 import com.google.api.gax.rpc.ResponseObserver
 import com.google.api.gax.rpc.StreamController
@@ -13,6 +16,8 @@ import com.google.cloud.speech.v1.StreamingRecognizeRequest
 import com.google.cloud.speech.v1.StreamingRecognitionConfig
 import com.google.cloud.speech.v1.StreamingRecognizeResponse
 import com.google.protobuf.ByteString
+import io.grpc.Status
+import io.grpc.StatusRuntimeException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.InputStream
@@ -24,7 +29,7 @@ class GrpcVoiceRecognizer(
     private val context: Context,
     private val onPartialResult: (String) -> Unit,
     private val onFinalResult: (String) -> Unit,
-    private val onSpeechStarted: () -> Unit = {},  // <-- NUEVO
+    private val onSpeechStarted: () -> Unit = {},
     private val onSpeechEnded: () -> Unit = {},
     private val onError: (String) -> Unit
 ) {
@@ -32,26 +37,32 @@ class GrpcVoiceRecognizer(
         private const val TAG = "GRPC_SPEECH"
         private const val SAMPLE_RATE = 16000
     }
+
+    // ✅ Variables agregadas
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var currentPartial: String? = null
+    @Volatile private var streamingActive = false
+
     private var ultimoTextoHablado = ""
     private var speechClient: SpeechClient? = null
     private var requestObserver: ClientStream<StreamingRecognizeRequest>? = null
-    private var isStreamActive = false
 
-    //  Flag para evitar múltiples resultados finales
+    // Flag para evitar múltiples resultados finales
     private var haEnviadoFinal = false
     private var ultimoTextoEnviado = ""
     private var ultimoTimestamp = 0L
+
     fun setUltimoTextoHablado(texto: String) {
         ultimoTextoHablado = texto.lowercase().trim()
     }
+
     suspend fun init() {
         withContext(Dispatchers.IO) {
             try {
-                val credentials = loadCredentials()
+                val credentials = GoogleCredentials.fromStream(loadCredentials())
+                    .createScoped(listOf("https://www.googleapis.com/auth/cloud-platform"))
                 val settings = SpeechSettings.newBuilder()
-                    .setCredentialsProvider {
-                        GoogleCredentials.fromStream(credentials)
-                    }
+                    .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
                     .build()
                 speechClient = SpeechClient.create(settings)
                 Log.d(TAG, " Cliente gRPC inicializado")
@@ -63,15 +74,16 @@ class GrpcVoiceRecognizer(
     }
 
     fun startStreaming(language: String = "es-ES") {
-        if (isStreamActive) {
+        if (streamingActive) {
             Log.w(TAG, "Streaming ya activo")
             return
         }
 
-        //  Resetear flags al iniciar
+        // Resetear flags al iniciar
         haEnviadoFinal = false
         ultimoTextoEnviado = ""
         ultimoTimestamp = 0L
+        currentPartial = null
 
         try {
             val responseObserver = object : ResponseObserver<StreamingRecognizeResponse> {
@@ -87,7 +99,7 @@ class GrpcVoiceRecognizer(
                         val textoLimpio = transcript.trim()
 
                         if (result.isFinal && textoLimpio.isNotBlank()) {
-                            // Solo enviar si no hemos enviado ya un final o si es diferente
+                            // Guardar el resultado final
                             val ahora = System.currentTimeMillis()
                             val esDuplicado = textoLimpio == ultimoTextoEnviado &&
                                     (ahora - ultimoTimestamp) < 3000L
@@ -96,39 +108,60 @@ class GrpcVoiceRecognizer(
                                 haEnviadoFinal = true
                                 ultimoTextoEnviado = textoLimpio
                                 ultimoTimestamp = ahora
+                                currentPartial = null
                                 Log.d(TAG, " Resultado final: $textoLimpio")
-                                onFinalResult(textoLimpio)
+                                mainHandler.post {
+                                    onFinalResult(textoLimpio)
+                                }
                             } else if (esDuplicado) {
                                 Log.d(TAG, " Resultado duplicado ignorado: $textoLimpio")
                             } else if (haEnviadoFinal) {
                                 Log.d(TAG, " Ya se envió un resultado final, ignorando: $textoLimpio")
                             }
                         } else if (textoLimpio.isNotBlank()) {
+                            // ✅ Guardar el último parcial
+                            currentPartial = textoLimpio
                             // Resultados parciales siempre se envían
-                            onPartialResult(textoLimpio)
+                            mainHandler.post {
+                                onPartialResult(textoLimpio)
+                            }
                         }
                     }
                 }
-                private fun esEco(texto: String): Boolean {
-                    val textoLimpio = texto.lowercase().trim()
-                    if (ultimoTextoHablado.isBlank()) return false
 
-                    // Si el texto es igual o muy similar al que hablamos, es eco
-                    if (textoLimpio == ultimoTextoHablado) return true
-                    if (ultimoTextoHablado.contains(textoLimpio) && textoLimpio.length > 10) return true
-                    if (textoLimpio.contains(ultimoTextoHablado) && ultimoTextoHablado.length > 10) return true
+                override fun onError(t: Throwable) {
+                    val errorMsg = t.message ?: "Error desconocido"
+                    Log.e(TAG, "Error gRPC: $errorMsg")
 
-                    return false
-                }
-                override fun onError(t: Throwable?) {
-                    Log.e(TAG, " Error en stream: ${t?.message}")
-                    isStreamActive = false
-                    onError("Error en streaming: ${t?.message}")
+                    // ✅ Si es OUT_OF_RANGE, devolver el último parcial
+                    if (t is StatusRuntimeException && t.status.code == Status.Code.OUT_OF_RANGE) {
+                        val partial = currentPartial
+                        if (partial != null && partial.isNotBlank()) {
+                            Log.w(TAG, "OUT_OF_RANGE: devolviendo resultado parcial: '$partial'")
+                            mainHandler.post {
+                                onFinalResult(partial)
+                            }
+                        }
+                    } else {
+                        mainHandler.post {
+                            onError("Error en streaming: $errorMsg")
+                        }
+                    }
+                    streamingActive = false
                 }
 
                 override fun onComplete() {
                     Log.d(TAG, " Stream completado")
-                    isStreamActive = false
+                    streamingActive = false
+                    // ✅ Si hay un parcial pendiente, enviarlo como final
+                    val partial = currentPartial
+                    if (partial != null && partial.isNotBlank() && !haEnviadoFinal) {
+                        Log.d(TAG, " Completado con parcial: '$partial'")
+                        mainHandler.post {
+                            onFinalResult(partial)
+                        }
+                        haEnviadoFinal = true
+                    }
                 }
             }
 
@@ -152,7 +185,7 @@ class GrpcVoiceRecognizer(
                     .build()
             )
 
-            isStreamActive = true
+            streamingActive = true
             Log.d(TAG, " Streaming iniciado para: $language")
 
         } catch (e: Exception) {
@@ -162,7 +195,7 @@ class GrpcVoiceRecognizer(
     }
 
     fun sendAudioChunk(audioBytes: ShortArray) {
-        if (!isStreamActive) {
+        if (!streamingActive) {
             Log.w(TAG, "Stream no activo, ignorando chunk")
             return
         }
@@ -182,14 +215,14 @@ class GrpcVoiceRecognizer(
             )
         } catch (e: Exception) {
             Log.e(TAG, " Error enviando chunk: ${e.message}")
-            isStreamActive = false
+            streamingActive = false
         }
     }
 
     fun stopStreaming() {
         try {
             requestObserver?.closeSend()
-            isStreamActive = false
+            streamingActive = false
             Log.d(TAG, " Streaming detenido")
         } catch (e: Exception) {
             Log.e(TAG, "Error deteniendo stream: ${e.message}")
@@ -199,12 +232,13 @@ class GrpcVoiceRecognizer(
     fun destroy() {
         stopStreaming()
         speechClient?.close()
+        mainHandler.removeCallbacksAndMessages(null)
         Log.d(TAG, " Recursos liberados")
     }
 
     private fun loadCredentials(): InputStream {
-        return context.assets.open("jarvis-speech-499817-a4468d191853.json")
+        return context.assets.open("jarvis-speech-499817-059bb80a7e14.json")
     }
 
-    fun isActive(): Boolean = isStreamActive
+    fun isActive(): Boolean = streamingActive
 }

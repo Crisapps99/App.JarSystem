@@ -40,19 +40,19 @@ android {
         val geminiKey = props.getProperty("GEMINI_API_KEY") ?: ""
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
 
-        val youtubeKey = props.getProperty("YOUTUBE_API_KEY") ?: ""
+        val youtubeKey = props.getProperty("YOUTUBE_API_KEY") ?: "AIzaSyBeZ8o6YTLkR_x4QJYXw9SAxiFL2xoL6zA"
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeKey\"")
 
-        val tavilyKey = props.getProperty("TAVILY_API_KEY") ?: ""
+        val tavilyKey = props.getProperty("TAVILY_API_KEY") ?: "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"
         buildConfigField("String", "TAVILY_API_KEY", "\"$tavilyKey\"")
 
-        val elevenLabsKey = props.getProperty("ELEVENLABS_API_KEY") ?: ""
+        val elevenLabsKey = props.getProperty("ELEVENLABS_API_KEY") ?: "9dcae6842f3e53c4f885e4dcf30bf5635e8284c41df98d93f8b432b5f4383e90"
         buildConfigField("String", "ELEVENLABS_API_KEY", "\"$elevenLabsKey\"")
 
-        val acrCloudAccessKey = props.getProperty("ACRCLOUD_ACCESS_KEY") ?: ""
+        val acrCloudAccessKey = props.getProperty("ACRCLOUD_ACCESS_KEY") ?: "1d2662be97a95de33ae5a111a6a895ff"
         buildConfigField("String", "ACRCLOUD_ACCESS_KEY", "\"$acrCloudAccessKey\"")
 
-        val acrCloudAccessSecret = props.getProperty("ACRCLOUD_ACCESS_SECRET") ?: ""
+        val acrCloudAccessSecret = props.getProperty("ACRCLOUD_ACCESS_SECRET") ?: "BFf6SmDETpRrJck7Gw75HUAQTuT2bUhWF4rUkRjM"
         buildConfigField("String", "ACRCLOUD_ACCESS_SECRET", "\"$acrCloudAccessSecret\"")
 
         val nexusBaseUrl = props.getProperty("NEXUS_BASE_URL") ?: "https://mausand2499--jarvoice-nexus-api-nexusserver-serve-dev.modal.run"
