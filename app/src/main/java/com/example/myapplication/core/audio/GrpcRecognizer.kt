@@ -153,14 +153,16 @@ class GrpcVoiceRecognizer(
                 override fun onComplete() {
                     Log.d(TAG, " Stream completado")
                     streamingActive = false
-                    // ✅ Si hay un parcial pendiente, enviarlo como final
-                    val partial = currentPartial
-                    if (partial != null && partial.isNotBlank() && !haEnviadoFinal) {
-                        Log.d(TAG, " Completado con parcial: '$partial'")
-                        mainHandler.post {
-                            onFinalResult(partial)
+                    // Si no se ha enviado un resultado final, notificar fin de sesión
+                    if (!haEnviadoFinal) {
+                        val partial = currentPartial
+                        if (partial != null && partial.isNotBlank()) {
+                            // Enviar parcial como final (para no perder lo que se dijo)
+                            mainHandler.post { onFinalResult(partial) }
+                        } else {
+                            // Sin ningún resultado, notificar fin de habla (sin transcripción)
+                            mainHandler.post { onSpeechEnded() }
                         }
-                        haEnviadoFinal = true
                     }
                 }
             }

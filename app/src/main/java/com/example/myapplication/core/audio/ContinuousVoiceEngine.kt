@@ -186,7 +186,7 @@ class ContinuousVoiceEngine(
                 ultimoTimestampProcesado = ahora
 
                 Log.d(TAG, " Resultado final: $texto")
-                detenerSesion()
+                detenerSesion(notificarSpeechEnded = false)
                 mainHandler.post {
                     onFinalResult(texto)
                     mainHandler.postDelayed({ haEnviadoResultado = false }, 3000)
@@ -429,15 +429,6 @@ class ContinuousVoiceEngine(
                         grpcRecognizer.stopStreaming()
                         Log.d(TAG, " Sesión STT detenida por fin de habla")
                     }
-
-                    // ✅ NOTIFICAR fin de habla
-                    mainHandler.post {
-                        onSpeechEndedCallback()
-                    }
-
-                    // ✅ VOLVER a modo WAKE_WORD inmediatamente
-                    engineMode = EngineMode.WAKE_WORD
-                    startVoskWakeWordMode()
                 }
             }
         }
@@ -510,6 +501,9 @@ class ContinuousVoiceEngine(
         engineMode = EngineMode.WAKE_WORD
         startVoskWakeWordMode()
         resetVad()
+        if (notificarSpeechEnded) {
+            mainHandler.post { onSpeechEnded() }
+        }
     }
 
     fun reiniciarEscucha() {

@@ -265,8 +265,11 @@ class JarvisVoiceController(
             },
             onSpeechEnded = {
                 Log.d(TAG, "Usuario dejó de hablar")
-//                // Iniciar timeout después de que termine de hablar
-//                mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
+                // Si el motor ya no tiene sesión activa, resetear el controlador
+                if (!voiceEngine.isSrSessionActive() && sesionActiva) {
+                    Log.d(TAG, "El motor volvió a modo wake word, reseteando controlador")
+                    stopListeningCompletamente()
+                }
             },
 
 
@@ -1316,14 +1319,13 @@ class JarvisVoiceController(
                         if (responseText.isNotBlank()) {
                             Log.d(TAG, " Hablando respuesta: $responseText")
                             hablar(responseText) {
-                                if (!esConversacional) {
+                                if (esConversacional) {
+                                    // Inicia el modo conversacional y el timeout de 5 segundos
+                                    manejarFinDeTTS(permitirConversacion = true)
+                                } else {
+                                    // Vuelve al modo wake word inmediatamente
                                     finalizarInteraccion()
                                 }
-                            }
-                        } else {
-                            isProcessing = false
-                            if (sesionActiva) {
-                                mainHandler.postDelayed({ iniciarSRContinuo() }, 500)
                             }
                         }
                     }
@@ -2065,7 +2067,6 @@ class JarvisVoiceController(
 
 
     private fun stopListeningCompletamente() {
-
         sesionActiva = false
         isProcessing = false
         esperandoConfirmacion = false
@@ -2075,17 +2076,11 @@ class JarvisVoiceController(
         esperandoRespuestaServidor = false
         estaEnviandoAlServidor = false
         estaProcesandoComando = false
-        voiceEngine.detenerSesion()
-//        hybridTranscriber.detenerSesion()
-//        sessionManager.stopSession()
-//        liberarAudioFocusSR()
+
+        if (voiceEngine.isSrSessionActive()) {
+            voiceEngine.detenerSesion()
+        }
         detenerTTS()
-//        if (::audioEngine.isInitializetry:
-//    rescate_result = await check_rescates(texto_lower, self.texto_acumulado, metadata_ws)
-//except Exception as e:
-//    self._log(f" Error en rescates: {e}")
-//    rescate_result = Noned) audioEngine.start()
-//        porcupineController?.reanudarPorcupine()
         setState(JarvisState.IDLE)
         mainHandler.removeCallbacks(timeoutRunnable)
         Log.d(TAG, " Sesión detenida completamente")
@@ -2128,7 +2123,10 @@ class JarvisVoiceController(
         override fun run() {
             // ✅ Si la sesión de voz ya no está activa, no hacer nada
             if (!voiceEngine.isSrSessionActive()) {
-                Log.d(TAG, "Timeout ignorado - STT ya no está activo")
+                Log.d(TAG, "Timeout ignorado - STT ya no está activo, reseteando estado")
+                if (sesionActiva) {
+                    stopListeningCompletamente()
+                }
                 return
             }
 
