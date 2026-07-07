@@ -19,7 +19,7 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-
+import com.example.myapplication.BuildConfig
 class MusicRecognizerRest(
     private val context: Context,
     private val onResult: (MusicResult?) -> Unit,
@@ -30,8 +30,8 @@ class MusicRecognizerRest(
         private const val TAG = "MUSIC_REST"
 
         // Credenciales cargadas desde local.properties (ver local.properties.example)
-        private val ACCESS_KEY = com.example.myapplication.BuildConfig.ACRCLOUD_ACCESS_KEY
-        private val ACCESS_SECRET = com.example.myapplication.BuildConfig.ACRCLOUD_ACCESS_SECRET
+        private val ACCESS_KEY = BuildConfig.ACRCLOUD_ACCESS_KEY
+        private val ACCESS_SECRET = BuildConfig.ACRCLOUD_ACCESS_SECRET
         private const val HOST = "identify-us-west-2.acrcloud.com"
 
         private const val SAMPLE_RATE = 16000

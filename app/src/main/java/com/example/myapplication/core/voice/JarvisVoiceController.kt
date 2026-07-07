@@ -320,15 +320,15 @@ class JarvisVoiceController(
         }
         val ahora = System.currentTimeMillis()
         val textoLimpio = texto.trim()
-        //  Guardar mensaje del usuario LOCALMENTE inmediatamente
-        //  CORRECTO
+
+        // Guardar mensaje del usuario
         if (chatRepository != null) {
             scope.launch {
                 chatRepository.addUserMessage(texto)
-                // La UI se actualiza automáticamente via Flow en ConversationViewInsideOverlay
             }
         }
         setState(JarvisState.THINKING)
+
         if (estaHablando) {
             Log.d(TAG, " Ignorando comando porque el asistente está hablando: '$texto'")
             return
@@ -358,54 +358,27 @@ class JarvisVoiceController(
             cancelarEnvioActual()
             Thread.sleep(100)
         }
-// En procesarTexto(), cuando el comando es un saludo local
-        if (texto.contains("hola", ignoreCase = true) && texto.length < 10) {
-            val respuesta = "¡Hola! ¿Qué necesitas?"
-            hablar(respuesta)
 
-            //  Guardar en Room
-            chatRepository?.let { repo ->
-                scope.launch {
-                    repo.addUserMessage(texto)
-                    repo.addAssistantMessage(
-                        content = respuesta,
-                        tag = "conversation",
-                        displayText = respuesta
-                    )
-                }
-            }
-            return
-        }
-        // ============================================================
-        //  PRIMERO: COMANDOS DE RECONOCIMIENTO DE MÚSICA (ACRCloud)
-        // ============================================================
+        // ═══════════════════════════════════════════════════════════
+        // 1. COMANDOS LOCALES (se ejecutan SIN enviar al servidor)
+        // ═══════════════════════════════════════════════════════════
+
         val lowerText = textoLimpio.lowercase()
-        val comandosMusica = listOf(
-            "reconoce esta canción",
-            "qué canción es esta",
-            "qué música es",
-            "identifica esta canción",
-            "qué está sonando",
-            "qué tema es",
-            "qué canción suena",
-            "reconocé esta canción",
-            "descubre esta canción",
-            "cuál es la canción",
-            "shazam",
-            "qué canción",
-            "identificar canción"
-        )
 
+        // Comando de reconocimiento de música
+        val comandosMusica = listOf(
+            "reconoce esta canción", "qué canción es esta", "qué música es",
+            "identifica esta canción", "qué está sonando", "qué tema es",
+            "qué canción suena", "reconocé esta canción", "descubre esta canción",
+            "cuál es la canción", "shazam", "qué canción", "identificar canción"
+        )
         if (comandosMusica.any { lowerText.contains(it) }) {
             Log.d(TAG, " Comando de reconocimiento de música detectado")
             startMusicRecognition()
-            return  //  IMPORTANTE: salir aquí para que no siga procesando
+            return
         }
 
-        // ============================================================
-        // INTERCEPTORES LOCALES (YouTube, imágenes, etc.)
-        // ============================================================
-
+        // Comandos de YouTube
         when {
             textoLimpio.contains("adelanta") || textoLimpio.contains("avanza") -> {
                 val segundos = extraerSegundos(textoLimpio) ?: 10
@@ -467,21 +440,6 @@ class JarvisVoiceController(
             return
         }
 
-        // Ver más fuentes
-        if (textoLimpio.contains("ver más") || textoLimpio.contains("ver mas") ||
-            textoLimpio.contains("abrir enlaces")) {
-            val urls = ultimoResultadoBusqueda?.urls ?: emptyList()
-            if (urls.isNotEmpty()) {
-                ejecutarAbrirNavegadorLocal(urls.first())
-            } else {
-                hablar("No encontré enlaces disponibles de la última búsqueda.") {
-                    isProcessing = false
-                    if (sesionActiva) iniciarSRContinuo()
-                }
-            }
-            return
-        }
-
         // YouTube
         if (texto.lowercase().contains("youtube") &&
             (texto.lowercase().contains("pon") || texto.lowercase().contains("reproduce"))) {
@@ -490,26 +448,17 @@ class JarvisVoiceController(
             return
         }
 
-        // Cerrar búsqueda
-        if (texto.lowercase().contains("cerrar búsqueda") ||
-            texto.lowercase().contains("ocultar resultados") ||
-            texto.lowercase().contains("volver atrás")) {
-            hablar("Resultados ocultados") {
-                isProcessing = false
-                if (sesionActiva) iniciarSRContinuo()
-            }
-            return
-        }
         // Cancelación
         if (esComandoCancelacion(texto)) {
             Log.d(TAG, " Comando de cancelación detectado: '$texto'")
             cancelarAccionActual()
             return
         }
-        processCommand(textoLimpio)
-        // ============================================================
-        // COMANDOS POR INTENCIÓN (CommandAnalyzer)
-        // ============================================================
+
+        // ═══════════════════════════════════════════════════════════
+        // 2. COMANDOS POR INTENCIÓN
+        // ═══════════════════════════════════════════════════════════
+
         val intencion = CommandAnalyzer.clasificar(texto)
         Log.d(TAG, "Intención detectada: $intencion")
 
@@ -579,22 +528,47 @@ class JarvisVoiceController(
                 ejecutarComandoHora()
             }
             CommandAnalyzer.Intent.UNKNOWN -> {
+                // ✅ Si es un saludo, responder localmente
+                if (texto.contains("hola", ignoreCase = true) && texto.length < 15) {
+                    val respuesta = "¡Hola! ¿Qué necesitas?"
+                    hablar(respuesta)
+                    chatRepository?.let { repo ->
+                        scope.launch {
+                            repo.addAssistantMessage(
+                                content = respuesta,
+                                tag = "conversation",
+                                displayText = respuesta
+                            )
+                        }
+                    }
+                    return
+                }
+
+                // ✅ Si es frase de salida, terminar sesión
+                if (esFraseDeSalida(texto)) {
+                    terminarSesion()
+                    return
+                }
+
+                // ✅ Si es comando visual, procesar
                 if (interceptarComandoVisual(texto)) {
                     isProcessing = false
                     if (sesionActiva) iniciarSRContinuo()
                     return
                 }
-                if (esFraseDeSalida(texto)) {
-                    terminarSesion()
-                    return
-                }
+
+                // ✅ ENVIAR AL SERVIDOR
+                Log.d(TAG, " Enviando al servidor: '$texto'")
                 enviarComandoAlServidor(texto)
             }
             else -> {
+                // ✅ Cualquier otra intención se envía al servidor
+                Log.d(TAG, " Enviando al servidor (intención: $intencion): '$texto'")
                 enviarComandoAlServidor(texto)
             }
         }
     }
+
     private fun processCommand(text: String) {
         val lower = text.lowercase().trim()
         when {

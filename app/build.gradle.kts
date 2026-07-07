@@ -1,5 +1,4 @@
 import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -11,16 +10,28 @@ plugins {
 android {
     namespace = "com.example.myapplication"
     compileSdk = 36
-    val properties = Properties()
-    val propertiesFile = rootProject.file("local.properties")
-    if (propertiesFile.exists()) {
-        properties.load(propertiesFile.inputStream())
+
+    // ─── 1. CARGAR API KEYS DESDE apikeys.properties ───
+    val apiKeysFile = rootProject.file("apikeys.properties")
+    val apiProperties = Properties()
+    if (apiKeysFile.exists()) {
+        apiProperties.load(apiKeysFile.inputStream())
+        println("apikeys.properties cargado correctamente.")
+    } else {
+        println(" apikeys.properties no encontrado. Usando valores por defecto (NO usar en producción).")
     }
+
+    // Función helper para obtener propiedades con fallback seguro
+    fun getApiKey(key: String, defaultValue: String = ""): String {
+        return apiProperties.getProperty(key) ?: defaultValue
+    }
+
     sourceSets {
         named("main") {
             jniLibs.srcDirs("src/main/jniLibs")
         }
     }
+
     defaultConfig {
         applicationId = "com.example.myapplication"
         minSdk = 26
@@ -32,38 +43,19 @@ android {
             "redirectSchemeName" to "nexus",
             "redirectHostName" to "auth"
         ))
-        val props = Properties()
-        val localPropsFile = rootProject.file("local.properties")
-        if (localPropsFile.exists()) {
-            props.load(localPropsFile.inputStream())
-        }
-        val geminiKey = props.getProperty("GEMINI_API_KEY") ?: ""
-        buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
 
-        val youtubeKey = props.getProperty("YOUTUBE_API_KEY") ?: "AIzaSyBeZ8o6YTLkR_x4QJYXw9SAxiFL2xoL6zA"
-        buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeKey\"")
-
-        val tavilyKey = props.getProperty("TAVILY_API_KEY") ?: "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"
-        buildConfigField("String", "TAVILY_API_KEY", "\"$tavilyKey\"")
-
-        val elevenLabsKey = props.getProperty("ELEVENLABS_API_KEY") ?: "9dcae6842f3e53c4f885e4dcf30bf5635e8284c41df98d93f8b432b5f4383e90"
-        buildConfigField("String", "ELEVENLABS_API_KEY", "\"$elevenLabsKey\"")
-
-        val acrCloudAccessKey = props.getProperty("ACRCLOUD_ACCESS_KEY") ?: "1d2662be97a95de33ae5a111a6a895ff"
-        buildConfigField("String", "ACRCLOUD_ACCESS_KEY", "\"$acrCloudAccessKey\"")
-
-        val acrCloudAccessSecret = props.getProperty("ACRCLOUD_ACCESS_SECRET") ?: "BFf6SmDETpRrJck7Gw75HUAQTuT2bUhWF4rUkRjM"
-        buildConfigField("String", "ACRCLOUD_ACCESS_SECRET", "\"$acrCloudAccessSecret\"")
-
-        val nexusBaseUrl = props.getProperty("NEXUS_BASE_URL") ?: "https://mausand2499--jarvoice-nexus-api-nexusserver-serve-dev.modal.run"
-        buildConfigField("String", "NEXUS_BASE_URL", "\"$nexusBaseUrl\"")
-
-        val nexusWsHost = props.getProperty("NEXUS_WS_HOST") ?: "mausand2499--jarvoice-nexus-api-fastapi-server-dev.modal.run"
-        buildConfigField("String", "NEXUS_WS_HOST", "\"$nexusWsHost\"")
+        // ─── 2. BUILD CONFIG FIELDS (TODOS DESDE apikeys.properties) ───
+        buildConfigField("String", "GEMINI_API_KEY", "\"${getApiKey("GEMINI_API_KEY")}\"")
+        buildConfigField("String", "YOUTUBE_API_KEY", "\"${getApiKey("YOUTUBE_API_KEY", "AIzaSyBeZ8o6YTLkR_x4QJYXw9SAxiFL2xoL6zA")}\"")
+        buildConfigField("String", "TAVILY_API_KEY", "\"${getApiKey("TAVILY_API_KEY", "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")}\"")
+        buildConfigField("String", "ELEVENLABS_API_KEY", "\"${getApiKey("ELEVENLABS_API_KEY", "9dcae6842f3e53c4f885e4dcf30bf5635e8284c41df98d93f8b432b5f4383e90")}\"")
+        buildConfigField("String", "ACRCLOUD_ACCESS_KEY", "\"${getApiKey("ACRCLOUD_ACCESS_KEY", "1d2662be97a95de33ae5a111a6a895ff")}\"")
+        buildConfigField("String", "ACRCLOUD_ACCESS_SECRET", "\"${getApiKey("ACRCLOUD_ACCESS_SECRET", "BFf6SmDETpRrJck7Gw75HUAQTuT2bUhWF4rUkRjM")}\"")
+        buildConfigField("String", "NEXUS_BASE_URL", "\"${getApiKey("NEXUS_BASE_URL", "https://mausand2499--jarvoice-nexus-api-nexusserver-serve-dev.modal.run")}\"")
+        buildConfigField("String", "NEXUS_WS_HOST", "\"${getApiKey("NEXUS_WS_HOST", "mausand2499--jarvoice-nexus-api-fastapi-server-dev.modal.run")}\"")
 
         multiDexEnabled = true
     }
-
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
