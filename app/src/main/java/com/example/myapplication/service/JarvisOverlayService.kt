@@ -318,17 +318,6 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             if (!isOverlayReady) return@post
             uiState.applyText(text)
             uiState.showPanel = true
-
-            if (uiState.jarvisState == com.example.myapplication.core.voice.JarvisState.IDLE && text.length < 50) {
-                mainHandler.removeCallbacksAndMessages(null)
-                mainHandler.postDelayed({
-                    if (uiState.jarvisState == com.example.myapplication.core.voice.JarvisState.IDLE &&
-                        uiState.showPanel &&
-                        (uiState.transcription.length) < 100) {
-                        ocultarPanelResultados()
-                    }
-                }, 15_000L)
-            }
         }
     }
 
@@ -367,14 +356,6 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
             if (state == JarvisState.IDLE) {
                 resumeWakeWordDetection()
-                //  Si no hay resultados especiales, ocultar panel después de un tiempo
-                if (!uiState.showMusicResult && !uiState.showWhatsappPreview) {
-                    mainHandler.postDelayed({
-                        if (uiState.jarvisState == JarvisState.IDLE) {
-                            ocultarPanelResultados()
-                        }
-                    }, 5000L)
-                }
             }
 
             mainHandler.removeCallbacksAndMessages("HIDE_UI_IDLE")
@@ -403,40 +384,32 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
         textoCompleto: String,
         fuentes: List<String>,
         imagenes: List<String>,
-        preguntas: List<String>
+        preguntas: List<String>,
+        html: String
     ) {
         mainHandler.post {
             if (!isOverlayReady) return@post
-            stepsJob?.cancel() // Detener la animación de pasos inmediatamente
-            uiState.processingSteps = emptyList() // Limpiar pasos para dar prioridad al resultado
 
-            // Cancelar typewriter anterior
+            // Cancelar animaciones anteriores
+            stepsJob?.cancel()
             typewriterJob?.cancel()
 
-            // Mostrar panel y limpiar solo lo necesario
+            // Mostrar panel
             uiState.showPanel = true
-            uiState.fullHtmlText = textoCompleto
-            uiState.typewriterText = ""
+
+            // 1. GUARDAR IMÁGENES
             uiState.imageUrls = imagenes.take(6)
+
+            // 2. GUARDAR FUENTES
             uiState.sourceUrls = fuentes
 
-            // Iniciar efecto máquina de escribir
-            val plainText = Html.fromHtml(textoCompleto, Html.FROM_HTML_MODE_LEGACY).toString()
-            typewriterJob = serviceScope.launch {
-                uiState.startTypewriter(plainText, delayMs = 120)
-                // Al terminar, dejamos fullHtmlText para que se muestre completo
-                uiState.typewriterText = ""
-            }
 
-            // Opcional: limpiar userTranscription después de un tiempo
-            mainHandler.postDelayed({
-                if (uiState.jarvisState == JarvisState.IDLE) {
-                    uiState.userTranscription = ""
-                }
-            }, 5000)
+            uiState.typewriterText = ""  //  Limpiar antes de empezar
+            uiState.fullHtmlText = html.ifBlank { textoCompleto }
+            // Mostrar overlay
+            showOverlay()
         }
     }
-
     // ────────────────────────────────────────────────────────────────────────
     // Panel helpers
     // ────────────────────────────────────────────────────────────────────────

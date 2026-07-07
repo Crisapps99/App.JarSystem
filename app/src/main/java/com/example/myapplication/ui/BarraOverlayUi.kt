@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale      // <-- necesario para .scale()
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -58,22 +59,20 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import androidx.compose.ui.unit.dp
 import android.widget.TextView
 import android.text.method.LinkMovementMethod
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
 
-// ─── DEFINIR TODOS LOS COLORES AQUÍ (INCLUYENDO ColorCyanNexus) ─────────────
+// ─── COLORES ─────────────────────────────────────────────────────────────
 private val ColorBgDark     = Color(0xFF1C1C1E)
 private val ColorTextMain   = Color(0xFFE8E8F0)
 private val ColorChipBg     = Color(0xFF2C2C3A)
 private val ColorChipBorder = Color(0xFF3A3A50)
-private val ColorCyanNexus  = Color(0xFF4DEEE9)  // <-- ESTE FALTABA
+private val ColorCyanNexus  = Color(0xFF4DEEE9)
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Modelos de datos locales para la conversación
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── MODELOS ──────────────────────────────────────────────────────────────
 enum class Sender { USER, ASSISTANT }
 
 data class Message(
@@ -83,45 +82,178 @@ data class Message(
     val time: String
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Estado observable
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── ESTADO OBSERVABLE ──────────────────────────────────────────────────
 class JarvisOverlayUiState {
-    var jarvisState     by mutableStateOf(JarvisState.IDLE)
-    var labelText       by mutableStateOf("NEXUS")
-    var labelColor      by mutableStateOf(android.graphics.Color.WHITE)
-    var showPanel       by mutableStateOf(false)
-    var transcription   by mutableStateOf("")
-    var imageUrls       by mutableStateOf<List<String>>(emptyList())
-    var sourceUrls      by mutableStateOf<List<String>>(emptyList())
-    var showPause       by mutableStateOf(false)
-    var showWave        by mutableStateOf(false)
-    var typewriterText  by mutableStateOf("")
-    var fullHtmlText    by mutableStateOf("")
-    var processingSteps by mutableStateOf<List<ProcessingStep>>(emptyList())
-    var userTranscription by mutableStateOf("")
+    var jarvisState         by mutableStateOf(JarvisState.IDLE)
+    var labelText           by mutableStateOf("NEXUS")
+    var labelColor          by mutableStateOf(android.graphics.Color.WHITE)
+    var showPanel           by mutableStateOf(false)
+    var transcription       by mutableStateOf("")
+    var imageUrls           by mutableStateOf<List<String>>(emptyList())
+    var sourceUrls          by mutableStateOf<List<String>>(emptyList())
+    var showPause           by mutableStateOf(false)
+    var showWave            by mutableStateOf(false)
+    var typewriterText      by mutableStateOf("")
+    var fullHtmlText        by mutableStateOf("")
+    var processingSteps     by mutableStateOf<List<ProcessingStep>>(emptyList())
+    var userTranscription   by mutableStateOf("")
     var pendingWhatsappContact by mutableStateOf("")
     var pendingWhatsappMessage by mutableStateOf("")
     var showWhatsappPreview by mutableStateOf(false)
 
-    var barColors        by mutableStateOf(BarColorMode.IDLE)
-    var serverProcessing by mutableStateOf(false)
+    var barColors           by mutableStateOf(BarColorMode.IDLE)
+    var serverProcessing    by mutableStateOf(false)
 
-    // RECONOCIMIENTO DE MÚSICA
-    var showMusicResult by mutableStateOf(false)
-    var musicTitle by mutableStateOf("")
-    var musicArtist by mutableStateOf("")
-    var musicAlbum by mutableStateOf("")
-    var musicGenre by mutableStateOf("")
-    var musicDurationMs by mutableStateOf(0L)
-    var musicCoverUrl by mutableStateOf("")
-    var musicExternalUrls by mutableStateOf<List<String>>(emptyList())
-    var spotifyCoverUri by mutableStateOf("")
-    var showConversation by mutableStateOf(false)
+    // MÚSICA
+    var showMusicResult     by mutableStateOf(false)
+    var musicTitle          by mutableStateOf("")
+    var musicArtist         by mutableStateOf("")
+    var musicAlbum          by mutableStateOf("")
+    var musicGenre          by mutableStateOf("")
+    var musicDurationMs     by mutableStateOf(0L)
+    var musicCoverUrl       by mutableStateOf("")
+    var musicExternalUrls   by mutableStateOf<List<String>>(emptyList())
+    var spotifyCoverUri     by mutableStateOf("")
+    var showConversation    by mutableStateOf(false)
 }
 
-// ─── Composable raíz ──────────────────────────────────────────────────────
-// ─── MODIFICACIÓN EN COMPOSABLE RAÍZ ──────────────────────────────────────
+// ─── PROCESAMIENTO DE PASOS ─────────────────────────────────────────────
+enum class StepStatus { DONE, ACTIVE, PENDING }
+
+data class ProcessingStep(
+    val text: String,
+    val status: StepStatus
+)
+
+@Composable
+fun ProcessingStepsList(steps: List<ProcessingStep>) {
+    val colorDone    = Color(0xFF1DE0A0)
+    val colorActive  = Color(0xFF4DEEE9)
+    val colorPending = Color(0xFF2C2C3A)
+    val colorLine    = Color(0xFF2C2C3A)
+
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 20.dp)) {
+        Text(
+            text = when {
+                steps.any { it.status == StepStatus.ACTIVE } -> "PROCESANDO"
+                steps.all { it.status == StepStatus.DONE }   -> "COMPLETADO"
+                else -> "PREPARANDO"
+            },
+            color         = colorActive,
+            fontSize      = 10.sp,
+            fontWeight    = FontWeight.Bold,
+            letterSpacing = 1.5.sp,
+            modifier      = Modifier.padding(bottom = 10.dp)
+        )
+
+        steps.forEachIndexed { index, step ->
+            val isLast = index == steps.lastIndex
+            var visible by remember(step.text) { mutableStateOf(false) }
+
+            LaunchedEffect(step.text) {
+                delay(index * 120L)
+                visible = true
+            }
+
+            AnimatedVisibility(
+                visible = visible,
+                enter   = fadeIn(tween(300)) + slideInVertically(
+                    animationSpec  = tween(300, easing = FastOutSlowInEasing),
+                    initialOffsetY = { it / 2 }
+                )
+            ) {
+                Row(
+                    modifier          = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier            = Modifier.padding(start = 10.dp)
+                    ) {
+                        StepDot(
+                            status       = step.status,
+                            colorDone    = colorDone,
+                            colorActive  = colorActive,
+                            colorPending = colorPending
+                        )
+                        if (!isLast) {
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(24.dp)
+                                    .background(colorLine)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text       = step.text,
+                        color      = when (step.status) {
+                            StepStatus.DONE    -> Color(0xFF6B7280)
+                            StepStatus.ACTIVE  -> Color(0xFFE8E8F0)
+                            StepStatus.PENDING -> Color(0xFF3A3A50)
+                        },
+                        fontSize   = 13.sp,
+                        fontWeight = if (step.status == StepStatus.ACTIVE) FontWeight.Medium else FontWeight.Normal,
+                        modifier   = Modifier.padding(top = 3.dp, bottom = if (!isLast) 12.dp else 0.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StepDot(
+    status: StepStatus,
+    colorDone: Color,
+    colorActive: Color,
+    colorPending: Color
+) {
+    when (status) {
+        StepStatus.DONE -> {
+            Box(
+                modifier         = Modifier.size(14.dp).clip(CircleShape).background(colorDone),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("✓", fontSize = 8.sp, color = Color(0xFF131618), fontWeight = FontWeight.Bold)
+            }
+        }
+        StepStatus.ACTIVE -> {
+            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+            val scale by infiniteTransition.animateFloat(
+                initialValue  = 0.85f,
+                targetValue   = 1.15f,
+                animationSpec = infiniteRepeatable(tween(600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                label         = "scale"
+            )
+            val alpha by infiniteTransition.animateFloat(
+                initialValue  = 0.3f,
+                targetValue   = 1f,
+                animationSpec = infiniteRepeatable(tween(400, easing = LinearEasing), RepeatMode.Reverse),
+                label         = "alpha"
+            )
+            Box(
+                modifier         = Modifier.size(14.dp).scale(scale).clip(CircleShape).background(colorActive),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier.size(5.dp).clip(CircleShape)
+                        .background(Color(0xFF131618).copy(alpha = alpha))
+                )
+            }
+        }
+        StepStatus.PENDING -> {
+            Box(
+                modifier = Modifier.size(14.dp).clip(CircleShape).background(colorPending)
+            )
+        }
+    }
+}
+
+// ─── COMPOSABLE RAÍZ ─────────────────────────────────────────────────────
 @Composable
 fun JarvisOverlayContent(
     uiState: JarvisOverlayUiState,
@@ -153,7 +285,7 @@ fun JarvisOverlayContent(
         contentAlignment = Alignment.BottomCenter
     ) {
 
-        // ─── PANTALLA COMPLETA DE CONVERSACIÓN ───
+        // ─── PANTALLA DE CONVERSACIÓN (con todos los parámetros) ───
         AnimatedVisibility(
             visible = uiState.showConversation,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -170,31 +302,36 @@ fun JarvisOverlayContent(
                 ConversationViewInsideOverlay(
                     uiState = uiState,
                     chatRepository = chatRepository,
-                    onBackClose = { uiState.showConversation = false }
+                    onBackClose = { uiState.showConversation = false },
+                    onMicClick = onMicClick,
+                    onPauseClick = onPauseClick,
+                    onSendMessage = onSendMessage
                 )
             }
         }
 
-        // ─── PANEL DE RESULTADOS ESTÁNDAR ───
+
+        // ─── PANEL DE RESULTADOS ───
+        // ─── PANEL DE RESULTADOS ───
         AnimatedVisibility(
             visible = !uiState.showConversation && uiState.showPanel &&
                     uiState.jarvisState != JarvisState.LISTENING &&
                     (uiState.jarvisState != JarvisState.IDLE ||
                             uiState.showMusicResult ||
-                            uiState.showWhatsappPreview),
+                            uiState.showWhatsappPreview ||
+                            uiState.fullHtmlText.isNotBlank()),
             enter = fadeIn(tween(350)) + slideInVertically(
                 animationSpec = tween(450, easing = FastOutSlowInEasing),
                 initialOffsetY = { it }
             ),
             exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier
-                .width(400.dp)
-                .height(350.dp)
-                .padding(bottom = 150.dp)  //  Subido un poco más para que no tape la barra de 130.dp
+                .fillMaxWidth()
+                .wrapContentHeight()                    // ✅ Altura dinámica según contenido
+                .padding(bottom = 120.dp)               // Espacio para la barra inferior
         ) {
             ResultsPanel(uiState = uiState)
         }
-
         // ─── BARRA PRINCIPAL UNIFICADA ───
         UnifiedNexusBottomBar(
             uiState = uiState,
@@ -217,13 +354,14 @@ fun JarvisOverlayContent(
                 }
             },
             modifier = Modifier
-                .fillMaxWidth()  //  Ocupa todo el ancho
-                .padding(horizontal = 0.dp)  //  Sin padding extra
-                .align(Alignment.BottomCenter)//  Dejamos que la altura y paddings se controlen internamente
+                .fillMaxWidth()
+                .padding(horizontal = 0.dp)
+                .align(Alignment.BottomCenter)
         )
     }
 }
 
+// ─── BARRA INFERIOR UNIFICADA ──────────────────────────────────────────
 @Composable
 fun UnifiedNexusBottomBar(
     uiState: JarvisOverlayUiState,
@@ -239,7 +377,6 @@ fun UnifiedNexusBottomBar(
 ) {
     val isConversationMode = uiState.showConversation
 
-    // Dimensiones de control explícitas
     val barHeight         = 100.dp
     val orbSize           = 40.dp
     val campoAltura       = 60.dp
@@ -254,7 +391,6 @@ fun UnifiedNexusBottomBar(
             .height(barHeight)
             .padding(horizontal = 15.dp, vertical = 8.dp)
     ) {
-        // Fondo de la barra con luces y esquinas redondeadas tipo píldora
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -275,7 +411,7 @@ fun UnifiedNexusBottomBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacingEntreItems)
         ) {
-            // Orbe principal
+            // Orbe
             Box(
                 modifier = Modifier
                     .size(orbSize)
@@ -298,6 +434,7 @@ fun UnifiedNexusBottomBar(
             }
 
             if (isConversationMode) {
+                // Input para modo conversación (ya incluido dentro de la barra)
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -371,32 +508,17 @@ fun UnifiedNexusBottomBar(
                     }
                 }
             } else {
-                // ═══ DETECTAR CUANDO EL TEXTO DEBE ESTAR OPAQUE ═══
+                // Modo normal: texto y controles
                 val estaPensandoOProcesando = uiState.jarvisState == JarvisState.THINKING ||
                         uiState.serverProcessing
-
                 val estaEscuchando = uiState.jarvisState == JarvisState.LISTENING
 
-                // ═══ DETERMINAR COLOR DEL TEXTO ═══
                 val colorTextoPrincipal by animateColorAsState(
                     targetValue = when {
-                        // 🔹 Caso 1: Pensando/procesando -> Texto opaco
-                        estaPensandoOProcesando -> {
-                            Color(uiState.labelColor).copy(alpha = 0.4f)
-                        }
-                        // 🔹 Caso 2: Escuchando y hay texto -> Texto completo (sin opacidad)
-                        estaEscuchando && uiState.userTranscription.isNotBlank() -> {
-                            Color(uiState.labelColor).copy(alpha = 1.0f)
-                        }
-                        // 🔹 Caso 3: Escuchando sin texto -> Mostrar "Escuchando..."
-                        estaEscuchando -> {
-                            Color(uiState.labelColor).copy(alpha = 0.8f)
-                        }
-                        // 🔹 Caso 4: IDLE (wake word) -> Blanco normal
-                        uiState.jarvisState == JarvisState.IDLE -> {
-                            Color(uiState.labelColor).copy(alpha = 1.0f)
-                        }
-                        // 🔹 Caso 5: Otros estados (SPEAKING, etc.)
+                        estaPensandoOProcesando -> Color(uiState.labelColor).copy(alpha = 0.4f)
+                        estaEscuchando && uiState.userTranscription.isNotBlank() -> Color(uiState.labelColor).copy(alpha = 1.0f)
+                        estaEscuchando -> Color(uiState.labelColor).copy(alpha = 0.8f)
+                        uiState.jarvisState == JarvisState.IDLE -> Color(uiState.labelColor).copy(alpha = 1.0f)
                         else -> Color(uiState.labelColor).copy(alpha = 1.0f)
                     },
                     animationSpec = tween(400),
@@ -405,39 +527,15 @@ fun UnifiedNexusBottomBar(
 
                 Text(
                     text = when {
-                        //  Modo IDLE (wake word)
                         uiState.jarvisState == JarvisState.IDLE -> "¿En qué puedo ayudarte?"
-
-                        //  Modo LISTENING con transcripción
-                        uiState.jarvisState == JarvisState.LISTENING &&
-                                uiState.userTranscription.isNotBlank() -> {
-                            uiState.userTranscription  // ← Texto en tiempo real
-                        }
-
-                        //  Modo LISTENING sin transcripción aún
-                        uiState.jarvisState == JarvisState.LISTENING -> {
+                        uiState.jarvisState == JarvisState.LISTENING && uiState.userTranscription.isNotBlank() ->
+                            uiState.userTranscription
+                        uiState.jarvisState == JarvisState.LISTENING ->
                             if (uiState.userTranscription.isBlank()) "Escuchando..." else uiState.userTranscription
-                        }
-
-                        //  Modo THINKING - Mostrar "Pensando..." pero CON la transcripción opaca
-                        uiState.jarvisState == JarvisState.THINKING -> {
-                            if (uiState.userTranscription.isNotBlank()) {
-                                uiState.userTranscription  // Mantener visible pero opaco
-                            } else {
-                                "Pensando..."
-                            }
-                        }
-
-                        //  Modo SPEAKING
-                        uiState.jarvisState == JarvisState.SPEAKING -> {
-                            if (uiState.userTranscription.isNotBlank()) {
-                                uiState.userTranscription
-                            } else {
-                                "Hablando..."
-                            }
-                        }
-
-                        //  Fallback
+                        uiState.jarvisState == JarvisState.THINKING ->
+                            if (uiState.userTranscription.isNotBlank()) uiState.userTranscription else "Pensando..."
+                        uiState.jarvisState == JarvisState.SPEAKING ->
+                            if (uiState.userTranscription.isNotBlank()) uiState.userTranscription else "Hablando..."
                         else -> "NEXUS"
                     },
                     color = colorTextoPrincipal,
@@ -531,13 +629,16 @@ fun UnifiedNexusBottomBar(
         }
     }
 }
-// ─── CONVERSATION VIEW INSIDE OVERLAY ────────────────────────────────────
-// ─── CONVERSATION VIEW INSIDE OVERLAY (ESTILO RESULTS PANEL) ──────────────
+
+// ─── VISTA DE CONVERSACIÓN (COMPLETA) ──────────────────────────────────
 @Composable
 fun ConversationViewInsideOverlay(
     uiState: JarvisOverlayUiState,
     chatRepository: ChatRepository,
-    onBackClose: () -> Unit
+    onBackClose: () -> Unit,
+    onMicClick: () -> Unit,
+    onPauseClick: () -> Unit,
+    onSendMessage: (String) -> Unit
 ) {
     val messagesFlow = chatRepository.getMessagesForSession().collectAsState(initial = emptyList())
     val roomMessages = messagesFlow.value
@@ -556,213 +657,172 @@ fun ConversationViewInsideOverlay(
         }
     }
 
-    // ─── CONTENEDOR PRINCIPAL (ESTILO RESULTS PANEL) ──────────────────────
-    Column(
+    Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(0.85f)  //  Ocupa 85% de la altura
-            .background(ColorBgDark, RoundedCornerShape(28.dp))  //  Mismo fondo que ResultsPanel
-            .shadow(
-                elevation = 24.dp,
-                shape = RoundedCornerShape(28.dp),
-                clip = false
-            )
-            .padding(16.dp)
+            .fillMaxSize()
+            .padding(top = 40.dp)
+            .shadow(elevation = 24.dp, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        colors = CardDefaults.cardColors(containerColor = ColorBgDark)
     ) {
-        // ─── TOP BAR (ESTILO RESULTS PANEL) ──────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
-            // Botón cerrar
-            Box(
+            // Top bar
+            Row(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF2A2A3A))
-                    .clickable { onBackClose() },
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    Icons.Default.ArrowBack,
-                    contentDescription = "Cerrar",
-                    tint = ColorCyanNexus,
-                    modifier = Modifier.size(22.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF2A2A3A))
+                        .clickable { onBackClose() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Cerrar", tint = ColorCyanNexus, modifier = Modifier.size(22.dp))
+                }
+                Text("Conversación", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Box(modifier = Modifier.size(40.dp))
             }
 
-            // Título
-            Text(
-                text = " Conversación",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
+            // Contador de mensajes
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .background(ColorChipBg, RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+            ) {
+                Text("${uiMessages.size} mensajes", color = Color(0xFF888899), fontSize = 12.sp)
+            }
 
-            // Espacio para balance
-            Box(modifier = Modifier.size(40.dp))
-        }
+            Spacer(modifier = Modifier.height(12.dp))
 
-        // ─── CONTADOR DE MENSAJES (ESTILO CHIP) ──────────────────────────
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .background(ColorChipBg, RoundedCornerShape(16.dp))
-                .padding(horizontal = 14.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = "${uiMessages.size} mensajes",
-                color = Color(0xFF888899),
-                fontSize = 12.sp
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ─── LISTA DE MENSAJES (ESTILO RESULTS PANEL) ────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF121214).copy(alpha = 0.5f))
-                .verticalScroll(rememberScrollState())
-                .padding(12.dp)
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Lista de mensajes
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 8.dp)
             ) {
                 if (uiMessages.isEmpty()) {
-                    // Mensaje vacío (estilo MusicResultCard vacío)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(120.dp)
-                            .background(Color(0xFF1A1A2E), RoundedCornerShape(16.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "",
-                                fontSize = 40.sp
-                            )
-                            Text(
-                                text = "No hay mensajes aún",
-                                color = Color(0xFF888899),
-                                fontSize = 14.sp,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                            Text(
-                                text = "Empieza una conversación",
-                                color = Color(0xFF666677),
-                                fontSize = 12.sp
-                            )
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp)
+                                .background(Color(0xFF1A1A2E), RoundedCornerShape(16.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("💬", fontSize = 40.sp)
+                                Text("No hay mensajes aún", color = Color(0xFF888899), fontSize = 14.sp)
+                                Text("Empieza una conversación", color = Color(0xFF666677), fontSize = 12.sp)
+                            }
                         }
                     }
                 } else {
-                    uiMessages.forEach { msg ->
+                    items(uiMessages) { msg ->
                         ChatBubbleStyled(message = msg)
                     }
-
                     if (uiState.jarvisState == JarvisState.THINKING) {
-                        TypingIndicatorStyled()
+                        item { TypingIndicatorStyled() }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ─── BARRA DE INPUT (ESTILO RESULTS PANEL) ────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .background(Color(0xFF1A1A2E), RoundedCornerShape(28.dp))
-                .padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Campo de texto
-            BasicTextField(
-                value = inputText,
-                onValueChange = { inputText = it },
-                textStyle = TextStyle(
-                    color = ColorTextMain,
-                    fontSize = 15.sp
-                ),
-                cursorBrush = SolidColor(ColorCyanNexus),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 16.dp),
-                decorationBox = { innerTextField ->
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        if (inputText.isEmpty()) {
-                            Text(
-                                text = "Escribe un mensaje...",
-                                color = ColorTextMain.copy(alpha = 0.4f),
-                                fontSize = 15.sp
-                            )
-                        }
-                        innerTextField()
+            // Barra inferior
+            ConversationBottomBar(
+                inputText = inputText,
+                onInputChange = { inputText = it },
+                onSendClick = {
+                    if (inputText.isNotBlank()) {
+                        onSendMessage(inputText)
+                        inputText = ""
                     }
-                }
+                },
+                onMicClick = onMicClick,
+                onPauseClick = onPauseClick,
+                uiState = uiState
             )
-
-            // Micrófono
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF2A2A3A))
-                    .clickable {
-                        // Acción de micrófono
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Mic,
-                    contentDescription = "Micrófono",
-                    tint = ColorCyanNexus,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            // Botón enviar
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (inputText.isNotBlank()) Color(0xFF0066FF) else Color(0xFF2A2A3A)
-                    )
-                    .clickable(
-                        enabled = inputText.isNotBlank(),
-                        onClick = {
-                            if (inputText.isNotBlank()) {
-                                // Enviar mensaje
-                                inputText = ""
-                            }
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Send,
-                    contentDescription = "Enviar",
-                    tint = if (inputText.isNotBlank()) Color.White else ColorTextMain.copy(alpha = 0.3f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
         }
     }
 }
 
-// ─── CHAT BUBBLE ESTILIZADA ─────────────────────────────────────────────
+@Composable
+fun ConversationBottomBar(
+    inputText: String,
+    onInputChange: (String) -> Unit,
+    onSendClick: () -> Unit,
+    onMicClick: () -> Unit,
+    onPauseClick: () -> Unit,
+    uiState: JarvisOverlayUiState
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .height(60.dp)
+            .background(Color(0xFF1A1A2E), RoundedCornerShape(30.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        BasicTextField(
+            value = inputText,
+            onValueChange = onInputChange,
+            textStyle = TextStyle(color = ColorTextMain, fontSize = 15.sp),
+            cursorBrush = SolidColor(ColorCyanNexus),
+            modifier = Modifier.weight(1f).padding(start = 8.dp),
+            decorationBox = { innerTextField ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (inputText.isEmpty()) {
+                        Text("Escribe un mensaje...", color = ColorTextMain.copy(alpha = 0.4f), fontSize = 15.sp)
+                    }
+                    innerTextField()
+                }
+            }
+        )
+
+        if (uiState.jarvisState == JarvisState.LISTENING) {
+            IconButton(onClick = onPauseClick) {
+                Icon(Icons.Default.Pause, contentDescription = "Pausar", tint = Color.Red)
+            }
+        }
+        IconButton(onClick = onMicClick) {
+            Icon(
+                Icons.Default.Mic,
+                contentDescription = "Micrófono",
+                tint = if (uiState.jarvisState == JarvisState.LISTENING) ColorCyanNexus else ColorTextMain
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(
+                    if (inputText.isNotBlank()) Color(0xFF0066FF) else Color(0xFF2A2A3A),
+                    CircleShape
+                )
+                .clickable(enabled = inputText.isNotBlank(), onClick = onSendClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.Send,
+                contentDescription = "Enviar",
+                tint = if (inputText.isNotBlank()) Color.White else ColorTextMain.copy(alpha = 0.3f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+// ─── BURBUJAS DE CHAT ────────────────────────────────────────────────────
 @Composable
 fun ChatBubbleStyled(message: Message) {
     val isUser = message.sender == Sender.USER
@@ -786,7 +846,6 @@ fun ChatBubbleStyled(message: Message) {
                 )
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            // Nombre del remitente
             Text(
                 text = if (isUser) "Tú" else "Nexus",
                 color = if (isUser) Color(0xFF888899) else ColorCyanNexus,
@@ -795,8 +854,6 @@ fun ChatBubbleStyled(message: Message) {
                 modifier = Modifier.padding(bottom = 4.dp)
             )
 
-            // Mensaje
-            // Dentro de ChatBubbleStyled, reemplaza el Text del mensaje por:
             if (!isUser && message.text.contains("<")) {
                 HtmlText(html = message.text)
             } else {
@@ -808,7 +865,6 @@ fun ChatBubbleStyled(message: Message) {
                 )
             }
 
-            // Hora
             Text(
                 text = message.time,
                 color = Color(0xFF666677),
@@ -819,7 +875,6 @@ fun ChatBubbleStyled(message: Message) {
     }
 }
 
-// ─── TYPING INDICATOR ESTILIZADO ────────────────────────────────────────
 @Composable
 fun TypingIndicatorStyled() {
     Row(
@@ -829,7 +884,6 @@ fun TypingIndicatorStyled() {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // Avatar Nexus
         Box(
             modifier = Modifier
                 .size(28.dp)
@@ -844,7 +898,6 @@ fun TypingIndicatorStyled() {
             )
         }
 
-        // Puntos animados
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             repeat(3) { index ->
                 val infiniteTransition = rememberInfiniteTransition(label = "dots")
@@ -867,7 +920,8 @@ fun TypingIndicatorStyled() {
         }
     }
 }
-// ─── COMPONENTES ADICIONALES DE CHAT UI ──────────────────────────────────────
+
+// ─── OTROS COMPONENTES DE CHAT ──────────────────────────────────────────
 @Composable
 fun ChatBubble(message: Message) {
     val isUser = message.sender == Sender.USER
@@ -969,7 +1023,6 @@ fun BottomInputBar(text: String, onValueChange: (String) -> Unit, onSendClick: (
     }
 }
 
-// ─── Función auxiliar IconButton ──────────────────────────────────────────
 @Composable
 private fun IconButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(
@@ -980,98 +1033,100 @@ private fun IconButton(onClick: () -> Unit, modifier: Modifier = Modifier, conte
     }
 }
 
-
 // ─── PANEL DE RESULTADOS ──────────────────────────────────────────────────
+// En JarvisOverlayContent.kt - ResultsPanel
 @Composable
 fun ResultsPanel(uiState: JarvisOverlayUiState) {
-    // Contenedor principal con centrado y márgenes profesionales
-    Column(
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-//            .padding(horizontal = 16.dp)
-            .shadow(elevation = 20.dp, shape = RoundedCornerShape(24.dp))
-            .background(Color(0xFF1C1C1E), RoundedCornerShape(24.dp))
-            .border(1.dp, Color(0xFF3A3A50), RoundedCornerShape(24.dp))
-            .padding(20.dp)
-//            .heightIn(max = 350.dp)  // ← altura máxima con scroll
-//            .verticalScroll(rememberScrollState())
-           ,
-    horizontalAlignment = Alignment.CenterHorizontally
+            .wrapContentHeight()                    // ✅ Altura dinámica
+            .padding(horizontal = 12.dp)
+            .shadow(elevation = 20.dp, shape = RoundedCornerShape(24.dp)),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E))
     ) {
-        // --- SECCIÓN DE TÍTULO / HEADER TIPO BUSCADOR ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(ColorCyanNexus.copy(alpha = 0.1f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("", fontSize = 18.sp)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = if (uiState.jarvisState == JarvisState.THINKING && uiState.processingSteps.isNotEmpty())
-                    "Procesando tu solicitud"
-                else
-                    "Resultados de búsqueda",
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // --- CONTENIDO: Separador con puntos y estructura limpia ---
-        Divider(color = Color(0xFF3A3A50), thickness = 1.dp)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Contenido con scroll
-        // Contenido con scroll
+        // ✅ UN SOLO Column con scroll
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
+                .wrapContentHeight()
+                .verticalScroll(scrollState)        // ✅ Único scroll
+                .padding(24.dp)
         ) {
-            val mostrandoProceso = uiState.jarvisState == JarvisState.THINKING &&
-                    uiState.processingSteps.isNotEmpty()
 
-            if (mostrandoProceso) {
+            // ─── PROCESAMIENTO ─────────────────────────────────
+            if (uiState.jarvisState == JarvisState.THINKING && uiState.processingSteps.isNotEmpty()) {
                 ProcessingStepsList(steps = uiState.processingSteps)
-            } else if (uiState.fullHtmlText.isNotBlank()) {
-                HtmlText(html = uiState.fullHtmlText)
-            } else if (uiState.typewriterText.isNotBlank()) {
+            }
+
+            // ─── TEXTO PRINCIPAL (typewriter) ──────────────────
+            if (uiState.typewriterText.isNotBlank()) {
                 Text(
                     text = uiState.typewriterText,
                     color = ColorTextMain,
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp
-                )
-            } else {
-                Text(
-                    text = uiState.transcription,
-                    color = ColorTextMain,
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp
+                    fontSize = 25.sp,
+                    lineHeight = 30.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateContentSize()
                 )
             }
-        }
 
-        // --- FUENTES / URLS (Si existen) ---
-        if (uiState.sourceUrls.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Fuentes consultadas:", color = Color.Gray, fontSize = 12.sp)
-            uiState.sourceUrls.take(2).forEach { url ->
-                Text("• ${url.take(30)}...", color = ColorCyanNexus, fontSize = 12.sp)
+            // ─── HTML COMPLETO ─────────────────────────────────
+            if (uiState.fullHtmlText.isNotBlank() && uiState.typewriterText.isBlank()) {
+                HtmlText(
+                    html = uiState.fullHtmlText,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                )
             }
+
+//            // ─── FUENTES ──────────────────────────────────────
+//            if (uiState.sourceUrls.isNotEmpty()) {
+//                Spacer(modifier = Modifier.height(12.dp))
+//                LazyRow(
+//                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+//                    modifier = Modifier.fillMaxWidth()
+//                ) {
+//                    items(uiState.sourceUrls) { url ->
+//                        SourceChip(url = url)
+//                    }
+//                }
+//            }
+//
+//            // ─── IMÁGENES ──────────────────────────────────────
+//            if (uiState.imageUrls.isNotEmpty()) {
+//                Spacer(modifier = Modifier.height(12.dp))
+//                LazyRow(
+//                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+//                    modifier = Modifier
+//                        .fillMaxWidth()
+//                        .height(120.dp)
+//                ) {
+//                    items(uiState.imageUrls) { url ->
+//                        NetworkImage(
+//                            url = url,
+//                            modifier = Modifier
+//                                .width(120.dp)
+//                                .fillMaxHeight()
+//                                .clip(RoundedCornerShape(12.dp))
+//                        )
+//                    }
+//                }
+//            }
+
+            // ✅ Espacio extra al final para mejor scroll
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
-// ─── NetworkImage ─────────────────────────────────────────────────────────
+
+// ─── IMAGEN DE RED ────────────────────────────────────────────────────────
 @Composable
 private fun NetworkImage(url: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -1101,7 +1156,6 @@ private fun NetworkImage(url: String, modifier: Modifier = Modifier) {
     }
 }
 
-// ─── SourceChip ───────────────────────────────────────────────────────────
 @Composable
 private fun SourceChip(url: String) {
     val context = LocalContext.current
@@ -1127,7 +1181,7 @@ private fun SourceChip(url: String) {
     }
 }
 
-// ─── VoiceWaveCompose ────────────────────────────────────────────────────
+// ─── ONDA DE VOZ ──────────────────────────────────────────────────────────
 @Composable
 private fun VoiceWaveCompose(modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "wave")
@@ -1161,7 +1215,7 @@ private fun VoiceWaveCompose(modifier: Modifier = Modifier) {
     }
 }
 
-// ─── Extensiones de JarvisOverlayUiState ──────────────────────────────
+// ─── EXTENSIONES DE ESTADO ──────────────────────────────────────────────
 fun JarvisOverlayUiState.clearMusicResult() {
     showMusicResult = false
     musicTitle = ""
@@ -1199,24 +1253,18 @@ fun JarvisOverlayUiState.applyJarvisState(state: JarvisState) {
             showPause = true
             barColors = BarColorMode.SPEAKING
         }
-        JarvisState.IDLE      -> {
-            labelText = "NEXUS"
-            labelColor = android.graphics.Color.WHITE
-            showWave = false
-            showPause = false
-            barColors = BarColorMode.IDLE
 
-            if (!showMusicResult &&
-                transcription.isBlank() && fullHtmlText.isBlank()) {
-                showPanel = false
-                imageUrls = emptyList()
-                sourceUrls = emptyList()
-            }
-            serverProcessing = false
-            processingSteps = emptyList()
-            showWhatsappPreview = false
-            pendingWhatsappContact = ""
-            pendingWhatsappMessage = ""
+        JarvisState.IDLE      -> {
+                labelText = "NEXUS"
+                labelColor = android.graphics.Color.WHITE
+                showWave = false
+                showPause = false
+                barColors = BarColorMode.IDLE
+                serverProcessing = false
+                processingSteps = emptyList()
+                showWhatsappPreview = false
+                pendingWhatsappContact = ""
+                pendingWhatsappMessage = ""
         }
     }
 }
@@ -1266,36 +1314,74 @@ fun JarvisOverlayUiState.hidePanel() {
     showPanel = false
     clearPanel()
 }
+
 @Composable
 fun HtmlText(html: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     AndroidView(
-        factory = { context ->
-            TextView(context).apply {
-                movementMethod = LinkMovementMethod.getInstance()
-                setText(Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY))
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 16f
-                setLineSpacing(4f, 1.2f) // mejor espaciado
+        factory = {
+            android.webkit.WebView(context).apply {
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                settings.javaScriptEnabled = false
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+//                settings.textZoom = 150
+                webViewClient = object : android.webkit.WebViewClient() {
+                    override fun shouldOverrideUrlLoading(
+                        view: android.webkit.WebView?,
+                        request: android.webkit.WebResourceRequest?
+                    ): Boolean {
+                        val url = request?.url ?: return false
+                        return try {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                            true
+                        } catch (_: Exception) { false }
+                    }
+                }
             }
         },
-        modifier = modifier,
-        update = { textView ->
-            textView.text = Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY)
+        modifier = modifier
+            .fillMaxWidth()
+            .wrapContentHeight()        // ✅ WebView dinámico
+            .heightIn(max = 500.dp),
+        update = { webView ->
+            val wrapped = """
+                <html><head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                body { 
+                    margin: 8px; 
+                    padding: 0; 
+                    background: transparent; 
+                    color: #E8E8F0; 
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                    font-size: 20px;      //  20px (antes 18)
+                    line-height: 1.7;     //  1.7 (antes 1.6)
+                }
+                a { color: #4DEEE9; }
+                p { margin: 8px 0; }
+                li { margin: 4px 0; }
+                </style>
+                </head><body>$html</body></html>
+            """.trimIndent()
+            webView.loadDataWithBaseURL(null, wrapped, "text/html", "UTF-8", null)
         }
     )
-}// ─── PREVIEW: Estado de prueba ──────────────────────────────
+}
+
+// ─── PREVIEWS ─────────────────────────────────────────────────────────────
 @Composable
 fun previewUiState(): JarvisOverlayUiState {
     return remember {
         JarvisOverlayUiState().apply {
-            // Configura un estado típico para mostrar en el preview
             jarvisState = JarvisState.IDLE
             labelText = "NEXUS"
             showPanel = true
             transcription = "Aquí aparecerán los resultados de búsqueda."
             fullHtmlText = "<b>Resultado de ejemplo</b><br>• Punto 1<br>• Punto 2"
             sourceUrls = listOf("https://ejemplo.com/fuente1", "https://ejemplo.com/fuente2")
-            // Si quieres mostrar música (nota: aún no está integrado en ResultsPanel)
             showMusicResult = true
             musicTitle = "Bohemian Rhapsody"
             musicArtist = "Queen"
@@ -1308,21 +1394,12 @@ fun previewUiState(): JarvisOverlayUiState {
 fun previewBarState(): ListeningBarState {
     return remember { ListeningBarState() }
 }
-// ─── CHAT REPOSITORY PARA PREVIEW ──────────────────────────
-// IMPORTANTE: ChatRepository es una clase CONCRETA, no una interfaz.
-// Debemos instanciarla con su constructor.
-// Si tu ChatRepository necesita parámetros adicionales (ej: Database),
-// ajústalo aquí.
+
 @Composable
 fun previewChatRepository(): ChatRepository {
     val context = LocalContext.current
-    // Intenta instanciar el repositorio con el contexto de la aplicación.
-    // Si tu repositorio necesita una base de datos, puedes pasar
-    // Room.inMemoryDatabaseBuilder(context, ...) para el preview.
     return remember { ChatRepository(context.applicationContext) }
 }
-
-// ─── PREVIEWS ──────────────────────────────────────────────────────────────
 
 @Preview(
     name = "Overlay Principal",

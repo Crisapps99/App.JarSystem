@@ -67,7 +67,7 @@ interface JarvisUi {
     fun getDisplayedText(): String
     fun showImages(urls: List<String>)
     fun hideOverlayFromTimeout()
-    fun showSearchResult(textoCompleto: String, fuentes: List<String>, imagenes: List<String>, preguntas: List<String>)
+    fun showSearchResult(textoCompleto: String, fuentes: List<String>, imagenes: List<String>, preguntas: List<String>, html: String = "")
     fun updateProcessingSteps(steps: List<ProcessingStep>)
     fun updateUserTranscription(text: String)
 }
@@ -191,6 +191,14 @@ class JarvisVoiceController(
             onWakeWordDetected = {
                 Log.d(TAG, "Wakeword detectado por Vosk")
                 mainHandler.post {
+                    if (estaHablando) {
+                        Log.d(TAG, "Wake word detectado - interrumpiendo TTS")
+                        detenerTTS()
+                        estaHablando = false
+                        // Esperar un momento para que se libere el audio
+                        Thread.sleep(100)
+                    }
+
                     esperandoRespuestaServidor = false
                     estaEnviandoAlServidor = false
                     estaProcesandoComando = false
@@ -265,11 +273,9 @@ class JarvisVoiceController(
             },
             onSpeechEnded = {
                 Log.d(TAG, "Usuario dejó de hablar")
-                // Si el motor ya no tiene sesión activa, resetear el controlador
-                if (!voiceEngine.isSrSessionActive() && sesionActiva) {
-                    Log.d(TAG, "El motor volvió a modo wake word, reseteando controlador")
-                    stopListeningCompletamente()
-                }
+                // Reiniciamos el timeout para esperar el resultado final (5 segundos)
+                mainHandler.removeCallbacks(timeoutRunnable)
+                mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
             },
 
 
@@ -853,7 +859,7 @@ class JarvisVoiceController(
                         ui.showImages(urlsImagenes)
                         hablar("Aquí tienes las imágenes que encontré sobre $query.") {
                             isProcessing = false
-                            if (sesionActiva) iniciarSRContinuo()
+                            finalizarInteraccion()
                         }
                     } else {
                         val fallbackMsg = "No encontré imágenes multimedia sobre $query."
@@ -1136,7 +1142,10 @@ class JarvisVoiceController(
                     var responseText = payloadObj.optString("response", "")
                     val action = payloadObj.optString("action", "")
                     val mode = payloadObj.optString("mode", "")
-                    // 🆕 DETECTAR SI ES CONVERSACIONAL
+                    var images = mutableListOf<String>()
+                    var sources = mutableListOf<String>()
+                    var htmlCompleto = ""
+                    //  DETECTAR SI ES CONVERSACIONAL
                     val esConversacional = mode == "conversacional" || action == "conversational" || action == "greet"
                     //  GUARDAR RESPUESTA DEL ASISTENTE EN ROOM
                     if (responseText.isNotBlank() && chatRepository != null) {
@@ -1223,31 +1232,22 @@ class JarvisVoiceController(
                                     "show_search_result" -> {
                                         val params = accion.optJSONObject("params")
                                         if (params != null) {
-                                            //  EXTRAER 'answer', 'sources' e 'images' del JSON
+                                            // Extraer ANSWER
                                             val answer = params.optString("answer", responseText)
-
-                                            // Si hay una respuesta actualizamos responseText
-                                            if (answer.isNotBlank()) {
-                                                responseText = answer  //  Ahora es var, así que funciona
-                                            }
-
-                                            // CREAR LAS LISTAS VACIAS Y LLENARLAS CON LOS DATOS DEL JSON
-                                            val sources = mutableListOf<String>()
-                                            val images = mutableListOf<String>()
-
-                                            params.optJSONArray("sources")?.let { array ->
-                                                for (j in 0 until array.length()) {
-                                                    sources.add(array.getString(j))
-                                                }
-                                            }
+                                            if (answer.isNotBlank()) responseText = answer
+                                            htmlCompleto = params.optString("html", "")
+                                            // Extraer IMÁGENES
                                             params.optJSONArray("images")?.let { array ->
                                                 for (j in 0 until array.length()) {
                                                     images.add(array.getString(j))
                                                 }
                                             }
 
-                                            mainHandler.post {
-                                                ui.showSearchResult(answer, sources, images, emptyList())
+                                            // Extraer FUENTES
+                                            params.optJSONArray("sources")?.let { array ->
+                                                for (j in 0 until array.length()) {
+                                                    sources.add(array.getString(j))
+                                                }
                                             }
                                         }
                                     }
@@ -1317,6 +1317,7 @@ class JarvisVoiceController(
                         }
                         // Después de procesar acciones y actualizar la UI
                         if (responseText.isNotBlank()) {
+                            ui.showSearchResult(responseText, sources, images, emptyList(), htmlCompleto)
                             Log.d(TAG, " Hablando respuesta: $responseText")
                             hablar(responseText) {
                                 if (esConversacional) {
@@ -1338,6 +1339,11 @@ class JarvisVoiceController(
                     val type = payload.optString("type", "")
                     val step = payload.optString("step", "")
                     val status = payload.optString("status", "")
+                    if (message == "Conexión establecida" ||
+                        (stage == "STAGE_LISTENING" && message == "Conexión establecida")) {
+                        Log.d(TAG, " Ignorando evento de conexión - NO activar escucha")
+                        return
+                    }
                     val steps = buildStepsFromStep(step, status, message)
                     if (steps.isNotEmpty()) {
                         mainHandler.post {
