@@ -262,11 +262,10 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
 
     private fun handleBackgroundDismiss() {
         Log.d(TAG, " Reset completo por clic en fondo")
-
+        mainHandler.removeCallbacksAndMessages(null)
         // 1. Detener cualquier sesión activa
         if (::controller.isInitialized) {
-            controller.detenerSesionCompleta()
-            controller.detenerAudio()
+            controller.volverAWakeWordPorClicAfuera()
         }
 
         // 2. Resetear TODOS los estados de UI
@@ -299,8 +298,6 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
             resumeWakeWordDetection()
         }
 
-        // 3. Cancelar cualquier timeout o job pendiente
-        mainHandler.removeCallbacksAndMessages(null)
         serviceScope.coroutineContext.cancelChildren()
 
         Log.d(TAG, " Reset completo - Modo wake word activo")

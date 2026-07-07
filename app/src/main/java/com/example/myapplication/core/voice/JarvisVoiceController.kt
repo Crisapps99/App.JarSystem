@@ -123,8 +123,7 @@ class JarvisVoiceController(
     // ── Modo visual (sin cambios) ────────────────────────────────────────────
     private var modoVisualActivo = false
     private var numberedOverlay: NumberedElementsOverlay? = null
-    private var modoConversacionActivo = false
-    private var esperandoPostTTS = false
+
 
     // ── Orbe y mensajería (sin cambios) ─────────────────────────────────────
     private var orbOcultoPorMensaje = false
@@ -165,8 +164,6 @@ class JarvisVoiceController(
     private var timeoutServidor: Runnable? = null
     private val TIMEOUT_SERVIDOR_MS = 15000L  // 15 segundos máximo
     private var isRecognizingMusic = false
-    private val TIMEOUT_CONVERSACIONAL_MS = 5000L // 5 segundos
-    private var timeoutConversacional: Runnable? = null
 
     // ────────────────────────────────────────────────────────────────────────
     // INICIALIZACIÓN
@@ -191,14 +188,6 @@ class JarvisVoiceController(
             onWakeWordDetected = {
                 Log.d(TAG, "Wakeword detectado por Vosk")
                 mainHandler.post {
-                    if (estaHablando) {
-                        Log.d(TAG, "Wake word detectado - interrumpiendo TTS")
-                        detenerTTS()
-                        estaHablando = false
-                        // Esperar un momento para que se libere el audio
-                        Thread.sleep(100)
-                    }
-
                     esperandoRespuestaServidor = false
                     estaEnviandoAlServidor = false
                     estaProcesandoComando = false
@@ -206,11 +195,9 @@ class JarvisVoiceController(
 
                     // 1. Mostrar la barra
                     ui.setOrbVisibility(true)
-
                     // 2. Limpiar cualquier texto anterior y mostrar "Escuchando..."
                     uiState?.userTranscription = ""
                     uiState?.applyJarvisState(JarvisState.LISTENING)
-
                     // 3. IMPORTANTE: Mostrar el panel de transcripción (si no está visible)
                     uiState?.showPanel = false  // No queremos el panel grande, solo la barra
 
@@ -313,40 +300,9 @@ class JarvisVoiceController(
 //        // Esto se hará desde onSpeechStarted o onFinalResult
 //    }
 
-    private fun reiniciarTimeoutConversacional() {
-        timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
-        timeoutConversacional = Runnable {
-            Log.d(TAG, " 5 segundos sin actividad - volviendo a modo wake word")
-            finalizarSesionConversacional()
-        }
-        mainHandler.postDelayed(timeoutConversacional!!, TIMEOUT_CONVERSACIONAL_MS)
-    }
 
-    private fun finalizarSesionConversacional() {
-        Log.d(TAG, " Finalizando modo conversacional")
-        timeoutConversacional?.let { mainHandler.removeCallbacks(it) }
-        timeoutConversacional = null
-        modoConversacionActivo = false
-
-        //  Detener la sesión de escucha
-        voiceEngine.detenerSesion()
-
-        //  Reanudar wake word
-        porcupineController?.reanudarPorcupine()
-
-        //  Cerrar el panel de conversación
-        uiState?.showConversation = false
-
-        //  Resetear estado
-        setState(JarvisState.IDLE)
-    }
 
     private fun procesarTexto(texto: String) {
-        if (modoConversacionActivo) {
-            reiniciarTimeoutConversacional()
-            Log.d(TAG, " Timeout conversacional reiniciado por actividad del usuario")
-        }
-
         mainHandler.post {
             uiState?.apply {
                 transcription = ""
@@ -375,8 +331,7 @@ class JarvisVoiceController(
         setState(JarvisState.THINKING)
         if (estaHablando) {
             Log.d(TAG, " Ignorando comando porque el asistente está hablando: '$texto'")
-            detenerTTS()
-            estaHablando = false
+            return
         }
 
         val tiempoDesdeTTS = ahora - ttsTerminoTimestamp
@@ -474,12 +429,6 @@ class JarvisVoiceController(
                 }
                 return
             }
-        }
-
-        if (modoConversacionActivo || esperandoPostTTS) {
-            mainHandler.removeCallbacks(timeoutRunnable)
-            mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
-            Log.d(TAG, "Comando recibido en modo conversación, timeout reiniciado")
         }
 
         // Búsqueda de imágenes
@@ -1163,20 +1112,6 @@ class JarvisVoiceController(
                             Log.d(TAG, " Respuesta guardada en Room: $responseText")
                         }
                     }
-                    // 🆕 SI ES CONVERSACIONAL, ABRIR EL PANEL DE CONVERSACIÓN
-                    if (esConversacional && responseText.isNotBlank()) {
-                        mainHandler.post {
-                            uiState?.showConversation = true
-                            uiState?.showPanel = true
-                            uiState?.transcription = responseText
-                            // Cargar mensajes de Room automáticamente
-                        }
-                        //  Hablar la respuesta y después iniciar modo conversacional
-                        hablar(responseText) {
-                            manejarFinDeTTS(permitirConversacion = true)
-                        }
-                        return
-                    }
                     Log.d(TAG, " PAYLOAD recibido:")
                     Log.d(TAG, "  - response: $responseText")
                     Log.d(TAG, "  - action: $action")
@@ -1320,13 +1255,6 @@ class JarvisVoiceController(
                             ui.showSearchResult(responseText, sources, images, emptyList(), htmlCompleto)
                             Log.d(TAG, " Hablando respuesta: $responseText")
                             hablar(responseText) {
-                                if (esConversacional) {
-                                    // Inicia el modo conversacional y el timeout de 5 segundos
-                                    manejarFinDeTTS(permitirConversacion = true)
-                                } else {
-                                    // Vuelve al modo wake word inmediatamente
-                                    finalizarInteraccion()
-                                }
                             }
                         }
                     }
@@ -1370,11 +1298,7 @@ class JarvisVoiceController(
                                     ui.showText(message)
                                     hablar(message) {
                                         Log.d(TAG, "TTS conversacional completado")
-                                        isProcessing = false
-                                        sesionActiva = false
-                                        estaHablando = false
-                                        setState(JarvisState.IDLE)
-                                        ui.hideOverlayFromTimeout()
+                                        finalizarInteraccion()   //  antes hacía set manual de sesionActiva/estaHablando/IDLE
                                     }
                                 }
                             }
@@ -1733,6 +1657,7 @@ class JarvisVoiceController(
     private fun hablarElevenLabs(texto: String, alTerminar: (() -> Unit)? = null) {
         setState(JarvisState.SPEAKING)
         estaHablando = true
+        voiceEngine.setTtsReproduciendo(true)
         scope.launch(Dispatchers.IO) {
             try {
                 val client = OkHttpClient.Builder()
@@ -1813,12 +1738,13 @@ class JarvisVoiceController(
                 elMediaPlayer?.release()
                 elMediaPlayer = null // Libera la referencia
                 estaHablando = false
+                voiceEngine.setTtsReproduciendo(true)
                 alTerminar?.invoke()
-                if (sesionActiva) {
-                    mainHandler.postDelayed({
-//                        hybridTranscriber.reiniciarEscucha()
-                    }, 800L)
-                }
+//                if (sesionActiva) {
+//                    mainHandler.postDelayed({
+////                        hybridTranscriber.reiniciarEscucha()
+//                    }, 800L)
+//                }
             }
         }
         elMediaPlayer?.setOnErrorListener { _, what, extra ->
@@ -1826,8 +1752,9 @@ class JarvisVoiceController(
             archivo.delete()
             elMediaPlayer?.release()
             elMediaPlayer = null
-            hablarAndroid("", alTerminar)
             estaHablando = false
+            voiceEngine.setTtsReproduciendo(true)
+            hablarAndroid("", alTerminar)
             true
         }
 
@@ -1840,6 +1767,7 @@ class JarvisVoiceController(
             return
         }
         estaHablando = true
+        voiceEngine.setTtsReproduciendo(true)
         timestampUltimoTTS = System.currentTimeMillis()
         mainHandler.removeCallbacks(timeoutRunnable)
 
@@ -1862,7 +1790,9 @@ class JarvisVoiceController(
                     estaEnviandoAlServidor = false
                     estaProcesandoComando = false
                     estaHablando = false
+                    voiceEngine.setTtsReproduciendo(false)
                     alTerminar?.invoke()
+                    finalizarInteraccion()
                 }
             }
 
@@ -1870,10 +1800,9 @@ class JarvisVoiceController(
                 Log.e(TAG, "Error en TTS")
                 mainHandler.post {
                     estaHablando = false
+                    voiceEngine.setTtsReproduciendo(false)   //  NUEVO
                     alTerminar?.invoke()
                     if (sesionActiva) {
-                        modoConversacionActivo = false
-                        esperandoPostTTS = false
                         stopListeningCompletamente()
                     }
                 }
@@ -1884,31 +1813,38 @@ class JarvisVoiceController(
     }
     private fun finalizarInteraccion() {
         Log.d(TAG, "Finalizando interacción, volviendo a modo IDLE")
-        stopListeningCompletamente()   // sets sesionActiva = false, stops STT
-    }
-    /**
-     * Único punto de decisión al terminar CUALQUIER TTS.
-     * @param permitirConversacion si el servidor marcó esta respuesta como conversacional
-     */
-    private fun manejarFinDeTTS(permitirConversacion: Boolean) {
-        if (!permitirConversacion) {
-            // Camino normal: vuelve a wake word
-            finalizarInteraccion()
-            return
-        }
 
-        Log.d(TAG, " Abriendo ventana conversacional (${TIMEOUT_CONVERSACIONAL_MS}ms) sin exigir wake word")
-        modoConversacionActivo = true
-        porcupineController?.pausarPorcupine()
+        // Detener todo
+        stopListeningCompletamente()
 
-        if (!voiceEngine.isSrSessionActive()) {
-            voiceEngine.iniciarSesionContinua("es")
-        }
-        setState(JarvisState.LISTENING)
-
-        reiniciarTimeoutConversacional()
+        // ✅ REINICIAR WAKE WORD
+        reiniciarWakeWord()
     }
 
+    private fun reiniciarWakeWord() {
+        Log.d(TAG, "Reiniciando modo wake word")
+
+        // Asegurar que el engine esté en modo WAKE_WORD
+        if (!voiceEngine.isWakeWordMode()) {
+            voiceEngine.reiniciarWakeWord()
+        }
+
+        // Reanudar Porcupine si existe
+        porcupineController?.reanudarPorcupine()
+
+        // Mostrar estado IDLE en UI
+        ui.renderState(JarvisState.IDLE)
+        ui.setOrbVisibility(true)
+        ui.updateORB(0f)
+
+        // Limpiar UI de texto
+        ui.showText("")
+        uiState?.apply {
+            showPanel = false
+            userTranscription = ""
+            processingSteps = emptyList()
+        }
+    }
     fun detenerAudio() {
         mainHandler.post {
             try {
@@ -1917,7 +1853,7 @@ class JarvisVoiceController(
                     Log.d(TAG, " Deteniendo Android TTS por petición del usuario.")
                     tts.stop()
                 }
-
+                voiceEngine.setTtsReproduciendo(false)
                 // 2. Detener el MediaPlayer de ElevenLabs si está activo
                 elMediaPlayer?.let { player ->
                     if (player.isPlaying) {
@@ -1933,8 +1869,31 @@ class JarvisVoiceController(
 
                 // 3. Limpiar los efectos visuales del Orbe y actualizar el estado
                 ui.updateORB(0f)
-//                sessionManager.setAllowEarlyInput(false)
                 setState(JarvisState.IDLE)
+                //  wake word inmediatamente
+                // Detener cualquier sesión de escucha activa
+                if (voiceEngine.isSrSessionActive()) {
+                    voiceEngine.detenerSesion()
+                }
+                // 5.  REINICIAR EL MOTOR DE AUDIO COMPLETAMENTE
+                try {
+                    voiceEngine.reiniciarAudio()
+                    Log.d(TAG, " voiceEngine.reiniciarAudio() ejecutado en detenerAudio")    } catch (e: Exception) {
+                    Log.e(TAG, " Error en voiceEngine.restart(): ${e.message}")
+                }
+                estaHablando = false
+                isProcessing = false
+                sesionActiva = false
+                porcupineController?.reanudarPorcupine()
+
+                // Limpiar UI
+                ui.showText("")
+                uiState?.apply {
+                    showPanel = false
+                    userTranscription = ""
+                    processingSteps = emptyList()
+                }
+                Log.d(TAG, "✅ Audio detenido - Wake word reactivado")
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error al detener el audio: ${e.message}")
@@ -2077,8 +2036,7 @@ class JarvisVoiceController(
         isProcessing = false
         esperandoConfirmacion = false
         wakeWordDetected = false
-        modoConversacionActivo = false
-        esperandoPostTTS = false
+
         esperandoRespuestaServidor = false
         estaEnviandoAlServidor = false
         estaProcesandoComando = false
@@ -2089,6 +2047,9 @@ class JarvisVoiceController(
         detenerTTS()
         setState(JarvisState.IDLE)
         mainHandler.removeCallbacks(timeoutRunnable)
+        if (!voiceEngine.isWakeWordMode()) {
+            voiceEngine.reiniciarWakeWord()
+        }
         Log.d(TAG, " Sesión detenida completamente")
     }
 
@@ -2142,16 +2103,7 @@ class JarvisVoiceController(
                     mainHandler.postDelayed(this, TIMEOUT_ESCUCHA_MS)
                     return
                 }
-                Log.d(TAG, "Timeout 5s — deteniendo escucha")
-                if (modoConversacionActivo || esperandoPostTTS) {
-                    modoConversacionActivo = false
-                    esperandoPostTTS = false
-                    ui.hideOverlayFromTimeout()
-                    stopListeningCompletamente()
-                } else {
-                    ui.hideOverlayFromTimeout()
-                    stopListeningCompletamente()
-                }
+
             }
         }
     }
@@ -2416,7 +2368,7 @@ class JarvisVoiceController(
         Log.d(TAG, " CANCELANDO acción actual...")
 
         detenerTTS()
-
+        detenerAudio()
         isProcessing = false
         esperandoConfirmacion = false
 
@@ -2443,20 +2395,14 @@ class JarvisVoiceController(
         ui.showText(mensaje)
         ui.updateORB(0f)
 
-        // 8. Ir al inicio (home) después de cancelar
-        hablar(mensaje) {
-            // Ir al home
-            val intent = Intent(ACTION_EXECUTE).apply {
-                putExtra("actions_json", Gson().toJson(listOf(
-                    ActionDto(tipo = "global_action", params = mapOf("action" to "home"))
-                )))
-                setPackage(context.packageName)
-            }
-            context.sendBroadcast(intent)
-
-            // Terminar la sesión completamente y reiniciar Porcupine
-            stopListeningCompletamente()
+        val intent = Intent(ACTION_EXECUTE).apply {
+            putExtra("actions_json", Gson().toJson(listOf(
+                ActionDto(tipo = "global_action", params = mapOf("action" to "home"))
+            )))
+            setPackage(context.packageName)
         }
+        context.sendBroadcast(intent)
+        Log.d(TAG, " Cancelación completada - Wake word reactivado")
     }
     fun esComandoCancelacion(texto: String): Boolean {
         val t = texto.lowercase().trim().removeSuffix(".")
@@ -2631,13 +2577,66 @@ class JarvisVoiceController(
             }
         }
     }
+
+    /**
+     * Para cuando el usuario toca fuera del panel/barra:
+     * oculta todo y vuelve a modo wake word, SIN tocar el AudioRecord.
+     */
+    fun volverAWakeWordPorClicAfuera() {
+        Log.d(TAG, " Clic afuera - ocultando y volviendo a wake word")
+
+        // 1. Detener TTS si está hablando
+        detenerTTS()
+        voiceEngine.setTtsReproduciendo(false)
+
+        // 2. Detener MediaPlayer de ElevenLabs si estaba activo
+        elMediaPlayer?.let { player ->
+            try { if (player.isPlaying) player.stop() } catch (_: Exception) {}
+            player.release()
+        }
+        elMediaPlayer = null
+
+        // 3. Detener sesión de escucha activa (si la hay) SIN recrear el AudioRecord
+        if (voiceEngine.isSrSessionActive()) {
+            voiceEngine.detenerSesion()   // esto ya deja engineMode en WAKE_WORD internamente
+        } else if (!voiceEngine.isWakeWordMode()) {
+            voiceEngine.reiniciarWakeWord()   // camino liviano, no toca AudioRecord
+        }
+
+        // 4. Cancelar cualquier envío pendiente al servidor
+        cancelarEnvioActual()
+
+        // 5. Resetear flags de estado
+        sesionActiva = false
+        isProcessing = false
+        esperandoConfirmacion = false
+        estaHablando = false
+        esperandoRespuestaServidor = false
+        estaEnviandoAlServidor = false
+        estaProcesandoComando = false
+        isRecognizingMusic = false
+        mainHandler.removeCallbacks(timeoutRunnable)
+
+        // 6. UI a IDLE
+        setState(JarvisState.IDLE)
+        ui.showText("")
+        uiState?.apply {
+            showPanel = false
+            userTranscription = ""
+            processingSteps = emptyList()
+            showWhatsappPreview = false
+        }
+
+        porcupineController?.reanudarPorcupine()
+        Log.d(TAG, " Vuelta a wake word completa (sin tocar AudioRecord)")
+    }
     // ────────────────────────────────────────────────────────────────────────
     // LIFECYCLE
     // ────────────────────────────────────────────────────────────────────────
     fun resetCompleto() {
         Log.d(TAG, " Reset completo desde controlador")
 
-        // 1. Detener todo
+        // 1. Detener todo (pero NO destruir)
         stopListeningCompletamente()
         detenerTTS()
         detenerAudio()
@@ -2651,9 +2650,7 @@ class JarvisVoiceController(
         mainHandler.post {
             uiState?.apply {
                 applyJarvisState(JarvisState.IDLE)
-
                 showWhatsappPreview = false
-
                 showPanel = false
                 userTranscription = ""
                 processingSteps = emptyList()
@@ -2663,8 +2660,7 @@ class JarvisVoiceController(
             ui.renderState(JarvisState.IDLE)
             ui.setOrbVisibility(true)
         }
-
-        // 4. Reanudar wake word
+        // 5. Reanudar wake word
         porcupineController?.reanudarPorcupine()
 
         Log.d(TAG, " Reset completo - Listo para wake word")

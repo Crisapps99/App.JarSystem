@@ -300,7 +300,16 @@ class ContinuousVoiceEngine(
             Log.e(TAG, " Permiso RECORD_AUDIO no concedido")
             return
         }
-        if (isRunning) return
+        if (isRunning) {
+            // Si ya está corriendo pero el AudioRecord es nulo, forzamos reinicio
+            if (audioRecord == null) {
+                Log.d(TAG, "AudioRecord nulo aunque isRunning=true, reiniciando...")
+                // continuar
+            } else {
+                Log.d(TAG, "AudioCapture ya en ejecución")
+                return
+            }
+        }
 
         val minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
         val bufferSize = maxOf(minBuffer * 4, FRAME_LENGTH * 8)
@@ -366,8 +375,7 @@ class ContinuousVoiceEngine(
                     }
                     EngineMode.WAKE_WORD -> {
                         val calentando = System.currentTimeMillis() - wakeWordArmedAt < WAKE_WORD_WARMUP_MS
-                        if (voskListo && !wakeWordCooldown && !calentando && rms > RMS_THRESHOLD) {
-                            voskLock.withLock {
+                        if (voskListo && !wakeWordCooldown && !calentando && !ttsReproduciendo && rms > RMS_THRESHOLD) {      voskLock.withLock {
                                 voskRecognizer?.let { rec ->
                                     val partial = JSONObject(rec.partialResult).optString("partial", "").lowercase().trim()
                                     if (partial.isNotEmpty() && partial.matches(WAKE_REGEX)) {
@@ -393,6 +401,81 @@ class ContinuousVoiceEngine(
             Log.d(TAG, " Loop de captura terminado")
         }
     }
+    /**
+     * Reinicia la captura de audio (AudioRecord) y el modo WAKE_WORD
+     * sin detener completamente el motor (no cancela scopes).
+     * Útil para reiniciar el audio después de una pausa.
+     */
+    private var reiniciando = false
+
+    fun reiniciarAudio() {
+        if (reiniciando) {
+            Log.d(TAG, "reiniciarAudio() ya en curso, ignorando llamada duplicada")
+            return
+        }
+        reiniciando = true
+        Log.d(TAG, "Reiniciando captura de audio (sin detener motor)")
+
+        val jobAnterior = captureJob
+        captureJob = null
+
+        if (jobAnterior == null || jobAnterior.isCompleted) {
+            // No había loop corriendo, procede directo
+            continuarReinicioAudio()
+        } else {
+            // Espera a que el loop actual salga de verdad antes de tocar el AudioRecord
+            jobAnterior.invokeOnCompletion {
+                mainHandler.post { continuarReinicioAudio() }
+            }
+            jobAnterior.cancel()
+        }
+    }
+
+    private fun continuarReinicioAudio() {
+        releaseAudioRecord()
+        if (engineMode != EngineMode.WAKE_WORD) {
+            engineMode = EngineMode.WAKE_WORD
+            startVoskWakeWordMode()
+        }
+        startAudioCapture()
+        reiniciando = false
+        Log.d(TAG, "✅ Captura de audio reiniciada")
+    }
+
+
+    /**
+     * Reinicia el motor al modo WAKE_WORD, deteniendo cualquier sesión activa
+     */
+    fun reiniciarWakeWord() {
+        Log.d(TAG, "Reiniciando modo WAKE_WORD")
+
+        // 1. Detener cualquier sesión STT activa
+        if (grpcActivo) {
+            grpcActivo = false
+            try {
+                grpcRecognizer.stopStreaming()
+            } catch (_: Exception) {}
+        }
+
+        // 2. Resetear VAD
+        resetVad()
+
+        // 3. Cambiar al modo WAKE_WORD
+        engineMode = EngineMode.WAKE_WORD
+        startVoskWakeWordMode()
+
+        // 4. Limpiar timeouts
+        timeoutHandler.removeCallbacks(timeoutRunnable)
+        timeoutHandler.removeCallbacks(resultadoTimeoutRunnable)
+
+        Log.d(TAG, "✅ Modo WAKE_WORD reactivado")
+    }
+
+    /**
+     * Verifica si el motor está en modo WAKE_WORD
+     */
+    fun isWakeWordMode(): Boolean = engineMode == EngineMode.WAKE_WORD
+
 
     // En ContinuousVoiceEngine.kt - procesarFrameVad()
     private fun procesarFrameVad(rms: Float, buffer: ShortArray, read: Int) {
@@ -526,6 +609,7 @@ class ContinuousVoiceEngine(
 
         // 2. Limpiamos los timeouts
         timeoutHandler.removeCallbacks(timeoutRunnable)
+        timeoutHandler.removeCallbacks(resultadoTimeoutRunnable)
 
         // 3. ¡LO MÁS IMPORTANTE! Siempre forzamos el regreso al modo Wake Word
         engineMode = EngineMode.WAKE_WORD
@@ -536,6 +620,7 @@ class ContinuousVoiceEngine(
         if (notificarSpeechEnded) {
             mainHandler.post { onSpeechEnded() }
         }
+        Log.d(TAG, " Sesión detenida, modo WAKE_WORD activo")
     }
 
     fun reiniciarEscucha() {
@@ -546,7 +631,23 @@ class ContinuousVoiceEngine(
         timeoutHandler.removeCallbacks(timeoutRunnable)
         timeoutHandler.postDelayed(timeoutRunnable, TIMEOUT_SILENCIO_MS)
     }
+    /**
+     * Reinicia el motor de audio (AudioRecord) y vuelve a modo WAKE_WORD
+     * Útil cuando el motor se detuvo completamente y queremos reactivarlo
+     */
+    fun restart() {
+        Log.d(TAG, "Reiniciando motor de audio completo")
 
+        // 1. Si está corriendo, detener primero
+        if (isRunning) {
+            stop()
+        }
+
+        // 2. Reiniciar el audio
+        startAudioCapture()
+
+        Log.d(TAG, "✅ Motor de audio reiniciado")
+    }
     // ────────────────────────────────────────────────────────────────────────
     // UTILIDADES
     // ────────────────────────────────────────────────────────────────────────
@@ -554,7 +655,6 @@ class ContinuousVoiceEngine(
     fun isReady(): Boolean = hasAudioPermission() && voskListo && grpcListo
     fun isRunning(): Boolean = isRunning
     fun isSrSessionActive(): Boolean = grpcActivo
-    fun isWakeWordMode(): Boolean = engineMode == EngineMode.WAKE_WORD
 
     private fun hasAudioPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
