@@ -64,7 +64,10 @@ import android.text.method.LinkMovementMethod
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
-
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Language
 // ─── COLORES ─────────────────────────────────────────────────────────────
 private val ColorBgDark     = Color(0xFF1C1C1E)
 private val ColorTextMain   = Color(0xFFE8E8F0)
@@ -312,7 +315,6 @@ fun JarvisOverlayContent(
 
 
         // ─── PANEL DE RESULTADOS ───
-        // ─── PANEL DE RESULTADOS ───
         AnimatedVisibility(
             visible = !uiState.showConversation && uiState.showPanel &&
                     uiState.jarvisState != JarvisState.LISTENING &&
@@ -327,8 +329,10 @@ fun JarvisOverlayContent(
             exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight()                    // ✅ Altura dinámica según contenido
-                .padding(bottom = 120.dp)               // Espacio para la barra inferior
+                .padding(horizontal = 16.dp)
+                .wrapContentHeight() // <-- Hace que se adapte al contenido
+                .padding(bottom = 9.dp)
+                .align(Alignment.BottomCenter) // <-- Lo mantiene pegado al fondo (detrás de la barra)
         ) {
             ResultsPanel(uiState = uiState)
         }
@@ -1034,98 +1038,134 @@ private fun IconButton(onClick: () -> Unit, modifier: Modifier = Modifier, conte
 }
 
 // ─── PANEL DE RESULTADOS ──────────────────────────────────────────────────
-// En JarvisOverlayContent.kt - ResultsPanel
 @Composable
 fun ResultsPanel(uiState: JarvisOverlayUiState) {
-    val context = LocalContext.current
-    val scrollState = rememberScrollState()
-
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .wrapContentHeight()                    // ✅ Altura dinámica
-            .padding(horizontal = 12.dp)
-            .shadow(elevation = 20.dp, shape = RoundedCornerShape(24.dp)),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E))
+            .wrapContentHeight(), // <-- Se adapta al tamaño de la Columna interna
+        color = Color(0xFF131315),
+        shape = RoundedCornerShape(
+            topStart = 28.dp,
+            topEnd = 28.dp,
+            bottomStart = 20.dp,
+            bottomEnd = 20.dp
+        )
     ) {
-        // ✅ UN SOLO Column con scroll
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
-                .verticalScroll(scrollState)        // ✅ Único scroll
-                .padding(24.dp)
+            modifier = Modifier.wrapContentHeight()
         ) {
-
-            // ─── PROCESAMIENTO ─────────────────────────────────
-            if (uiState.jarvisState == JarvisState.THINKING && uiState.processingSteps.isNotEmpty()) {
-                ProcessingStepsList(steps = uiState.processingSteps)
-            }
-
-            // ─── TEXTO PRINCIPAL (typewriter) ──────────────────
-            if (uiState.typewriterText.isNotBlank()) {
-                Text(
-                    text = uiState.typewriterText,
-                    color = ColorTextMain,
-                    fontSize = 25.sp,
-                    lineHeight = 30.sp,
+            // 1. Manija de arrastre superior
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp, bottom = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .animateContentSize()
+                        .width(40.dp)
+                        .height(4.dp)
+                        .background(Color(0xFF383842), CircleShape)
                 )
             }
 
-            // ─── HTML COMPLETO ─────────────────────────────────
-            if (uiState.fullHtmlText.isNotBlank() && uiState.typewriterText.isBlank()) {
-                HtmlText(
-                    html = uiState.fullHtmlText,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .wrapContentHeight()
-                )
+            // 2. Contenedor deslizable
+            Column(
+                modifier = Modifier
+                    // Ponemos un límite de altura máxima (ej. 650.dp o 700.dp)
+                    // Si el contenido es corto, medirá poco. Si es larguísimo, topará aquí y activará el scroll.
+                    .heightIn(max = 650.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+
+//                // Carrusel de Imágenes
+//                if (uiState.imageUrls.isNotEmpty()) {
+//                    LazyRow(
+//                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+//                        modifier = Modifier
+//                            .fillMaxWidth()
+//                            .padding(bottom = 16.dp)
+//                    ) {
+//                        items(uiState.imageUrls) { url ->
+//                            AsyncImage(
+//                                model = url,
+//                                contentDescription = null,
+//                                contentScale = ContentScale.Crop,
+//                                modifier = Modifier
+//                                    .size(width = 150.dp, height = 150.dp)
+//                                    .clip(RoundedCornerShape(16.dp))
+//                            )
+//                        }
+//                    }
+//                }
+
+                // Texto
+                if (uiState.fullHtmlText.isNotBlank()) {
+                    AndroidView(
+                        factory = { context ->
+                            TextView(context).apply {
+                                setTextColor(android.graphics.Color.parseColor("#E8E8F0"))
+                                textSize = 15f
+                                setLineSpacing(0f, 1.3f)
+                                movementMethod = LinkMovementMethod.getInstance()
+                            }
+                        },
+                        update = { textView ->
+                            textView.text = Html.fromHtml(uiState.fullHtmlText, Html.FROM_HTML_MODE_COMPACT)
+                        },
+                        modifier = Modifier.padding(bottom = 24.dp)
+                    )
+                } else if (uiState.typewriterText.isNotBlank()) {
+                    Text(
+                        text = uiState.typewriterText,
+                        color = ColorTextMain,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.padding(bottom = 24.dp)
+                    )
+                }
+
+                // Barra Inferior de Acciones
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = Color(0xFF2C2C3A),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.clickable { /* Lógica de fuentes */ }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                                    }
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.ChatBubbleOutline, contentDescription = "Comentar", tint = Color.Gray, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.ThumbUp, contentDescription = "Me gusta", tint = Color.Gray, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.ThumbDown, contentDescription = "No me gusta", tint = Color.Gray, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copiar", tint = Color.Gray, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.MoreVert, contentDescription = "Más", tint = Color.Gray, modifier = Modifier.size(24.dp))
+                    }
+                }
+
+                // 🛑 EL ESPACIO INVISIBLE OBLIGATORIO
+                // Como el panel se adapta a su contenido interno, esto añade 130dp "falsos" al final.
+                // Esos 130dp son exactamente los que quedan ocultos detrás de la barra luminosa.
+                Spacer(modifier = Modifier.height(100.dp))
             }
-
-//            // ─── FUENTES ──────────────────────────────────────
-//            if (uiState.sourceUrls.isNotEmpty()) {
-//                Spacer(modifier = Modifier.height(12.dp))
-//                LazyRow(
-//                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-//                    modifier = Modifier.fillMaxWidth()
-//                ) {
-//                    items(uiState.sourceUrls) { url ->
-//                        SourceChip(url = url)
-//                    }
-//                }
-//            }
-//
-//            // ─── IMÁGENES ──────────────────────────────────────
-//            if (uiState.imageUrls.isNotEmpty()) {
-//                Spacer(modifier = Modifier.height(12.dp))
-//                LazyRow(
-//                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-//                    modifier = Modifier
-//                        .fillMaxWidth()
-//                        .height(120.dp)
-//                ) {
-//                    items(uiState.imageUrls) { url ->
-//                        NetworkImage(
-//                            url = url,
-//                            modifier = Modifier
-//                                .width(120.dp)
-//                                .fillMaxHeight()
-//                                .clip(RoundedCornerShape(12.dp))
-//                        )
-//                    }
-//                }
-//            }
-
-            // ✅ Espacio extra al final para mejor scroll
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
-
 // ─── IMAGEN DE RED ────────────────────────────────────────────────────────
 @Composable
 private fun NetworkImage(url: String, modifier: Modifier = Modifier) {
