@@ -831,6 +831,25 @@ class MyAccessibilityService : AccessibilityService() {
                         actualizarSnapDePantalla()
                     }, 2000L)
                 }
+                "youtube_control" -> {
+                    val comando = accion.params?.get("comando") as? String ?: ""
+                    val valor = (accion.params?.get("valor") as? Number)?.toInt() ?: 0
+                    Log.d(TAG, "│  youtube_control: comando='$comando', valor=$valor")
+
+                    when (comando) {
+                        "pausar" -> ActionExecutor.controlYoutube(this@MyAccessibilityService, "pausar")
+                        "play" -> ActionExecutor.controlYoutube(this@MyAccessibilityService, "play")
+                        "siguiente" -> ActionExecutor.controlYoutube(this@MyAccessibilityService, "siguiente")
+                        "anterior" -> ActionExecutor.controlYoutube(this@MyAccessibilityService, "anterior")
+                        "adelantar" -> ActionExecutor.controlYoutube(this@MyAccessibilityService, "adelantar", valor)
+                        "retroceder" -> ActionExecutor.controlYoutube(this@MyAccessibilityService, "retroceder", valor)
+                        "pantalla_completa" -> ActionExecutor.controlYoutube(this@MyAccessibilityService, "pantalla_completa")
+                        "salir_pantalla_completa" -> ActionExecutor.controlYoutube(this@MyAccessibilityService, "salir_pantalla_completa")
+                        else -> Log.w(TAG, "  Comando YouTube desconocido: $comando")
+                    }
+                    waitTime = 500L
+                    exitoAccion = true
+                }
                 "set_alarm" -> {
                     val hour = (accion.params?.get("hour") as? Number)?.toInt() ?: 7
                     val minute = (accion.params?.get("minute") as? Number)?.toInt() ?: 0

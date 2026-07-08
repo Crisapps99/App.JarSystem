@@ -25,6 +25,27 @@ object YoutubeController {
             null
         }
     }
+    fun subirVolumen(context: Context): Boolean {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        audioManager.adjustStreamVolume(
+            android.media.AudioManager.STREAM_MUSIC,
+            android.media.AudioManager.ADJUST_RAISE,
+            android.media.AudioManager.FLAG_SHOW_UI
+        )
+        Log.d(TAG, "🔊 Volumen subido")
+        return true
+    }
+
+    fun bajarVolumen(context: Context): Boolean {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        audioManager.adjustStreamVolume(
+            android.media.AudioManager.STREAM_MUSIC,
+            android.media.AudioManager.ADJUST_LOWER,
+            android.media.AudioManager.FLAG_SHOW_UI
+        )
+        Log.d(TAG, "🔉 Volumen bajado")
+        return true
+    }
     object YouTubeCache {
         private val cache = mutableMapOf<String, CacheEntry>()
         private const val TTL_MS = 24 * 60 * 60 * 1000L // 24 horas

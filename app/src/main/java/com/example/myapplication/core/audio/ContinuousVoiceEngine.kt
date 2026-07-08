@@ -5,8 +5,11 @@ package com.example.myapplication.core.audio
 import android.Manifest
 import android.content.Context
 import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioFocusRequest
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -40,7 +43,6 @@ class ContinuousVoiceEngine(
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
 
-        // SOLO ESTAS DOS PALABRAS CLAVE
         private val WAKE_WORDS = listOf("hey nexus", "nexus", "[unk]")
         private val WAKE_REGEX = Regex("""(?i)^(hey\s+nexus|nexus)\b""")
         private val COOLDOWN_MS = 1500L
@@ -49,6 +51,8 @@ class ContinuousVoiceEngine(
         private const val VAD_SILENCIO_FIN_MS = 1800L
         private const val VAD_WARMUP_MS = 450L
         private const val WAKE_WORD_WARMUP_MS = 800L
+        private const val TIMEOUT_SILENCIO_MS = 8000L
+        private const val RESULTADO_TIMEOUT_MS = 3000L
     }
 
     // ── Modos del motor ──────────────────────────────────────────────────────
@@ -60,6 +64,7 @@ class ContinuousVoiceEngine(
     private val engineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     @Volatile private var isRunning = false
     private val onSpeechEndedCallback = onSpeechEnded
+
     // ── Vosk (WAKE_WORD) ────────────────────────────────────────────────────
     private var voskModel: Model? = null
     private var voskRecognizer: Recognizer? = null
@@ -75,10 +80,18 @@ class ContinuousVoiceEngine(
     @Volatile private var engineMode = EngineMode.WAKE_WORD
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // ── Audio Focus (DUCKING) ──────────────────────────────────────────────
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var audioFocusListener: AudioManager.OnAudioFocusChangeListener? = null
+    @Volatile private var hasAudioFocus = false
+    @Volatile private var duckingActivo = false  // ✅ AÑADIDO
+
     // ── RMS ──────────────────────────────────────────────────────────────────
     private var lastRms = 0f
     private val smoothing = 0.15f
     @Volatile private var wakeWordArmedAt = 0L
+
     // ── VAD ──────────────────────────────────────────────────────────────────
     @Volatile private var vadHablando = false
     private var vadFramesSobreUmbral = 0
@@ -100,18 +113,26 @@ class ContinuousVoiceEngine(
 
     // ── Timeout ─────────────────────────────────────────────────────────────
     private val timeoutHandler = Handler(Looper.getMainLooper())
-    private val TIMEOUT_SILENCIO_MS = 5000L
-    // agregar junto a timeoutRunnable
-    private val resultadoTimeoutRunnable = Runnable {
-        if (engineMode == EngineMode.LISTENING && !grpcActivo) {
-            Log.d(TAG, " Sin resultado final tras VAD — forzando recuperación")
-            detenerSesion(notificarSpeechEnded = true)
-        }
-    }
+
     private val timeoutRunnable = Runnable {
         if (engineMode == EngineMode.LISTENING) {
             Log.d(TAG, " Timeout de silencio en Google Cloud STT")
-            detenerSesion(notificarSpeechEnded = true)
+            detenerSesion(notificarSpeechEnded = false)
+        }
+    }
+
+    private val resultadoTimeoutRunnable = object : Runnable {
+        override fun run() {
+            if (engineMode == EngineMode.LISTENING) {
+                if (!vadHablando) {
+                    Log.d(TAG, "Sin resultado final tras VAD — forzando recuperación")
+                    detenerSesion(notificarSpeechEnded = true)
+                } else {
+                    Log.d(TAG, "Voz activa, extendiendo timeout...")
+                    timeoutHandler.removeCallbacks(this)
+                    timeoutHandler.postDelayed(this, RESULTADO_TIMEOUT_MS)
+                }
+            }
         }
     }
 
@@ -124,9 +145,135 @@ class ContinuousVoiceEngine(
     // ────────────────────────────────────────────────────────────────────────
 
     init {
+        audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         initVoskModel()
         initGrpcRecognizer()
+        // ✅ Activar ducking permanente al iniciar
+        activarDuckingPermanente()
     }
+
+    // ─── DUCKING ─────────────────────────────────────────────────────────────
+
+    private fun activarDuckingPermanente() {
+        if (duckingActivo) {
+            Log.d(TAG, "🔊 Ducking ya estaba activo")
+            return
+        }
+
+        val manager = audioManager ?: return
+
+        audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+            when (focusChange) {
+                AudioManager.AUDIOFOCUS_GAIN -> {
+                    Log.d(TAG, "🎵 Audio focus recuperado")
+                    hasAudioFocus = true
+                }
+                AudioManager.AUDIOFOCUS_LOSS -> {
+                    Log.d(TAG, "🎵 Audio focus perdido permanentemente")
+                    hasAudioFocus = false
+                    mainHandler.postDelayed({
+                        if (!hasAudioFocus && duckingActivo) {
+                            solicitarDucking()
+                        }
+                    }, 1000)
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                    Log.d(TAG, "🎵 Audio focus perdido temporalmente")
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                    Log.d(TAG, "🎵 Ducking activado - otra app reproduce audio")
+                    hasAudioFocus = true
+                }
+            }
+        }
+
+        solicitarDucking()
+        duckingActivo = true
+        Log.d(TAG, "🔊 Ducking permanente ACTIVADO")
+    }
+
+    private fun solicitarDucking() {
+        val manager = audioManager ?: return
+        val listener = audioFocusListener ?: return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener(listener, mainHandler)
+                .build()
+
+            val result = manager.requestAudioFocus(audioFocusRequest!!)
+            hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+            Log.d(TAG, "🎵 Audio focus (ducking) solicitado: ${if (hasAudioFocus) "✅ CONCEDIDO" else "❌ DENEGADO"}")
+        } else {
+            @Suppress("DEPRECATION")
+            val result = manager.requestAudioFocus(
+                listener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+            )
+            hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+            Log.d(TAG, "🎵 Audio focus (ducking) solicitado (legacy): ${if (hasAudioFocus) "✅ CONCEDIDO" else "❌ DENEGADO"}")
+        }
+    }
+
+    private fun desactivarDucking() {
+        if (!duckingActivo) return
+
+        val manager = audioManager ?: return
+
+        try {
+            audioFocusListener?.let { listener ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    audioFocusRequest?.let { request ->
+                        manager.abandonAudioFocusRequest(request)
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    manager.abandonAudioFocus(listener)
+                }
+            }
+            hasAudioFocus = false
+            duckingActivo = false
+            Log.d(TAG, "🔊 Ducking DESACTIVADO")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error desactivando ducking: ${e.message}")
+        }
+    }
+
+    // ✅ Método público para activar ducking (usado desde el controlador)
+    fun setDuckingEnabled(enabled: Boolean) {
+        if (enabled) {
+            if (!duckingActivo) {
+                activarDuckingPermanente()
+            } else if (!hasAudioFocus) {
+                solicitarDucking()
+            }
+            Log.d(TAG, "🔊 Ducking solicitado: activo=$duckingActivo, focus=$hasAudioFocus")
+        } else {
+            if (duckingActivo) {
+                desactivarDucking()
+            }
+        }
+    }
+
+    // ✅ Método para reactivar ducking (se llama desde reiniciarWakeWord)
+    fun reactivarDucking() {
+        if (!duckingActivo) {
+            activarDuckingPermanente()
+        } else if (!hasAudioFocus) {
+            solicitarDucking()
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // VOSK MODEL
+    // ────────────────────────────────────────────────────────────────────────
 
     private fun initVoskModel() {
         StorageService.unpack(
@@ -140,17 +287,18 @@ class ContinuousVoiceEngine(
             { e -> Log.e(TAG, " Error cargando Vosk: ${e.message}") }
         )
     }
+
     fun setTtsReproduciendo(activo: Boolean) {
         ttsReproduciendo = activo
     }
+
     private fun initGrpcRecognizer() {
         grpcRecognizer = GrpcVoiceRecognizer(
             context,
             onPartialResult = { parcial ->
                 Log.v(TAG, "Parcial: '$parcial'")
-                // ✅ Usar callback en lugar de referencia directa a ui
                 mainHandler.post {
-                    onPartialResult(parcial)  // ← Esto notifica al controlador
+                    onPartialResult(parcial)
                 }
                 timeoutHandler.removeCallbacks(timeoutRunnable)
             },
@@ -353,12 +501,10 @@ class ContinuousVoiceEngine(
                 }
                 if (read <= 0) { delay(10); continue }
 
-                // ── RMS ──────────────────────────────────────────────────────
                 val rms = calculateRMS(buffer, read)
                 lastRms += (rms - lastRms) * smoothing
                 mainHandler.post { onRmsChanged(lastRms) }
 
-                // ── Modos ────────────────────────────────────────────────────
                 when (engineMode) {
                     EngineMode.LISTENING -> {
                         if (grpcActivo && grpcListo) {
@@ -366,11 +512,12 @@ class ContinuousVoiceEngine(
                         }
                     }
                     EngineMode.MUSIC_RECOGNITION -> {
-                        // El RMS ya se actualizó, no hacemos nada más
+                        // El RMS ya se actualizó
                     }
                     EngineMode.WAKE_WORD -> {
                         val calentando = System.currentTimeMillis() - wakeWordArmedAt < WAKE_WORD_WARMUP_MS
-                        if (voskListo && !wakeWordCooldown && !calentando && !ttsReproduciendo && rms > RMS_THRESHOLD) {      voskLock.withLock {
+                        if (voskListo && !wakeWordCooldown && !calentando && !ttsReproduciendo && rms > RMS_THRESHOLD) {
+                            voskLock.withLock {
                                 voskRecognizer?.let { rec ->
                                     val partial = JSONObject(rec.partialResult).optString("partial", "").lowercase().trim()
                                     if (partial.isNotEmpty() && partial.matches(WAKE_REGEX)) {
@@ -396,11 +543,11 @@ class ContinuousVoiceEngine(
             Log.d(TAG, " Loop de captura terminado")
         }
     }
-    /**
-     * Reinicia la captura de audio (AudioRecord) y el modo WAKE_WORD
-     * sin detener completamente el motor (no cancela scopes).
-     * Útil para reiniciar el audio después de una pausa.
-     */
+
+    // ────────────────────────────────────────────────────────────────────────
+    // REINICIO
+    // ────────────────────────────────────────────────────────────────────────
+
     private var reiniciando = false
 
     fun reiniciarAudio() {
@@ -415,10 +562,8 @@ class ContinuousVoiceEngine(
         captureJob = null
 
         if (jobAnterior == null || jobAnterior.isCompleted) {
-            // No había loop corriendo, procede directo
             continuarReinicioAudio()
         } else {
-            // Espera a que el loop actual salga de verdad antes de tocar el AudioRecord
             jobAnterior.invokeOnCompletion {
                 mainHandler.post { continuarReinicioAudio() }
             }
@@ -437,14 +582,12 @@ class ContinuousVoiceEngine(
         Log.d(TAG, "✅ Captura de audio reiniciada")
     }
 
-
-    /**
-     * Reinicia el motor al modo WAKE_WORD, deteniendo cualquier sesión activa
-     */
     fun reiniciarWakeWord() {
         Log.d(TAG, "Reiniciando modo WAKE_WORD")
 
-        // 1. Detener cualquier sesión STT activa
+        // ✅ Reactivar ducking
+        reactivarDucking()
+
         if (grpcActivo) {
             grpcActivo = false
             try {
@@ -452,27 +595,22 @@ class ContinuousVoiceEngine(
             } catch (_: Exception) {}
         }
 
-        // 2. Resetear VAD
         resetVad()
-
-        // 3. Cambiar al modo WAKE_WORD
         engineMode = EngineMode.WAKE_WORD
         startVoskWakeWordMode()
 
-        // 4. Limpiar timeouts
         timeoutHandler.removeCallbacks(timeoutRunnable)
         timeoutHandler.removeCallbacks(resultadoTimeoutRunnable)
 
         Log.d(TAG, "✅ Modo WAKE_WORD reactivado")
     }
 
-    /**
-     * Verifica si el motor está en modo WAKE_WORD
-     */
     fun isWakeWordMode(): Boolean = engineMode == EngineMode.WAKE_WORD
 
+    // ────────────────────────────────────────────────────────────────────────
+    // VAD
+    // ────────────────────────────────────────────────────────────────────────
 
-    // En ContinuousVoiceEngine.kt - procesarFrameVad()
     private fun procesarFrameVad(rms: Float, buffer: ShortArray, read: Int) {
         val ahora = System.currentTimeMillis()
         if (ahora - sesionListeningStartTimestamp < VAD_WARMUP_MS) return
@@ -488,17 +626,31 @@ class ContinuousVoiceEngine(
                     vadFramesSobreUmbral = 0
                     Log.d(TAG, " VAD: inicio de habla REAL (rms=$rms)")
                     mainHandler.post { onSpeechStarted() }
+
+                    if (!grpcActivo) {
+                        grpcActivo = true
+                        grpcRecognizer.startStreaming("es-ES")
+                        Log.d(TAG, " Stream reactivado por VAD")
+                    }
                     grpcRecognizer.sendAudioChunk(buffer.copyOf(read))
+                    timeoutHandler.removeCallbacks(resultadoTimeoutRunnable)
                 }
             } else {
                 vadFramesSobreUmbral = 0
             }
         } else {
-            // ✅ SIEMPRE enviar audio a gRPC mientras se esté hablando
-            grpcRecognizer.sendAudioChunk(buffer.copyOf(read))
+            if (grpcActivo) {
+                grpcRecognizer.sendAudioChunk(buffer.copyOf(read))
+            } else {
+                Log.w(TAG, "Stream cerrado pero VAD dice que hablamos, reactivando...")
+                grpcActivo = true
+                grpcRecognizer.startStreaming("es-ES")
+                grpcRecognizer.sendAudioChunk(buffer.copyOf(read))
+            }
 
             if (sobreUmbral) {
                 vadTimestampUltimoSonido = ahora
+                timeoutHandler.removeCallbacks(resultadoTimeoutRunnable)
             } else {
                 val silencioMs = ahora - vadTimestampUltimoSonido
                 if (silencioMs >= VAD_SILENCIO_FIN_MS) {
@@ -506,25 +658,22 @@ class ContinuousVoiceEngine(
                     Log.d(TAG, " VAD: fin de habla REAL (silencio ${silencioMs}ms)")
                     mainHandler.post { onSpeechEnded() }
 
-                    // Cerrar el stream YA: así el servidor finaliza la transcripción
-                    // de inmediato en vez de esperar su propio timeout de ~10s
                     if (grpcActivo) {
-                        grpcActivo = false
-                        grpcRecognizer.stopStreaming()
-                        Log.d(TAG, " Sesión STT detenida por fin de habla")
+                        timeoutHandler.removeCallbacks(resultadoTimeoutRunnable)
+                        timeoutHandler.postDelayed(resultadoTimeoutRunnable, RESULTADO_TIMEOUT_MS)
+                        Log.d(TAG, " Esperando resultado final...")
                     }
-                    timeoutHandler.removeCallbacks(timeoutRunnable)
-                    timeoutHandler.postDelayed(resultadoTimeoutRunnable, 1500L)
                 }
             }
         }
     }
 
-    // En ContinuousVoiceEngine.kt - handleWakeWordDetected()
+    // ────────────────────────────────────────────────────────────────────────
+    // WAKE WORD
+    // ────────────────────────────────────────────────────────────────────────
+
     private fun handleWakeWordDetected() {
-        //  : Permitir interrupción del TTS
         mainHandler.post {
-            // Notificar al controlador que debe interrumpir el TTS
             onWakeWordDetected()
         }
 
@@ -536,6 +685,7 @@ class ContinuousVoiceEngine(
             voskRecognizer = Recognizer(voskModel, SAMPLE_RATE.toFloat(),
                 WAKE_WORDS.joinToString("\", \"", "[\"", "\"]"))
         }
+
         if (musicRecognitionActive) {
             musicRecognitionActive = false
             musicRecognizer?.stop()
@@ -548,7 +698,7 @@ class ContinuousVoiceEngine(
             voskRecognizer?.close()
             voskRecognizer = null
         }
-        // Asegurar que no haya residuos de la sesión anterior
+
         if (grpcActivo) {
             grpcActivo = false
             try {
@@ -557,25 +707,22 @@ class ContinuousVoiceEngine(
                 Log.d(TAG, "Error cerrando stream anterior: ${e.message}")
             }
         }
+
         resetVad()
         haEnviadoResultado = false
         sesionListeningStartTimestamp = System.currentTimeMillis()
 
-        //  Pequeño delay para que los recursos se liberen
         mainHandler.postDelayed({
-            // Iniciar sesión de Google Cloud STT
             if (grpcListo) {
                 grpcActivo = true
                 grpcRecognizer.startStreaming("es-ES")
-
                 timeoutHandler.removeCallbacks(timeoutRunnable)
                 timeoutHandler.postDelayed(timeoutRunnable, TIMEOUT_SILENCIO_MS)
-
                 Log.d(TAG, " Google Cloud STT iniciado (post-wake word)")
             } else {
                 Log.e(TAG, " gRPC no listo para iniciar sesión")
             }
-        }, 150) //  150ms de delay para liberar recursos
+        }, 300)
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -593,6 +740,7 @@ class ContinuousVoiceEngine(
         }
         Log.d(TAG, " Vosk: modo WAKE_WORD (gramática: $grammar)")
     }
+
     // ────────────────────────────────────────────────────────────────────────
     // GOOGLE CLOUD STT
     // ────────────────────────────────────────────────────────────────────────
@@ -605,7 +753,6 @@ class ContinuousVoiceEngine(
         if (grpcActivo) {
             Log.d(TAG, " Sesión activa detectada, reiniciando...")
             detenerSesion(notificarSpeechEnded = false)
-            // Pequeña pausa para que se liberen los recursos
             Thread.sleep(100)
         }
 
@@ -624,7 +771,8 @@ class ContinuousVoiceEngine(
     fun detenerSesion(notificarSpeechEnded: Boolean = true) {
         Log.d(TAG, " Deteniendo sesión y volviendo a WAKE_WORD")
 
-        // 1. Detenemos gRPC solo si estaba activo
+        // ✅ NO desactivar ducking al detener sesión (solo al stop completo)
+
         if (grpcActivo) {
             grpcActivo = false
             try {
@@ -634,16 +782,13 @@ class ContinuousVoiceEngine(
             }
         }
 
-        // 2. Limpiamos los timeouts
         timeoutHandler.removeCallbacks(timeoutRunnable)
         timeoutHandler.removeCallbacks(resultadoTimeoutRunnable)
 
-        // 3. Siempre forzamos el regreso al modo Wake Word
         engineMode = EngineMode.WAKE_WORD
         startVoskWakeWordMode()
         resetVad()
 
-        // 4. Notificamos a la UI/Controller
         if (notificarSpeechEnded) {
             mainHandler.post { onSpeechEnded() }
         }
@@ -658,23 +803,16 @@ class ContinuousVoiceEngine(
         timeoutHandler.removeCallbacks(timeoutRunnable)
         timeoutHandler.postDelayed(timeoutRunnable, TIMEOUT_SILENCIO_MS)
     }
-    /**
-     * Reinicia el motor de audio (AudioRecord) y vuelve a modo WAKE_WORD
-     * Útil cuando el motor se detuvo completamente y queremos reactivarlo
-     */
+
     fun restart() {
         Log.d(TAG, "Reiniciando motor de audio completo")
-
-        // 1. Si está corriendo, detener primero
         if (isRunning) {
             stop()
         }
-
-        // 2. Reiniciar el audio
         startAudioCapture()
-
         Log.d(TAG, "✅ Motor de audio reiniciado")
     }
+
     // ────────────────────────────────────────────────────────────────────────
     // UTILIDADES
     // ────────────────────────────────────────────────────────────────────────
@@ -714,6 +852,10 @@ class ContinuousVoiceEngine(
 
     fun stop() {
         Log.d(TAG, " Deteniendo motor")
+
+        // ✅ Desactivar ducking al detener completamente
+        desactivarDucking()
+
         isRunning = false
         grpcActivo = false
         engineMode = EngineMode.STOPPED

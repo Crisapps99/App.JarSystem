@@ -406,6 +406,8 @@ object ActionExecutor {
             "retroceder" -> YoutubeController.saltarTiempo(context, -valor)
             "pantalla_completa" -> togglePantallaCompletaYouTube(context)
             "salir_pantalla_completa" -> salirPantallaCompletaYouTube(context)
+            "subir_volumen" -> YoutubeController.subirVolumen(context)
+            "bajar_volumen" -> YoutubeController.bajarVolumen(context)
 
         }
     }

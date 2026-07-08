@@ -1990,13 +1990,22 @@ class JarvisVoiceController(
             mainHandler.postDelayed({ iniciarSRContinuo(timeoutMs) }, 500)
             return
         }
+
         setState(JarvisState.LISTENING)
         voiceEngine.iniciarSesionContinua(language = "es")
         mainHandler.removeCallbacks(timeoutRunnable)
-        mainHandler.postDelayed(timeoutRunnable, timeoutMs)
-        Log.d(TAG, "SR iniciado, timeout de ${timeoutMs}ms")
-    }
 
+        // En modo visual, timeout más largo (10 segundos)
+        val timeout = if (modoVisualActivo) {
+            Log.d(TAG, "⏰ Modo visual: timeout de 10000ms")
+            10000L
+        } else {
+            timeoutMs
+        }
+
+        mainHandler.postDelayed(timeoutRunnable, timeout)
+        Log.d(TAG, "SR iniciado, timeout de ${timeout}ms")
+    }
     private fun hacerVibrar(millisegundos: Long) {
         try {
             val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -2036,6 +2045,7 @@ class JarvisVoiceController(
 
 
     private fun stopListeningCompletamente() {
+
         sesionActiva = false
         isProcessing = false
         esperandoConfirmacion = false
@@ -2092,7 +2102,13 @@ class JarvisVoiceController(
      */
     private val timeoutRunnable: Runnable = object : Runnable {
         override fun run() {
-            // ✅ Si la sesión de voz ya no está activa, no hacer nada
+            //  Si estamos en modo visual, NO detener la escucha
+            if (modoVisualActivo) {
+                Log.d(TAG, "⏰ Timeout en modo visual - reiniciando timeout")
+                mainHandler.postDelayed(this, TIMEOUT_ESCUCHA_MS)
+                return
+            }
+
             if (!voiceEngine.isSrSessionActive()) {
                 Log.d(TAG, "Timeout ignorado - STT ya no está activo, reseteando estado")
                 if (sesionActiva) {
@@ -2107,7 +2123,6 @@ class JarvisVoiceController(
                     mainHandler.postDelayed(this, TIMEOUT_ESCUCHA_MS)
                     return
                 }
-
             }
         }
     }
@@ -2241,14 +2256,20 @@ class JarvisVoiceController(
 
     private fun activarModoVisual() {
         Log.d(TAG, " ACTIVANDO MODO VISUAL")
+        voiceEngine.setDuckingEnabled(true)
+        Log.d(TAG, "🔊 Ducking activado para modo visual")
+
         setState(JarvisState.THINKING)
         isProcessing = true
         modoVisualActivo = true
         mainHandler.post {
             uiState?.apply {
                 modoVisualActivo = true
-                barColors = BarColorMode.TRANSPARENT  // ✅ Añade este modo en BarColorMode
-
+                barColors = BarColorMode.TRANSPARENT
+                labelText = "ESCUCHANDO NÚMEROS"
+                labelColor = android.graphics.Color.parseColor("#00FF88")
+                showWave = true
+                showPause = false
             }
             ui.setOrbVisibility(true)
         }
@@ -2314,28 +2335,45 @@ class JarvisVoiceController(
         modoVisualActivo = true
         numberedOverlay!!.mostrar(elementos)
 
-        // ✅ Timeout automático
+        //  Timeout automático
         timeoutVisual?.let { mainHandler.removeCallbacks(it) }
         timeoutVisual = Runnable {
             Log.d(TAG, "Timeout modo visual - ocultando automáticamente")
             desactivarModoVisual()
         }
         mainHandler.postDelayed(timeoutVisual!!, TIMEOUT_VISUAL_MS)
-        val resumen = "Encontré ${elementos.size} elementos. Di el número para tocarlo."
+
+        //  Mostrar en la barra que está escuchando números
+        mainHandler.post {
+            uiState?.apply {
+                labelText = "🔢 ESCUCHANDO NÚMEROS"
+                labelColor = android.graphics.Color.parseColor("#00FF88")
+                showWave = true
+            }
+        }
+
+        val resumen = "Encontré ${elementos.size} elementos. Di el número."
         ui.showText(resumen)
 
-        // ✅ NO detener la escucha - mantener SR activo
+        // Hablar el resumen pero NO detener la escucha
         hablar(resumen) {
             isProcessing = false
-            // ✅ Asegurar que el SR sigue activo para escuchar números
-            if (!voiceEngine.isSrSessionActive() && sesionActiva) {
+            // IMPORTANTE: Mantener la escucha activa
+            if (modoVisualActivo && sesionActiva && !voiceEngine.isSrSessionActive()) {
                 iniciarSRContinuo()
+            } else if (modoVisualActivo && sesionActiva && voiceEngine.isSrSessionActive()) {
+                //  Reiniciar timeout para mantener escucha
+                mainHandler.removeCallbacks(timeoutRunnable)
+                mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
             }
-            Log.d(TAG, "Resumen hablado - esperando comando numérico")
+            Log.d(TAG, "Resumen hablado - modo visual escuchando números")
         }
     }
 
     private fun desactivarModoVisual() {
+        Log.d(TAG, " DESACTIVANDO MODO VISUAL")
+        Log.d(TAG, "🔊 Ducking desactivado")
+
         modoVisualActivo = false
         timeoutVisual?.let { mainHandler.removeCallbacks(it) }
         numberedOverlay?.ocultar()
@@ -2344,6 +2382,10 @@ class JarvisVoiceController(
             uiState?.apply {
                 modoVisualActivo = false
                 barColors = BarColorMode.IDLE
+                labelText = "NEXUS"  //  Restaurar texto original
+                labelColor = android.graphics.Color.WHITE
+                showWave = false
+                showPause = false
             }
             ui.setOrbVisibility(true)
         }
@@ -2388,19 +2430,17 @@ class JarvisVoiceController(
 
             //  Usar el AccessibilityService directamente
             MyAccessibilityService.instance?.let { service ->
-                //  PRIMERO: Intentar hacer clic en el nodo exacto
                 var exito = service.tapEnNodoPorCoordenadas(x, y)
 
                 if (!exito) {
                     Log.w(TAG, "Falló tap en nodo, usando coordenadas directas")
-                    //  Usar tapCoordenadas con valores Float
                     service.tapCoordenadas(mapOf("x" to x, "y" to y))
                 }
 
-                // Esperar a que la pantalla cambie
-                delay(1500)
+                //  Esperar a que la pantalla cambie
+                delay(1200)
 
-                // Fuerza captura de pantalla y actualizar overlay
+                //  Fuerza captura de pantalla y actualizar overlay
                 service.captureCurrentScreenNow()
                 delay(600)
 
@@ -2408,7 +2448,6 @@ class JarvisVoiceController(
                     actualizarOverlayVisual()
                 }
             } ?: run {
-                // Fallback: usar ActionDto si no hay servicio
                 val accion = ActionDto(
                     tipo = "tap",
                     params = mapOf("x" to elemento.centerX, "y" to elemento.centerY)
@@ -2420,6 +2459,20 @@ class JarvisVoiceController(
                 delay(600)
                 withContext(Dispatchers.Main) {
                     actualizarOverlayVisual()
+                }
+            }
+
+            //  CRUCIAL: NO detener la sesión de escucha
+            //  Asegurar que el micrófono sigue activo para el siguiente número
+            withContext(Dispatchers.Main) {
+                if (modoVisualActivo && sesionActiva && !voiceEngine.isSrSessionActive()) {
+                    Log.d(TAG, "🔊 Reactivando escucha para modo visual continuo")
+                    iniciarSRContinuo()
+                } else if (modoVisualActivo && sesionActiva && voiceEngine.isSrSessionActive()) {
+                    Log.d(TAG, "🎤 Micrófono ya activo, continuando escucha")
+                    //  Reiniciar el timeout para mantener la escucha
+                    mainHandler.removeCallbacks(timeoutRunnable)
+                    mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
                 }
             }
         }
@@ -2495,13 +2548,21 @@ class JarvisVoiceController(
     private fun actualizarOverlayVisual() {
         val elementos = ScreenMemory.lastSnapshot?.elements ?: emptyList()
         if (elementos.isNotEmpty()) {
-              numberedOverlay?.mostrar(elementos)
+            numberedOverlay?.mostrar(elementos)
 
             val cantidad = numberedOverlay?.cantidadElementos() ?: 0
             Log.d(TAG, " Overlay actualizado: $cantidad elementos")
 
             // Notificar cambio con vibración suave
             hacerVibrar(30)
+
+            //  Mantener la escucha activa después de actualizar
+            if (modoVisualActivo && sesionActiva && !voiceEngine.isSrSessionActive()) {
+                iniciarSRContinuo()
+            } else if (modoVisualActivo && sesionActiva && voiceEngine.isSrSessionActive()) {
+                mainHandler.removeCallbacks(timeoutRunnable)
+                mainHandler.postDelayed(timeoutRunnable, TIMEOUT_ESCUCHA_MS)
+            }
         } else {
             Log.d(TAG, " No hay elementos para actualizar, desactivando modo visual")
             desactivarModoVisual()
@@ -2523,7 +2584,8 @@ class JarvisVoiceController(
                 "qué puedo presionar", "que puedo presionar", "qué puedo pulsar",
                 "muéstrame los números", "muestrame los numeros",
                 "dime qué hay", "qué hay aquí", "que hay aqui",
-                "muestra los números", "muestrame numeros", "ver numeros"
+                "muestra los números", "muestrame numeros", "ver numeros",
+                "muestra números", "muestrame numeros", "muestrame los numeros"
             )
             if (activadores.any { t.contains(it) }) {
                 Log.d(TAG, " Activando modo visual por: '$texto'")
@@ -2533,7 +2595,7 @@ class JarvisVoiceController(
             return false
         }
 
-        // ESTAMOS EN MODO VISUAL - TODOS LOS COMANDOS SE PROCESAN LOCALMENTE
+        //  ESTAMOS EN MODO VISUAL - TODOS LOS COMANDOS SE PROCESAN LOCALMENTE
 
         // 1. Comandos de SALIDA (desactivar modo visual)
         val salidas = listOf(
@@ -2542,7 +2604,8 @@ class JarvisVoiceController(
             "ocultar numeros", "quita los números", "quita numeros",
             "terminar modo visual", "apagar modo visual", "no quiero números",
             "quitar números", "remover números", "modo visual off",
-            "salir", "atrás", "volver", "cancelar", "cancela"
+            "salir", "atrás", "volver", "cancelar", "cancela",
+            "salir modo", "cerrar modo", "apagar modo", "quitar modo"
         )
         if (salidas.any { t.contains(it) }) {
             Log.d(TAG, " Desactivando modo visual por: '$texto'")
@@ -2550,8 +2613,42 @@ class JarvisVoiceController(
             return true
         }
 
-        // 2. Comandos de TAP (tocar un número)
-        // Verificar si el texto contiene un número
+        // 2.  PALABRAS CLAVE - acciones rápidas sin números
+        // Reconocer "atrás", "home", "menú" para navegación básica
+        val palabrasClave = mapOf(
+            "atrás" to "back",
+            "volver" to "back",
+            "regresa" to "back",
+            "home" to "home",
+            "inicio" to "home",
+            "pantalla principal" to "home",
+            "menú" to "menu",
+            "opciones" to "menu",
+            "notificaciones" to "notifications",
+            "captura de pantalla" to "screenshot",
+            "captura" to "screenshot"
+        )
+
+        for ((palabra, accion) in palabrasClave) {
+            if (t.contains(palabra)) {
+                Log.d(TAG, " Palabra clave detectada: '$palabra' → $accion")
+                val accionDto = ActionDto(tipo = "global_action", params = mapOf("action" to accion))
+                ejecutarAccionesTecnicas(listOf(accionDto), "palabra clave $palabra", "palabra_clave")
+                hacerVibrar(50)
+                return true
+            }
+        }
+
+        // 3.  MODO "COMANDO RÁPIDO" - SOLO NÚMERO
+        // Verificar si el texto ES un número (solo el número)
+        val numeroSolo = t.replace(Regex("[^0-9]"), "").toIntOrNull()
+        if (numeroSolo != null && numeroSolo >= 1 && numeroSolo <= 40 && t.matches(Regex("^\\d+$"))) {
+            Log.d(TAG, " Número solo detectado: $numeroSolo")
+            ejecutarClickNumerico(numeroSolo)
+            return true
+        }
+
+        // 4. Comandos de TAP (tocar un número) - con variantes
         val patrones = listOf(
             Regex("toca el (\\d+)"),
             Regex("toca (\\d+)"),
@@ -2570,7 +2667,11 @@ class JarvisVoiceController(
             Regex("opcion (\\d+)"),
             Regex("el (\\d+)"),  // Solo "el 3" en contexto visual
             Regex("la opción (\\d+)"),
-            Regex("la opcion (\\d+)")
+            Regex("la opcion (\\d+)"),
+            Regex("dale (\\d+)"),
+            Regex("pulsar (\\d+)"),
+            Regex("tocar (\\d+)"),
+            Regex("presionar (\\d+)")
         )
 
         for (patron in patrones) {
@@ -2585,24 +2686,25 @@ class JarvisVoiceController(
             }
         }
 
-        // 3. Si no coincide con regex, buscar cualquier número en el texto
+        // 5. Fallback: buscar cualquier número en el texto (con contexto)
         val numero = extraerNumeroDeTexto(t)
         if (numero != null && numero >= 1 && numero <= 40) {
-            Log.d(TAG, " Número $numero detectado en texto (fallback)")
+            Log.d(TAG, "🎯 Número $numero detectado, ejecutando click")
             ejecutarClickNumerico(numero)
+            //  NO detener la escucha - devolver true para que el comando no vaya al servidor
             return true
         }
 
-        // 4. Si no se detectó nada útil, ignorar (NO enviar al servidor)
+        // 6. Si no se detectó nada útil, ignorar (NO enviar al servidor)
         Log.d(TAG, " En modo visual, ignorando: '$texto' (no es un comando válido)")
         return true  // Devuelve true para que NO se envíe al servidor
     }
 
     private fun extraerNumeroDeTexto(texto: String): Int? {
-        // ✅ Primero buscar dígitos
+        //  Primero buscar dígitos
         Regex("""\b(\d+)\b""").find(texto)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
 
-        // ✅ Palabras numéricas más completas
+        //  Palabras numéricas más completas
         val palabras = mapOf(
             "uno" to 1, "un" to 1, "una" to 1,
             "dos" to 2,
@@ -2709,7 +2811,9 @@ class JarvisVoiceController(
                         labelColor = android.graphics.Color.parseColor("#4DEEE9")
                         showPause = false
                         showWave = false
-                        labelText = "ESCUCHANDO"
+                        if (!modoVisualActivo) {
+                            labelText = "ESCUCHANDO"
+                        }
                     }
                 }
 
@@ -2735,8 +2839,16 @@ class JarvisVoiceController(
                     // RESETEO COMPLETO
                     uiState?.apply {
                         barColors = BarColorMode.IDLE
-                        labelText = "NEXUS"
-                        labelColor = android.graphics.Color.WHITE
+                        //  En modo visual, mantener "ESCUCHANDO NÚMEROS"
+                        if (modoVisualActivo) {
+                            labelText = "🔢 ESCUCHANDO NÚMEROS"
+                            labelColor = android.graphics.Color.parseColor("#00FF88")
+                            showWave = true
+                        } else {
+                            labelText = "NEXUS"
+                            labelColor = android.graphics.Color.WHITE
+                            showWave = false
+                        }
                         showPause = false
                         showWave = false
                         showWhatsappPreview = false
