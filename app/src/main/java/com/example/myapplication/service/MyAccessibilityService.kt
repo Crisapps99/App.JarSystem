@@ -106,8 +106,79 @@ class MyAccessibilityService : AccessibilityService() {
         val filterWrite = IntentFilter("JARVIS.WRITE_MESSAGE_AND_SEND")
         registerReceiver(writeMessageReceiver, filterWrite, RECEIVER_NOT_EXPORTED)
         Log.d(TAG, " AccessibilityService conectado y listo")
+
+        val filterCall = IntentFilter("JARVIS.PRESS_CALL_BUTTON")
+        registerReceiver(callButtonReceiver, filterCall, RECEIVER_NOT_EXPORTED)
     }
 
+    private fun presionarBotonLlamadaWhatsApp() {
+        handler.postDelayed({
+            val root = rootInActiveWindow ?: return@postDelayed
+
+            // Candidatos de texto/descripción para llamada DE VOZ (excluyendo video)
+            val candidatosVoz = listOf(
+                "Llamada de voz", "Voice call", "Audio call", "Llamar por voz"
+            )
+
+            var botonEncontrado: AccessibilityNodeInfo? = null
+
+            // 1. Buscar candidatos específicos de voz primero
+            for (candidato in candidatosVoz) {
+                botonEncontrado = encontrarNodoPorTexto(root, candidato)
+                if (botonEncontrado != null) {
+                    Log.d(TAG, " Botón llamada de voz encontrado por texto: '$candidato'")
+                    break
+                }
+            }
+
+            // 2. Si no hay match específico, buscar por IDs de WhatsApp (voz, no video)
+            if (botonEncontrado == null) {
+                val ids = listOf(
+                    "com.whatsapp:id/call_button",
+                    "com.whatsapp:id/voice_call",
+                    "com.whatsapp:id/action_call",
+                    "com.whatsapp:id/menuitem_voice_call"
+                )
+                for (id in ids) {
+                    val nodos = root.findAccessibilityNodeInfosByViewId(id)
+                    if (nodos.isNotEmpty()) {
+                        botonEncontrado = nodos[0]
+                        Log.d(TAG, " Botón llamada encontrado por ID: $id")
+                        break
+                    }
+                }
+            }
+
+            // 3. Último recurso: buscar "llamada"/"llamar"/"call" EXCLUYENDO nodos con "video"
+            if (botonEncontrado == null) {
+                fun buscarVozExcluyendoVideo(nodo: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+                    if (nodo == null) return null
+                    val texto = (nodo.text?.toString() ?: nodo.contentDescription?.toString() ?: "").lowercase()
+                    val esCandidatoVoz = (texto.contains("llamada") || texto.contains("llamar") || texto == "call") &&
+                            !texto.contains("video")
+                    if (esCandidatoVoz && (nodo.isClickable || nodo.parent?.isClickable == true)) {
+                        return nodo
+                    }
+                    for (i in 0 until nodo.childCount) {
+                        val resultado = buscarVozExcluyendoVideo(nodo.getChild(i))
+                        if (resultado != null) return resultado
+                    }
+                    return null
+                }
+                botonEncontrado = buscarVozExcluyendoVideo(root)
+                if (botonEncontrado != null) {
+                    Log.d(TAG, " Botón llamada de voz encontrado (excluyendo video)")
+                }
+            }
+
+            if (botonEncontrado != null) {
+                hacerClicEnNodoOAncestros(botonEncontrado)
+                Log.d(TAG, " Botón de llamada de voz presionado")
+            } else {
+                Log.w(TAG, " No se encontró botón de llamada de voz")
+            }
+        }, 1500) // Esperar a que cargue el chat
+    }
     private val sendMessageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "JARVIS.SEND_CURRENT_MESSAGE") {
@@ -414,7 +485,14 @@ class MyAccessibilityService : AccessibilityService() {
             com.example.myapplication.core.memory.ScreenMemory.lastSeenTexts = lastSnapshot?.toContextList() ?: emptyList()
         }
     }
-
+    private val callButtonReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "JARVIS.PRESS_CALL_BUTTON") {
+                Log.d(TAG, "📞 Intentando presionar botón de llamada en WhatsApp")
+                presionarBotonLlamadaWhatsApp()
+            }
+        }
+    }
     fun captureCurrentScreenNow(callback: ((ScreenSnapshot?) -> Unit)? = null) {
         serviceScope.launch(Dispatchers.Main) {
             // Esperar a que la ventana esté lista
@@ -1594,13 +1672,15 @@ class MyAccessibilityService : AccessibilityService() {
                     sendBroadcast(intent)
                     waitTime = 500L   // tiempo para que el overlay reaccione
                 }
-                // MyAccessibilityService.kt - DENTRO de stepRunnable
 
                 "call_whatsapp" -> {
                     val contact = accion.params?.get("contact") as? String ?: ""
-                    Log.d(TAG, "│ call_whatsapp: '$contact'")
-                    ActionExecutor.callWhatsApp(this@MyAccessibilityService, contact)
+                    Log.d(TAG, "│  call_whatsapp: '$contact'")
+                    if (contact.isNotBlank()) {
+                        ActionExecutor.callWhatsApp(this@MyAccessibilityService, contact)
+                    }
                     waitTime = 2000L
+                    exitoAccion = true
                 }
 // En el stepRunnable, agregar los nuevos tipos de acciones:
 
@@ -3075,6 +3155,7 @@ class MyAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, " Error desregistrando receiver: ${e.message}")
         }
+        try { unregisterReceiver(callButtonReceiver) } catch (_: Exception) {}
         unregisterReceiver(splitScreenReceiver)
         handler.removeCallbacks(stepRunnable)
         currentActions = null

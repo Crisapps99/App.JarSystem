@@ -37,33 +37,7 @@ object ActionExecutor {
     private var pendingNavLat: Double = 0.0
     private var pendingNavLng: Double = 0.0
 
-//    fun showPlaceAndConfirmNavigation(
-//        context: Context,
-//        name: String,
-//        address: String,
-//        lat: Double,
-//        lng: Double,
-//        placeId: String = ""
-//    ) {
-//        // 1. Abrir Maps en el punto exacto (solo vista, no navegación)
-//        val uri = "geo:0,0?q=${lat},${lng}(${Uri.encode(name)})"
-//        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
-//            setPackage("com.google.android.apps.maps")
-//            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-//        }
-//        try {
-//            context.startActivity(mapIntent)
-//        } catch (e: Exception) {
-//            // Fallback: abrir en navegador
-//            val webUri = "https://www.google.com/maps/search/?api=1&query=${lat},${lng}"
-//            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webUri)))
-//        }
-//
-//        // 2. Esperar 1.5s para que cargue Maps y luego pedir confirmación
-//        Handler(Looper.getMainLooper()).postDelayed({
-//            pedirConfirmacionNavegacion(context, name, lat, lng)
-//        }, 1500)
-//    }
+
 
     private fun pedirConfirmacionNavegacion(
         context: Context,
@@ -254,10 +228,12 @@ object ActionExecutor {
             }
         }
     }
+    // ActionExecutor.kt - Reemplazar callWhatsApp
+
     fun callWhatsApp(context: Context, contactName: String) {
         Log.d("JARVIS_ACTION", " callWhatsApp: contacto='$contactName'")
 
-        // ─── 1. Buscar el contacto localmente ───────────────────────────────────
+        // ─── 1. Buscar el contacto ───────────────────────────────────────────────
         var contact = ContactsManager.findContact(context, contactName)
         if (contact == null) {
             val allContacts = ContactsManager.getAllContacts(context)
@@ -276,68 +252,46 @@ object ActionExecutor {
             return
         }
 
-        // ─── 2. Limpiar el número para buscar en la base de datos de Android ────
-        val numeroLimpio = contact.phoneNumber.replace(Regex("[^0-9]"), "")
-        if (numeroLimpio.isEmpty()) {
-            Log.w("JARVIS_ACTION", " El contacto no tiene un número telefónico válido.")
-            speakText(context, "${contact.name} no tiene un número válido.")
-            return
-        }
+        // ─── 2. Limpiar el número ────────────────────────────────────────────────
+        var numero = contact.phoneNumber.replace(Regex("[^0-9]"), "")
+        if (numero.startsWith("0")) numero = "593" + numero.substring(1)
+        if (numero.length == 10) numero = "593" + numero.substring(1)
 
-        // Tip: Extraemos los últimos 9 dígitos para asegurar compatibilidad en Ecuador
-        // (así coincide si está guardado con o sin el +593)
-        val subNumero = if (numeroLimpio.length >= 9) numeroLimpio.substring(numeroLimpio.length - 9) else numeroLimpio
-        Log.d("JARVIS_ACTION", " Buscando registro de llamada WhatsApp para: ...$subNumero")
+        Log.d("JARVIS_ACTION", "📱 Número formateado: $numero")
 
-        // ─── 3. MÉTODO DEFINITIVO: Buscar el Row ID de WhatsApp VoIP ───────────
+        // ─── MÉTODO: abrir el chat y presionar el botón de llamada por Accessibility ───
+        // NOTA: "whatsapp://call?phone=" NO es un esquema oficial soportado por WhatsApp;
+        // WhatsApp lo abre igual (por eso resolveActivity no fallaba) pero muestra
+        // "enlace no válido". Por eso se elimina y se usa directamente el chat + botón.
         try {
-            val resolver = context.contentResolver
-            val cursor = resolver.query(
-                ContactsContract.Data.CONTENT_URI,
-                arrayOf(ContactsContract.Data._ID),
-                "${ContactsContract.Data.MIMETYPE} = ? AND ${ContactsContract.Data.DATA1} LIKE ?",
-                arrayOf("vnd.android.cursor.item/vnd.com.whatsapp.voip.call", "%$subNumero%"),
-                null
-            )
-
-            if (cursor != null && cursor.moveToFirst()) {
-                val dataId = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.Data._ID))
-                cursor.close()
-
-                // Crear el Intent nativo que WhatsApp sí reconoce
-                val whatsappCallIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(
-                        Uri.parse("content://com.android.contacts/data/$dataId"),
-                        "vnd.android.cursor.item/vnd.com.whatsapp.voip.call"
-                    )
-                    setPackage("com.whatsapp")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-
-                context.startActivity(whatsappCallIntent)
-                Log.d("JARVIS_ACTION", " Llamada directa de WhatsApp iniciada con éxito.")
-                speakText(context, "Llamando a ${contact.name} por WhatsApp")
-                return
-            }
-            cursor?.close()
-            Log.w("JARVIS_ACTION", " No se encontró una cuenta de WhatsApp vinculada para este número en Contactos.")
-        } catch (e: Exception) {
-            Log.e("JARVIS_ACTION", " Error al interactuar con el ContentResolver: ${e.message}")
-        }
-
-        // ─── 4. FALLBACK FINAL: Si el método nativo falla, abrir el chat ───────
-        try {
-            val chatIntent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("https://wa.me/$numeroLimpio")
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("https://api.whatsapp.com/send?phone=$numero")
                 setPackage("com.whatsapp")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(chatIntent)
-            Log.d("JARVIS_ACTION", " Chat de WhatsApp abierto como alternativa.")
-            speakText(context, "No pude iniciar la llamada directa. Te abro el chat de ${contact.name}")
+            context.startActivity(intent)
+            Log.d("JARVIS_ACTION", "Chat WhatsApp abierto para: $numero")
+            speakText(context, "Abriendo chat de ${contact.name} en WhatsApp")
+
+            // Esperar a que cargue y luego intentar llamada
+            Handler(Looper.getMainLooper()).postDelayed({
+                val broadcastIntent = Intent("JARVIS.PRESS_CALL_BUTTON").apply {
+                    setPackage(context.packageName)
+                }
+                context.sendBroadcast(broadcastIntent)
+            }, 2500)
+
+            return
         } catch (e: Exception) {
-            Log.e("JARVIS_ACTION", " Error crítico en el fallback: ${e.message}")
+            Log.e("JARVIS_ACTION", "Error con api.whatsapp.com: ${e.message}")
+        }
+
+        // ─── FALLBACK: Abrir WhatsApp y buscar el contacto manualmente ───────
+        try {
             openApp(context, "com.whatsapp")
+            speakText(context, "Abriendo WhatsApp para llamar a ${contact.name}")
+        } catch (e: Exception) {
+            Log.e("JARVIS_ACTION", "Error crítico: ${e.message}")
         }
     }
     // ─────────────────────────────────────────────────────────────────────────

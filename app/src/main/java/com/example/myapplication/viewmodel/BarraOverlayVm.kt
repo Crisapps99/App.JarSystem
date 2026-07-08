@@ -17,10 +17,8 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.core.voice.JarvisState
-import com.example.myapplication.core.audio.MusicRecognizerRest
-import kotlinx.coroutines.isActive
-import kotlin.math.cos
-import kotlin.math.sin
+import androidx.compose.animation.core.*
+import kotlin.random.Random
 
 class ListeningBarState {
     var energy by mutableFloatStateOf(0f)
@@ -34,12 +32,14 @@ class ListeningBarState {
         animateWithEnergy(progress)
     }
 }
+
 enum class BarColorMode {
     IDLE,       // Neutro/oscuro
     LISTENING,  // Azul → Morado
     SPEAKING,   // Todos los colores (arcoíris)
     THINKING    // Cyan
 }
+
 @Composable
 fun rememberListeningBarState(): ListeningBarState = remember { ListeningBarState() }
 
@@ -50,66 +50,45 @@ fun ListeningBar(
     jarvisState: JarvisState,
     barColorMode: BarColorMode = BarColorMode.IDLE
 ) {
-    val density      = LocalDensity.current.density
-    val cornerRadius = 50f * density  //  Más redondeado
-    val infiniteTransition = rememberInfiniteTransition(label = "listening")
-    //  Colores según modo
-    val activeColors = remember(barColorMode) {
-        when (barColorMode) {
-            BarColorMode.IDLE -> intArrayOf(
-                Color.parseColor("#1A1A2E"), Color.parseColor("#16213E"),
-                Color.parseColor("#1A1A2E"), Color.parseColor("#16213E")
-            )
-            BarColorMode.LISTENING -> intArrayOf(
-                Color.parseColor("#4D4DFF"), Color.parseColor("#9B59B6"),  // Azul → Morado
-                Color.parseColor("#3B3BFF"), Color.parseColor("#8E44AD"),
-                Color.parseColor("#2E2EFF"), Color.parseColor("#7D3C98"),
-                Color.parseColor("#4D4DFF")
-            )
-            BarColorMode.SPEAKING -> intArrayOf(
-                Color.parseColor("#FF6B6B"), Color.parseColor("#FFA502"),  // Rojo → Naranja
-                Color.parseColor("#FFD700"), Color.parseColor("#4DEEE9"),  // Amarillo → Cyan
-                Color.parseColor("#00D2FF"), Color.parseColor("#9B59B6"),  // Azul → Morado
-                Color.parseColor("#FF6B6B")
-            )
-            BarColorMode.THINKING -> intArrayOf(
-                Color.parseColor("#7BD7F8"), Color.parseColor("#4DEEE9"),
-                Color.parseColor("#7BD7F8"), Color.parseColor("#4DEEE9")
-            )
-        }
-    }
+    val density = LocalDensity.current.density
+    val cornerRadius = 50f * density
 
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(tween(3000, easing = LinearEasing)),
-        label = "barPhase"
+    // PALETA MULTICOLOR MEJORADA (Glow vivo como la imagen)
+    val assistantColors = intArrayOf(
+        android.graphics.Color.parseColor("#FF4285F4"), // Azul Google
+        android.graphics.Color.parseColor("#FFEA4335"), // Rojo Google
+        android.graphics.Color.parseColor("#FFFBBC05"), // Amarillo Google
+        android.graphics.Color.parseColor("#FF34A853"), // Verde Google
+        android.graphics.Color.parseColor("#FF4285F4")  // Cierre en Azul
     )
+
+    // Animación de rotación continua
+    val infiniteTransition = rememberInfiniteTransition(label = "multiColorWave")
+    val rotationAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    // Pintura para la barra oscura del frente
     val darkBoxPaint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#131618")
+            color = android.graphics.Color.parseColor("#FF131618") // Fondo oscuro de la barra
             style = Paint.Style.FILL
         }
     }
-    val glowPaintOuter = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE } }
-    val glowPaintInner = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE } }
 
-    var sweepOffset by remember { mutableFloatStateOf(0f) }
-    var wavePhase   by remember { mutableFloatStateOf(0f) }
-
-    LaunchedEffect(jarvisState) {
-        if (jarvisState != JarvisState.IDLE) {
-            val degreesPerMs = 360f / 4200f
-            var lastMs = System.currentTimeMillis()
-            while (isActive) {
-                androidx.compose.runtime.withFrameMillis {
-                    val now   = System.currentTimeMillis()
-                    val delta = (now - lastMs).coerceIn(0, 64).toFloat()
-                    lastMs    = now
-                    sweepOffset = (sweepOffset + degreesPerMs * delta) % 360f
-                    wavePhase  += if (state.energy > 0.1f) 0.14f else 0.03f
-                }
-            }
+    // Pintura para las ondas de color difuminadas (ATRÁS)
+    val glowPaint = remember {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            // Blur para efecto aura viva
+            maskFilter = BlurMaskFilter(15f * density, BlurMaskFilter.Blur.NORMAL)
         }
     }
 
@@ -119,42 +98,30 @@ fun ListeningBar(
         if (w <= 0f || h <= 0f) return@Canvas
 
         drawIntoCanvas { canvas ->
-            val nc      = canvas.nativeCanvas
-            val centerX = w / 2f
-            val centerY = h / 2f
-            val energy  = state.energy
-            val margin  = h * 0.06f   // 6% del alto — se adapta a cualquier altura
+            val nc = canvas.nativeCanvas
+
+            // Espacio para el aura
+            val margin = 18f * density
             val rectBox = RectF(margin, margin, w - margin, h - margin)
 
+            // 1. DIBUJAMOS EL GLOW MULTICOLOR (ATRÁS)
             if (jarvisState != JarvisState.IDLE) {
-                //  Borde exterior con SweepGradient usando los colores del modo
-                val shaderOuter = SweepGradient(centerX, centerY, activeColors, null).apply {
-                    setLocalMatrix(Matrix().apply { postRotate(sweepOffset, centerX, centerY) })
-                }
-                val blurO = (12f * density + 8f * density * energy * sin(wavePhase)).coerceAtLeast(1f)
-                glowPaintOuter.apply {
-                    shader      = shaderOuter
-                    maskFilter  = BlurMaskFilter(blurO, BlurMaskFilter.Blur.NORMAL)
-                    strokeWidth = h * 0.08f + energy * h * 0.10f
-                    alpha       = (160 + (energy * 90) + (12 * sin(wavePhase))).toInt().coerceIn(0, 255)
-                }
-                nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, glowPaintOuter)
+                val shader = SweepGradient(w / 2f, h / 2f, assistantColors, null)
+                val matrix = Matrix()
+                matrix.postRotate(rotationAngle, w / 2f, h / 2f)
+                shader.setLocalMatrix(matrix)
 
-                //  Borde interior con colores invertidos
-                val shaderInner = SweepGradient(centerX, centerY, activeColors.reversedArray(), null).apply {
-                    setLocalMatrix(Matrix().apply { postRotate(-sweepOffset * 1.2f, centerX, centerY) })
+                glowPaint.shader = shader
+                // El grosor reacciona a la energía
+                glowPaint.strokeWidth = (16f + (state.energy * 8f)) * density
+
+                val path = Path().apply {
+                    addRoundRect(rectBox, cornerRadius, cornerRadius, Path.Direction.CW)
                 }
-                val blurI = (4f * density + 2f * density * energy * cos(wavePhase.toDouble()).toFloat()).coerceAtLeast(1f)
-                glowPaintInner.apply {
-                    shader      = shaderInner
-                    maskFilter  = BlurMaskFilter(blurI, BlurMaskFilter.Blur.NORMAL)
-                    strokeWidth = (6f + energy * 10f) * density
-                    alpha       = (200 + (energy * 55)).toInt().coerceIn(0, 255)
-                }
-                nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, glowPaintInner)
+                nc.drawPath(path, glowPaint)
             }
 
-            val cr = minOf(w, h) * 0.5f
+            // 2. DIBUJAMOS LA BARRA OSCURA (ENFRENTE)
             nc.drawRoundRect(rectBox, cornerRadius, cornerRadius, darkBoxPaint)
         }
     }
@@ -163,29 +130,54 @@ fun ListeningBar(
 @Composable
 fun MicWaveListening(modifier: Modifier = Modifier, energy: Float) {
     val infiniteTransition = rememberInfiniteTransition(label = "micWave")
+
+    // Animación suave de las barras
     val waveAnim by infiniteTransition.animateFloat(
         initialValue  = 0f,
         targetValue   = 1f,
-        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing)),
         label         = "wave"
     )
 
     Canvas(modifier = modifier) {
-        val waveColor = androidx.compose.ui.graphics.Color(0xFF4DEEE9)
-        for (i in 0..2) {
-            val progress = (waveAnim + i / 3f) % 1f
-            drawCircle(
-                color  = waveColor,
-                radius = progress * (size.width / 2f) * (0.8f + energy * 0.5f),
-                center = size.center,
-                alpha  = (1f - progress) * 0.5f,
-                style  = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+        val centerY = size.height / 2f
+        val centerX = size.width / 2f
+
+        // Color Cyan vivo de la imagen
+        val cyanColor = androidx.compose.ui.graphics.Color(0xFF00FFFF)
+
+        // Parámetros de las barras
+        val barCount = 5
+        val barWidth = 4.dp.toPx()
+        val barGap = 6.dp.toPx()
+        val cornerRadius = 2.dp.toPx()
+
+        // Altura base y variación máxima
+        val baseBarHeight = 15.dp.toPx()
+        val maxVariation = 30.dp.toPx()
+
+        // Calculamos el ancho total para centrar
+        val totalWidth = (barCount * barWidth) + ((barCount - 1) * barGap)
+        val startX = centerX - (totalWidth / 2f)
+
+        for (i in 0 until barCount) {
+            // Calculamos una variación "aleatoria" desfasada para cada barra
+            val phase = (waveAnim + (i.toFloat() / barCount)) % 1f
+            // Usamos un seno para suavizar y el valor de energía para la amplitud
+            val variation = kotlin.math.sin(phase * Math.PI * 2).toFloat() * (maxVariation * energy)
+
+            val currentBarHeight = baseBarHeight + variation
+
+            // Dibujamos la barra centrada verticalmente
+            drawRoundRect(
+                color = cyanColor,
+                topLeft = androidx.compose.ui.geometry.Offset(
+                    x = startX + (i * (barWidth + barGap)),
+                    y = centerY - (currentBarHeight / 2f)
+                ),
+                size = androidx.compose.ui.geometry.Size(barWidth, currentBarHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius, cornerRadius)
             )
         }
-        drawCircle(
-            color  = waveColor,
-            radius = (size.width / 2f * 0.3f) + (energy * 5.dp.toPx()),
-            center = size.center
-        )
     }
 }
