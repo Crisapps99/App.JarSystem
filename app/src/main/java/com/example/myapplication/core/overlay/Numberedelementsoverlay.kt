@@ -4,83 +4,122 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
 import com.example.myapplication.model.ScreenElement
-
-//clase encargada de gestionar  dibujos encima de las apps poner etiquetass sobre los elementos que s epeude tocar
-class NumberedElementsOverlay(private val context: Context){
-    //an;ade vistas directamente a la pantalla del sisitema
+import kotlin.math.abs
+class NumberedElementsOverlay(private val context: Context) {
     private var windowManager: WindowManager? = null
-    //muestra vistas personalziadas que dibuja circulso y numero s
     private var overlayView: NumberBubblesView? = null
-    //list alocal para guardar que estamos viendo  actualmente enumerado
     private var elementosNumerados: List<ScreenElement> = emptyList()
     private var isVisible = false
 
     init {
-        //inicializamos el servidio de ventanas de android
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     }
 
-    //muestra lso numeros sobre los elements interactivos
-    fun mostrar(elementos: List<ScreenElement>){
-        //procesamiento de elementos
-        elementosNumerados = elementos
-            //cosas que s epeuda interactuar
-            .filter {it.isClickable || it.isEditable || it.isScrollable }
-            //filtro de seguridad de tama;o
-            .filter { it.bounds.width() > 10 && it.bounds.height() > 10}
-            //orden logico
-            .sortedWith (compareBy({it.bounds.top}, {it.bounds.left}))
-        //limite
-            .take (40)
-        if (elementosNumerados.isEmpty()){
+
+    fun agruparElementosCercanos(elementos: List<ScreenElement>, distanciaMaxima: Int = 80): List<ScreenElement> {
+        if (elementos.isEmpty()) return emptyList()
+
+        val resultado = mutableListOf<ScreenElement>()
+        val usados = mutableSetOf<ScreenElement>()
+
+        for (elemento in elementos) {
+            if (elemento in usados) continue
+
+            // Buscar elementos cercanos a este
+            val cercanos = elementos.filter { otro ->
+                otro != elemento && otro !in usados &&
+                        kotlin.math.abs(otro.centerX - elemento.centerX) < distanciaMaxima &&
+                        kotlin.math.abs(otro.centerY - elemento.centerY) < distanciaMaxima
+            }
+
+            // Si hay cercanos, elegir el más importante
+            if (cercanos.isNotEmpty()) {
+                val grupo = listOf(elemento) + cercanos
+
+                // Usamos maxByOrNull para obtener solo el objeto con mayor "peso"
+                val mejor = grupo.maxByOrNull {
+                    (it.bounds.width() * it.bounds.height()) + if (it.isClickable) 10000 else 0
+                } ?: elemento
+
+                resultado.add(mejor)
+                usados.addAll(cercanos)
+                usados.add(elemento)
+            } else {
+                resultado.add(elemento)
+                usados.add(elemento)
+            }
+        }
+
+        return resultado
+    }
+
+    fun mostrar(elementos: List<ScreenElement>) {
+        // ✅ PRIMERO agrupar elementos cercanos
+        val agrupados = agruparElementosCercanos(elementos, distanciaMaxima = 80)
+
+        // ✅ LUEGO filtrar y ordenar los AGRUPADOS
+        elementosNumerados = agrupados
+            .filter { it.isClickable || it.isEditable || it.isScrollable }
+            .filter { it.bounds.width() > 20 && it.bounds.height() > 20 }  // Aumentado a 20px
+            .sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))
+            .take(40)
+
+        if (elementosNumerados.isEmpty()) {
             Log.d("NUMBERED_OVERLAY", "No hay elementos interactivos para numerar")
             return
         }
-        //quitamos si ya habia numeros
+
         ocultar()
-        //vista encargada de dibujar numeros
+
         val view = NumberBubblesView(context, elementosNumerados)
         overlayView = view
 
-        //conf de la ventana
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT, //toda la anchura
-            WindowManager.LayoutParams.MATCH_PARENT, //toda la altura
+        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
 
-            // type_aplicattion overlay apra dibuje encima de otras apps
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
-
                 WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            // Formato transparente para ver la app que está detrás
+            flags,
             android.graphics.PixelFormat.TRANSLUCENT
         )
+
         try {
-            //a;adimos la vista a la pantalla del sisitem a
             windowManager?.addView(view, params)
             isVisible = true
             Log.d("NUMBERED_OVERLAY", "Mostrando ${elementosNumerados.size} elementos numerados")
 
-            // Imprimimos en el Log qué número corresponde a qué texto para depuración
             elementosNumerados.forEachIndexed { i, e ->
-                Log.d("NUMBERED_OVERLAY", "  [${i + 1}] ${e.getSearchableText()} (${e.centerX},${e.centerY})")
+                Log.d("NUMBERED_OVERLAY", "  [${i + 1}] ${e.getSearchableText().take(25)} (${e.centerX},${e.centerY})")
             }
-        }catch(e: Exception){
+        } catch (e: Exception) {
             Log.e("NUMBERED_OVERLAY", "Error al mostrar overlay: ${e.message}")
         }
     }
+
+    fun resaltarElemento(numero: Int, duracionMs: Long = 500) {
+        val index = numero - 1
+        if (index in elementosNumerados.indices && overlayView != null) {
+            overlayView?.resaltarElemento(index, duracionMs)
+            Log.d("NUMBERED_OVERLAY", "Resaltando elemento #$numero")
+        } else {
+            Log.w("NUMBERED_OVERLAY", "No se puede resaltar #$numero: índice inválido o overlay no visible")
+        }
+    }
+
     fun ocultar() {
         if (isVisible && overlayView != null) {
             try {
@@ -92,23 +131,15 @@ class NumberedElementsOverlay(private val context: Context){
             }
         }
     }
-    /**
-     * Obtiene el elemento correspondiente al número dicho por el usuario.
-     * Los números empiezan en 1 (como dice el usuario: "toca el 1").
-     */
+
     fun obtenerPorNumero(numero: Int): ScreenElement? {
         val index = numero - 1
         return if (index in elementosNumerados.indices) elementosNumerados[index] else null
     }
 
     fun estaVisible() = isVisible
-
     fun cantidadElementos() = elementosNumerados.size
 
-    /**
-     * Genera un resumen de texto para que Jarvis lo diga en voz alta.
-     * Ej: "Veo 5 elementos. 1: Buscar. 2: Menú. 3: Perfil..."
-     */
     fun generarResumenParaVoz(): String {
         if (elementosNumerados.isEmpty()) return "No veo elementos interactivos en esta pantalla."
         val lista = elementosNumerados.take(8).mapIndexed { i, e ->
@@ -117,15 +148,37 @@ class NumberedElementsOverlay(private val context: Context){
         return "Veo ${elementosNumerados.size} elementos. $lista. Di el número para tocarlo."
     }
 }
-/**
- * Vista personalizada que dibuja burbujas numeradas sobre la pantalla.
- * Usa Canvas para dibujar directamente sin vistas adicionales.
- */
+
+// ✅ NumberBubblesView - sin cambios
 class NumberBubblesView(
     context: Context,
     private val elementos: List<ScreenElement>
 ) : View(context) {
-    // Sombra para que el número sea legible sobre cualquier fondo
+    private var elementoResaltado: Int? = null
+    private var tiempoResaltado = 0L
+
+    fun resaltarElemento(index: Int, duracionMs: Long) {
+        elementoResaltado = index
+        tiempoResaltado = System.currentTimeMillis() + duracionMs
+        invalidate()
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            elementoResaltado = null
+            invalidate()
+        }, duracionMs)
+    }
+
+    private val paintBurbuja = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(200, 0, 150, 255)
+        style = Paint.Style.FILL
+    }
+
+    private val paintBorde = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+    }
+
     private val paintSombra = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLACK
         textSize = 26f
@@ -134,7 +187,6 @@ class NumberBubblesView(
         setShadowLayer(8f, 0f, 0f, Color.BLACK)
     }
 
-    // Número principal en blanco brillante
     private val paintNumero = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         textSize = 30f
@@ -152,6 +204,15 @@ class NumberBubblesView(
             val cy = elemento.bounds.exactCenterY()
             val ty = cy - (fm.ascent + fm.descent) / 2f
 
+            val colorBurbuja = if (elementoResaltado == index) {
+                Color.argb(255, 255, 200, 0)
+            } else {
+                Color.argb(200, 0, 150, 255)
+            }
+
+            paintBurbuja.color = colorBurbuja
+            canvas.drawCircle(cx, cy, 22f, paintBurbuja)
+            canvas.drawCircle(cx, cy, 22f, paintBorde)
             canvas.drawText(numero, cx, ty, paintSombra)
             canvas.drawText(numero, cx, ty, paintNumero)
         }

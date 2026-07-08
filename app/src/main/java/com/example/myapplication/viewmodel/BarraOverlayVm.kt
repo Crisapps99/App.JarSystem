@@ -26,7 +26,7 @@ class ListeningBarState {
 }
 
 enum class BarColorMode {
-    IDLE, LISTENING, SPEAKING, THINKING
+    IDLE, LISTENING, SPEAKING, THINKING, TRANSPARENT
 }
 
 @Composable

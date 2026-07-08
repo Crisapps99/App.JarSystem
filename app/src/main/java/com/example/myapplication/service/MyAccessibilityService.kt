@@ -110,7 +110,78 @@ class MyAccessibilityService : AccessibilityService() {
         val filterCall = IntentFilter("JARVIS.PRESS_CALL_BUTTON")
         registerReceiver(callButtonReceiver, filterCall, RECEIVER_NOT_EXPORTED)
     }
+    // En MyAccessibilityService.kt - Añadir este método
+    fun tapEnNodoPorCoordenadas(x: Float, y: Float): Boolean {
+        Log.d(TAG, " tapEnNodoPorCoordenadas: ($x, $y)")
 
+        val root = rootInActiveWindow
+        if (root == null) {
+            Log.w(TAG, " No hay ventana activa")
+            return false
+        }
+
+        // Buscar nodo en esas coordenadas
+        fun encontrarNodoEnCoordenadas(nodo: AccessibilityNodeInfo?, x: Float, y: Float): AccessibilityNodeInfo? {
+            if (nodo == null) return null
+
+            val bounds = Rect()
+            nodo.getBoundsInScreen(bounds)
+
+            // Si el nodo contiene las coordenadas y es clickable
+            if (bounds.contains(x.toInt(), y.toInt()) && nodo.isClickable && nodo.isEnabled) {
+                return nodo
+            }
+
+            // Buscar en hijos
+            for (i in 0 until nodo.childCount) {
+                val resultado = encontrarNodoEnCoordenadas(nodo.getChild(i), x, y)
+                if (resultado != null) return resultado
+            }
+
+            return null
+        }
+
+        val nodo = encontrarNodoEnCoordenadas(root, x, y)
+        if (nodo != null) {
+            Log.d(TAG, " Nodo encontrado: ${nodo.className}, clickable=${nodo.isClickable}, enabled=${nodo.isEnabled}")
+
+            // Buscar ancestro clickable
+            var nodoClick = nodo
+            while (nodoClick != null && !nodoClick.isClickable) {
+                nodoClick = nodoClick.parent
+            }
+
+            if (nodoClick != null && nodoClick.isClickable && nodoClick.isEnabled) {
+                // ✅ Usar ACTION_CLICK
+                val exito = nodoClick.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                Log.d(TAG, " ACTION_CLICK en nodo: $exito")
+
+                // Si falla, intentar con ACTION_TAP
+                if (!exito) {
+                    val bounds = Rect()
+                    nodoClick.getBoundsInScreen(bounds)
+                    if (!bounds.isEmpty) {
+                        tapCoordenadas(mapOf("x" to bounds.centerX().toFloat(), "y" to bounds.centerY().toFloat()))
+                        Log.d(TAG, " Fallback: tap en coordenadas del nodo")
+                        return true
+                    }
+                }
+                return exito
+            } else {
+                // Fallback: tap en coordenadas del nodo
+                val bounds = Rect()
+                nodo.getBoundsInScreen(bounds)
+                if (!bounds.isEmpty) {
+                    tapCoordenadas(mapOf("x" to bounds.centerX().toFloat(), "y" to bounds.centerY().toFloat()))
+                    Log.d(TAG, " Fallback: tap en coordenadas del nodo (no clickable)")
+                    return true
+                }
+            }
+        } else {
+            Log.w(TAG, " No se encontró nodo en coordenadas ($x, $y)")
+        }
+        return false
+    }
     private fun presionarBotonLlamadaWhatsApp() {
         handler.postDelayed({
             val root = rootInActiveWindow ?: return@postDelayed
@@ -2783,21 +2854,31 @@ class MyAccessibilityService : AccessibilityService() {
         }, handler)
     }
 
-    private fun tapCoordenadas(params: Map<String, Any>?) {
+    // En MyAccessibilityService.kt
+    fun tapCoordenadas(params: Map<String, Any>?) {
         val x = when (val raw = params?.get("x")) {
             is Number -> raw.toFloat()
+            is String -> raw.toFloatOrNull() ?: run {
+                Log.w(TAG, "tapCoordenadas: 'x' no es número válido"); return
+            }
             else -> { Log.w(TAG, "tapCoordenadas: 'x' inválido"); return }
         }
         val y = when (val raw = params?.get("y")) {
             is Number -> raw.toFloat()
+            is String -> raw.toFloatOrNull() ?: run {
+                Log.w(TAG, "tapCoordenadas: 'y' no es número válido"); return
+            }
             else -> { Log.w(TAG, "tapCoordenadas: 'y' inválido"); return }
         }
+
         val metrics = resources.displayMetrics
         if (x < 0 || y < 0 || x > metrics.widthPixels || y > metrics.heightPixels) {
-            Log.e(TAG, "tapCoordenadas: fuera de pantalla x=$x y=$y"); return
+            Log.e(TAG, "tapCoordenadas: fuera de pantalla x=$x y=$y")
+            return
         }
-        val path    = Path().apply { moveTo(x, y) }
-        val stroke  = GestureDescription.StrokeDescription(path, 0L, 50L)
+
+        val path = Path().apply { moveTo(x, y) }
+        val stroke = GestureDescription.StrokeDescription(path, 0L, 100L) // ✅ 100ms para mejor respuesta
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         ejecutarGesture(gesture)
     }

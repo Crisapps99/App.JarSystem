@@ -321,6 +321,19 @@ class JarvisVoiceController(
         val ahora = System.currentTimeMillis()
         val textoLimpio = texto.trim()
 
+//  PRIMERO: Si estamos en modo visual, procesar TODO localmente
+        if (modoVisualActivo) {
+            Log.d(TAG, " Modo visual activo - procesando localmente: '$texto'")
+            // Intentar interceptar el comando visual
+            if (interceptarComandoVisual(texto)) {
+                // Ya se procesó, no hacer nada más
+                return
+            }
+            // Si no se procesó, ignorar (no enviar al servidor)
+            Log.d(TAG, " Modo visual: ignorando '$texto'")
+            return
+        }
+
         // Guardar mensaje del usuario
         if (chatRepository != null) {
             scope.launch {
@@ -1744,6 +1757,10 @@ class JarvisVoiceController(
         voiceEngine.setTtsReproduciendo(true)
         timestampUltimoTTS = System.currentTimeMillis()
         mainHandler.removeCallbacks(timeoutRunnable)
+        //  En modo visual, NO detener la escucha
+        if (!modoVisualActivo && voiceEngine.isSrSessionActive()) {
+            voiceEngine.detenerSesion()
+        }
 
         if (voiceEngine.isSrSessionActive()) {
             voiceEngine.detenerSesion()
@@ -1766,7 +1783,14 @@ class JarvisVoiceController(
                     estaHablando = false
                     voiceEngine.setTtsReproduciendo(false)
                     alTerminar?.invoke()
-                    finalizarInteraccion()
+                    if (!modoVisualActivo) {
+                        finalizarInteraccion()
+                    } else {
+                        // ✅ Mantener sesión activa para escuchar números
+                        if (sesionActiva && !voiceEngine.isSrSessionActive()) {
+                            iniciarSRContinuo()
+                        }
+                    }
                 }
             }
 
@@ -1776,8 +1800,10 @@ class JarvisVoiceController(
                     estaHablando = false
                     voiceEngine.setTtsReproduciendo(false)   //  NUEVO
                     alTerminar?.invoke()
-                    if (sesionActiva) {
+                    if (!modoVisualActivo && sesionActiva) {
                         stopListeningCompletamente()
+                    } else if (modoVisualActivo && sesionActiva) {
+                        iniciarSRContinuo()
                     }
                 }
             }
@@ -1959,7 +1985,11 @@ class JarvisVoiceController(
             Log.d(TAG, "SR ya activo — ignorando iniciarSRContinuo")
             return
         }
-
+        if (!voiceEngine.isReady()) {
+            Log.d(TAG, "Engine no listo, esperando...")
+            mainHandler.postDelayed({ iniciarSRContinuo(timeoutMs) }, 500)
+            return
+        }
         setState(JarvisState.LISTENING)
         voiceEngine.iniciarSesionContinua(language = "es")
         mainHandler.removeCallbacks(timeoutRunnable)
@@ -2210,10 +2240,18 @@ class JarvisVoiceController(
     // ────────────────────────────────────────────────────────────────────────
 
     private fun activarModoVisual() {
+        Log.d(TAG, " ACTIVANDO MODO VISUAL")
         setState(JarvisState.THINKING)
         isProcessing = true
-        mainHandler.post { ui.setOrbVisibility(false) }
+        modoVisualActivo = true
+        mainHandler.post {
+            uiState?.apply {
+                modoVisualActivo = true
+                barColors = BarColorMode.TRANSPARENT  // ✅ Añade este modo en BarColorMode
 
+            }
+            ui.setOrbVisibility(true)
+        }
         scope.launch {
             Log.d(TAG, " [DEBUG VISUAL] Solicitando captura de pantalla...")
 
@@ -2266,34 +2304,60 @@ class JarvisVoiceController(
             }
         }
     }
-    private fun mostrarOverlayNumeros(elementos: List<com.example.myapplication.model.ScreenElement>) {
+    private var timeoutVisual: Runnable? = null
+    private val TIMEOUT_VISUAL_MS = 30000L // 30 segundos
+
+    private fun mostrarOverlayNumeros(elementos: List<ScreenElement>) {
         if (numberedOverlay == null) {
             numberedOverlay = NumberedElementsOverlay(context)
         }
         modoVisualActivo = true
         numberedOverlay!!.mostrar(elementos)
 
-        hablar("${elementos.count { it.isClickable }} elementos. Di un número.") {
-            isProcessing = false
-//            if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+        // ✅ Timeout automático
+        timeoutVisual?.let { mainHandler.removeCallbacks(it) }
+        timeoutVisual = Runnable {
+            Log.d(TAG, "Timeout modo visual - ocultando automáticamente")
+            desactivarModoVisual()
         }
-    }
-    private fun desactivarModoVisual() {
-        modoVisualActivo = false
-        numberedOverlay?.ocultar()
-        mainHandler.post { ui.setOrbVisibility(true) }
-        hablar("Modo visual desactivado.") {
+        mainHandler.postDelayed(timeoutVisual!!, TIMEOUT_VISUAL_MS)
+        val resumen = "Encontré ${elementos.size} elementos. Di el número para tocarlo."
+        ui.showText(resumen)
+
+        // ✅ NO detener la escucha - mantener SR activo
+        hablar(resumen) {
             isProcessing = false
-//            if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
+            // ✅ Asegurar que el SR sigue activo para escuchar números
+            if (!voiceEngine.isSrSessionActive() && sesionActiva) {
+                iniciarSRContinuo()
+            }
+            Log.d(TAG, "Resumen hablado - esperando comando numérico")
         }
     }
 
+    private fun desactivarModoVisual() {
+        modoVisualActivo = false
+        timeoutVisual?.let { mainHandler.removeCallbacks(it) }
+        numberedOverlay?.ocultar()
+
+        mainHandler.post {
+            uiState?.apply {
+                modoVisualActivo = false
+                barColors = BarColorMode.IDLE
+            }
+            ui.setOrbVisibility(true)
+        }
+
+        hablar("Modo visual desactivado.") {
+            isProcessing = false
+            if (sesionActiva) iniciarSRContinuo()
+        }
+    }
     private fun ejecutarClickNumerico(numero: Int) {
         val overlay = numberedOverlay
         if (overlay == null || !overlay.estaVisible()) {
             hablar("El modo visual no está listo.") {
                 isProcessing = false
-//                if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
             }
             return
         }
@@ -2302,34 +2366,61 @@ class JarvisVoiceController(
         if (elemento == null) {
             hablar("No encuentro el número $numero.") {
                 isProcessing = false
-//                if (sesionActiva) sessionManager.onAssistantFinishedSpeaking()
             }
             return
         }
 
-        Log.d(TAG, " CLICK en #$numero: x=${elemento.centerX} y=${elemento.centerY}")
+        overlay.resaltarElemento(numero, 500L)
+        hacerVibrar(50)
 
-        //  IMPORTANTE: Ejecuta el tap DIRECTAMENTE sin pasar por acciones
-        // para evitar delays
+        Log.d(TAG, " CLICK en #$numero: x=${elemento.centerX} y=${elemento.centerY}")
+        Log.d(TAG, "   Bounds: ${elemento.bounds}")
+        Log.d(TAG, "   Clickable: ${elemento.isClickable}")
+
         scope.launch {
-            // Descarta acciones en espera
             isProcessing = false
 
-            // Ejecuta el TAP
-            val accion = ActionDto(tipo = "tap", params = mapOf("x" to elemento.centerX, "y" to elemento.centerY))
-            ejecutarAccionesTecnicas(listOf(accion), "toca el $numero", "click_numerico")
+            //  Esperar a que se vea el resaltado
+            delay(300)
 
-            // Espera a que la pantalla cambie
-            delay(1200)
+            val x = elemento.centerX.toFloat()
+            val y = elemento.centerY.toFloat()
 
-            // Fuerza captura de pantalla
-            MyAccessibilityService.instance?.captureCurrentScreenNow()
+            //  Usar el AccessibilityService directamente
+            MyAccessibilityService.instance?.let { service ->
+                //  PRIMERO: Intentar hacer clic en el nodo exacto
+                var exito = service.tapEnNodoPorCoordenadas(x, y)
 
-            delay(600)
+                if (!exito) {
+                    Log.w(TAG, "Falló tap en nodo, usando coordenadas directas")
+                    //  Usar tapCoordenadas con valores Float
+                    service.tapCoordenadas(mapOf("x" to x, "y" to y))
+                }
 
-            // Actualiza overlay con nuevos elementos
-            withContext(Dispatchers.Main) {
-                actualizarOverlayVisual()
+                // Esperar a que la pantalla cambie
+                delay(1500)
+
+                // Fuerza captura de pantalla y actualizar overlay
+                service.captureCurrentScreenNow()
+                delay(600)
+
+                withContext(Dispatchers.Main) {
+                    actualizarOverlayVisual()
+                }
+            } ?: run {
+                // Fallback: usar ActionDto si no hay servicio
+                val accion = ActionDto(
+                    tipo = "tap",
+                    params = mapOf("x" to elemento.centerX, "y" to elemento.centerY)
+                )
+                ejecutarAccionesTecnicas(listOf(accion), "toca el $numero", "click_numerico")
+
+                delay(1200)
+                MyAccessibilityService.instance?.captureCurrentScreenNow()
+                delay(600)
+                withContext(Dispatchers.Main) {
+                    actualizarOverlayVisual()
+                }
             }
         }
     }
@@ -2403,40 +2494,148 @@ class JarvisVoiceController(
 
     private fun actualizarOverlayVisual() {
         val elementos = ScreenMemory.lastSnapshot?.elements ?: emptyList()
-        if (elementos.isNotEmpty()) numberedOverlay?.mostrar(elementos)
-        else desactivarModoVisual()
+        if (elementos.isNotEmpty()) {
+              numberedOverlay?.mostrar(elementos)
+
+            val cantidad = numberedOverlay?.cantidadElementos() ?: 0
+            Log.d(TAG, " Overlay actualizado: $cantidad elementos")
+
+            // Notificar cambio con vibración suave
+            hacerVibrar(30)
+        } else {
+            Log.d(TAG, " No hay elementos para actualizar, desactivando modo visual")
+            desactivarModoVisual()
+        }
     }
 
     fun interceptarComandoVisual(texto: String): Boolean {
+        Log.d(TAG, " interceptarComandoVisual: '$texto', modoVisualActivo=$modoVisualActivo")
         val t = texto.lowercase().trim()
-        val salidas = listOf("salir de modo visual", "salir modo visual", "desactivar modo visual",
-            "cerrar modo visual", "quitar modo visual", "modo normal", "ocultar números",
-            "ocultar numeros", "quita los números", "quita numeros")
-        if (salidas.any { t.contains(it) }) { desactivarModoVisual(); return true }
 
-        val activadores = listOf("modo visual", "qué puedo tocar", "que puedo tocar",
-            "muestra los números", "muestra los numeros", "qué hay en pantalla",
-            "que hay en pantalla", "numera la pantalla", "muéstrame opciones",
-            "muestrame opciones", "modo número", "modo numero")
-        if (activadores.any { t.contains(it) }) { activarModoVisual(); return true }
-
-        if (modoVisualActivo) {
-            val numero = extraerNumeroDeTexto(t)
-            if (numero != null && numero >= 1) { ejecutarClickNumerico(numero); return true }
+        //  Si el modo visual NO está activo, solo detectar activación
+        if (!modoVisualActivo) {
+            val activadores = listOf(
+                "modo visual", "qué puedo tocar", "que puedo tocar",
+                "muestra los números", "muestra los numeros", "qué hay en pantalla",
+                "que hay en pantalla", "numera la pantalla", "muéstrame opciones",
+                "muestrame opciones", "modo número", "modo numero",
+                "activar modo visual", "ver números", "ver numeros",
+                "qué puedo presionar", "que puedo presionar", "qué puedo pulsar",
+                "muéstrame los números", "muestrame los numeros",
+                "dime qué hay", "qué hay aquí", "que hay aqui",
+                "muestra los números", "muestrame numeros", "ver numeros"
+            )
+            if (activadores.any { t.contains(it) }) {
+                Log.d(TAG, " Activando modo visual por: '$texto'")
+                activarModoVisual()
+                return true
+            }
+            return false
         }
-        return false
+
+        // ESTAMOS EN MODO VISUAL - TODOS LOS COMANDOS SE PROCESAN LOCALMENTE
+
+        // 1. Comandos de SALIDA (desactivar modo visual)
+        val salidas = listOf(
+            "salir de modo visual", "salir modo visual", "desactivar modo visual",
+            "cerrar modo visual", "quitar modo visual", "modo normal", "ocultar números",
+            "ocultar numeros", "quita los números", "quita numeros",
+            "terminar modo visual", "apagar modo visual", "no quiero números",
+            "quitar números", "remover números", "modo visual off",
+            "salir", "atrás", "volver", "cancelar", "cancela"
+        )
+        if (salidas.any { t.contains(it) }) {
+            Log.d(TAG, " Desactivando modo visual por: '$texto'")
+            desactivarModoVisual()
+            return true
+        }
+
+        // 2. Comandos de TAP (tocar un número)
+        // Verificar si el texto contiene un número
+        val patrones = listOf(
+            Regex("toca el (\\d+)"),
+            Regex("toca (\\d+)"),
+            Regex("presiona el (\\d+)"),
+            Regex("presiona (\\d+)"),
+            Regex("pulsa el (\\d+)"),
+            Regex("pulsa (\\d+)"),
+            Regex("dale al (\\d+)"),
+            Regex("dale clic al (\\d+)"),
+            Regex("haz clic en el (\\d+)"),
+            Regex("selecciona el (\\d+)"),
+            Regex("elige el (\\d+)"),
+            Regex("número (\\d+)"),
+            Regex("numero (\\d+)"),
+            Regex("opción (\\d+)"),
+            Regex("opcion (\\d+)"),
+            Regex("el (\\d+)"),  // Solo "el 3" en contexto visual
+            Regex("la opción (\\d+)"),
+            Regex("la opcion (\\d+)")
+        )
+
+        for (patron in patrones) {
+            val match = patron.find(t)
+            if (match != null) {
+                val numero = match.groupValues[1].toIntOrNull()
+                if (numero != null && numero >= 1 && numero <= 40) {
+                    Log.d(TAG, " Tap en número $numero detectado en modo visual")
+                    ejecutarClickNumerico(numero)
+                    return true
+                }
+            }
+        }
+
+        // 3. Si no coincide con regex, buscar cualquier número en el texto
+        val numero = extraerNumeroDeTexto(t)
+        if (numero != null && numero >= 1 && numero <= 40) {
+            Log.d(TAG, " Número $numero detectado en texto (fallback)")
+            ejecutarClickNumerico(numero)
+            return true
+        }
+
+        // 4. Si no se detectó nada útil, ignorar (NO enviar al servidor)
+        Log.d(TAG, " En modo visual, ignorando: '$texto' (no es un comando válido)")
+        return true  // Devuelve true para que NO se envíe al servidor
     }
 
     private fun extraerNumeroDeTexto(texto: String): Int? {
-        Regex("""(\d+)""").find(texto)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+        // ✅ Primero buscar dígitos
+        Regex("""\b(\d+)\b""").find(texto)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+
+        // ✅ Palabras numéricas más completas
         val palabras = mapOf(
-            "uno" to 1, "un" to 1, "una" to 1, "dos" to 2, "tres" to 3, "cuatro" to 4,
-            "cinco" to 5, "seis" to 6, "siete" to 7, "ocho" to 8, "nueve" to 9, "diez" to 10,
-            "once" to 11, "doce" to 12, "trece" to 13, "catorce" to 14, "quince" to 15,
-            "dieciséis" to 16, "dieciseis" to 16, "diecisiete" to 17, "dieciocho" to 18,
-            "diecinueve" to 19, "veinte" to 20
+            "uno" to 1, "un" to 1, "una" to 1,
+            "dos" to 2,
+            "tres" to 3,
+            "cuatro" to 4,
+            "cinco" to 5,
+            "seis" to 6,
+            "siete" to 7,
+            "ocho" to 8,
+            "nueve" to 9,
+            "diez" to 10,
+            "once" to 11,
+            "doce" to 12,
+            "trece" to 13,
+            "catorce" to 14,
+            "quince" to 15,
+            "dieciséis" to 16, "dieciseis" to 16,
+            "diecisiete" to 17,
+            "dieciocho" to 18,
+            "diecinueve" to 19,
+            "veinte" to 20,
+            "veintiuno" to 21, "veintiun" to 21,
+            "veintidós" to 22, "veintidos" to 22,
+            "veintitrés" to 23, "veintitres" to 23,
+            "treinta" to 30,
+            "cuarenta" to 40,
+            "cincuenta" to 50
         )
-        for ((palabra, numero) in palabras) { if (texto.contains(palabra)) return numero }
+
+        for ((palabra, numero) in palabras) {
+            if (texto.contains(palabra)) return numero
+        }
+
         return null
     }
     private val MULETILLAS_Y_RUIDO = setOf(

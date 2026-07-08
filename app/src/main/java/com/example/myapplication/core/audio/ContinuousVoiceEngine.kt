@@ -44,8 +44,8 @@ class ContinuousVoiceEngine(
         private val WAKE_WORDS = listOf("hey nexus", "nexus", "[unk]")
         private val WAKE_REGEX = Regex("""(?i)^(hey\s+nexus|nexus)\b""")
         private val COOLDOWN_MS = 1500L
-        private val RMS_THRESHOLD = 0.2f
-        private const val VAD_FRAMES_INICIO = 3
+        private val RMS_THRESHOLD = 0.08f
+        private const val VAD_FRAMES_INICIO = 2
         private const val VAD_SILENCIO_FIN_MS = 1800L
         private const val VAD_WARMUP_MS = 450L
         private const val WAKE_WORD_WARMUP_MS = 800L
@@ -300,21 +300,16 @@ class ContinuousVoiceEngine(
             Log.e(TAG, " Permiso RECORD_AUDIO no concedido")
             return
         }
-        if (isRunning) {
-            // Si ya está corriendo pero el AudioRecord es nulo, forzamos reinicio
-            if (audioRecord == null) {
-                Log.d(TAG, "AudioRecord nulo aunque isRunning=true, reiniciando...")
-                // continuar
-            } else {
-                Log.d(TAG, "AudioCapture ya en ejecución")
-                return
-            }
+        if (isRunning && audioRecord != null) {
+            Log.d(TAG, "AudioCapture ya en ejecución")
+            return
         }
 
         val minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
         val bufferSize = maxOf(minBuffer * 4, FRAME_LENGTH * 8)
 
         try {
+            releaseAudioRecord()
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, bufferSize
@@ -541,14 +536,46 @@ class ContinuousVoiceEngine(
             voskRecognizer = Recognizer(voskModel, SAMPLE_RATE.toFloat(),
                 WAKE_WORDS.joinToString("\", \"", "[\"", "\"]"))
         }
+        if (musicRecognitionActive) {
+            musicRecognitionActive = false
+            musicRecognizer?.stop()
+            musicRecognizer = null
+            musicWaveJob?.cancel()
+        }
 
         engineMode = EngineMode.LISTENING
+        voskLock.withLock {
+            voskRecognizer?.close()
+            voskRecognizer = null
+        }
         // Asegurar que no haya residuos de la sesión anterior
         if (grpcActivo) {
             grpcActivo = false
-            try { grpcRecognizer.stopStreaming() } catch (_: Exception) {}
+            try {
+                grpcRecognizer.stopStreaming()
+            } catch (e: Exception) {
+                Log.d(TAG, "Error cerrando stream anterior: ${e.message}")
+            }
         }
-        iniciarSesionContinua()
+        resetVad()
+        haEnviadoResultado = false
+        sesionListeningStartTimestamp = System.currentTimeMillis()
+
+        //  Pequeño delay para que los recursos se liberen
+        mainHandler.postDelayed({
+            // Iniciar sesión de Google Cloud STT
+            if (grpcListo) {
+                grpcActivo = true
+                grpcRecognizer.startStreaming("es-ES")
+
+                timeoutHandler.removeCallbacks(timeoutRunnable)
+                timeoutHandler.postDelayed(timeoutRunnable, TIMEOUT_SILENCIO_MS)
+
+                Log.d(TAG, " Google Cloud STT iniciado (post-wake word)")
+            } else {
+                Log.e(TAG, " gRPC no listo para iniciar sesión")
+            }
+        }, 150) //  150ms de delay para liberar recursos
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -611,7 +638,7 @@ class ContinuousVoiceEngine(
         timeoutHandler.removeCallbacks(timeoutRunnable)
         timeoutHandler.removeCallbacks(resultadoTimeoutRunnable)
 
-        // 3. ¡LO MÁS IMPORTANTE! Siempre forzamos el regreso al modo Wake Word
+        // 3. Siempre forzamos el regreso al modo Wake Word
         engineMode = EngineMode.WAKE_WORD
         startVoskWakeWordMode()
         resetVad()

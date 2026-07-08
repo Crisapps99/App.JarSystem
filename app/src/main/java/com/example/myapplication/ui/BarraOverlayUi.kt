@@ -118,6 +118,7 @@ class JarvisOverlayUiState {
     var musicExternalUrls   by mutableStateOf<List<String>>(emptyList())
     var spotifyCoverUri     by mutableStateOf("")
     var showConversation    by mutableStateOf(false)
+    var modoVisualActivo: Boolean = false
 }
 
 // ─── PROCESAMIENTO DE PASOS ─────────────────────────────────────────────
