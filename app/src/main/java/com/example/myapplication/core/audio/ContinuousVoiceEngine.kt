@@ -417,9 +417,11 @@ class ContinuousVoiceEngine(
                     onSpeechEnded()
                 }
             },
+
             onVolumeChanged = { volume ->
                 mainHandler.post { onRmsChanged(volume / 100f) }
-            }
+            },
+
         )
 
         musicRecognizer?.start(durationSegundos)

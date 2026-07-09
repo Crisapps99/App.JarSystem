@@ -1,6 +1,7 @@
 package com.example.myapplication.ui
 
 import MusicResultCard
+import android.content.Context
 import kotlinx.coroutines.delay
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -30,7 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale      // <-- necesario para .scale()
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -68,6 +69,12 @@ import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.runtime.key
+import androidx.compose.ui.text.style.TextAlign
+import kotlin.math.PI
+import kotlin.math.sin
+
 // ─── COLORES ─────────────────────────────────────────────────────────────
 private val ColorBgDark     = Color(0xFF1C1C1E)
 private val ColorTextMain   = Color(0xFFE8E8F0)
@@ -119,7 +126,11 @@ class JarvisOverlayUiState {
     var spotifyCoverUri     by mutableStateOf("")
     var showConversation    by mutableStateOf(false)
     var modoVisualActivo: Boolean = false
+
+    var isRecognizingMusic by mutableStateOf(false)
+    var musicRecognitionProgress by mutableStateOf(0f) // 0..1
 }
+
 
 // ─── PROCESAMIENTO DE PASOS ─────────────────────────────────────────────
 enum class StepStatus { DONE, ACTIVE, PENDING }
@@ -128,6 +139,225 @@ data class ProcessingStep(
     val text: String,
     val status: StepStatus
 )
+@Composable
+fun MusicRecognitionPanel(uiState: JarvisOverlayUiState) {
+    val context = LocalContext.current
+
+    if (uiState.isRecognizingMusic) {
+        // --- PANEL DE GRABACIÓN ---
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Orbe grande animado
+            Box(
+                modifier = Modifier
+                    .size(160.dp)
+                    .padding(8.dp)
+            ) {
+                JarvisOrb(
+                    modifier = Modifier.fillMaxSize(),
+                    energy = 0.7f + 0.3f * sin(uiState.musicRecognitionProgress * 2 * PI.toFloat()),
+                    maxRings = 4,
+                    showLightCore = true,
+                    showParticles = true
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = " Escuchando...",
+                color = ColorCyanNexus,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Barra de progreso (tiempo restante)
+            LinearProgressIndicator(
+                progress = uiState.musicRecognitionProgress,
+                color = ColorCyanNexus,
+                modifier = Modifier
+                    .fillMaxWidth(0.8f)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(4.dp))
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "${(uiState.musicRecognitionProgress * 10).toInt()}s / 10s",
+                color = Color(0xFF94A3B8),
+                fontSize = 13.sp
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Acerca el dispositivo a la fuente de sonido",
+                color = Color(0xFF94A3B8),
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    } else if (uiState.showMusicResult && uiState.musicTitle.isNotBlank()) {
+        // --- RESULTADO: TARJETA DE ÁLBUM ---
+        MusicResultCard(
+            title = uiState.musicTitle,
+            artist = uiState.musicArtist,
+            album = uiState.musicAlbum,
+            coverUrl = uiState.musicCoverUrl,
+            genre = uiState.musicGenre,
+            durationMs = uiState.musicDurationMs,
+            externalUrls = uiState.musicExternalUrls,
+            onLinkClick = { url ->
+                try {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (_: Exception) { }
+            }
+        )
+    }
+}
+
+@Composable
+fun MusicResultCard(
+    title: String,
+    artist: String,
+    album: String,
+    coverUrl: String,
+    genre: String,
+    durationMs: Long,
+    externalUrls: List<String>,
+    onLinkClick: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Portada circular
+            if (coverUrl.isNotBlank()) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = "Portada",
+                    modifier = Modifier
+                        .size(100.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF2A2A3A)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF2A2A3A)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.MusicNote,
+                        contentDescription = "Música",
+                        tint = ColorCyanNexus,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            // Información
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = artist,
+                    color = Color(0xFF94A3B8),
+                    fontSize = 16.sp,
+                    maxLines = 1
+                )
+                if (album.isNotBlank()) {
+                    Text(
+                        text = "Álbum: $album",
+                        color = Color(0xFF6B7280),
+                        fontSize = 14.sp,
+                        maxLines = 1
+                    )
+                }
+                if (genre.isNotBlank()) {
+                    Text(
+                        text = "Género: $genre",
+                        color = Color(0xFF6B7280),
+                        fontSize = 14.sp
+                    )
+                }
+                if (durationMs > 0) {
+                    val minutes = durationMs / 60000
+                    val seconds = (durationMs % 60000) / 1000
+                    Text(
+                        text = "⏱️ $minutes:${String.format("%02d", seconds)}",
+                        color = Color(0xFF6B7280),
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+
+        // Botones de enlaces
+        if (externalUrls.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                externalUrls.forEach { url ->
+                    val label = when {
+                        url.contains("spotify") -> "Spotify"
+                        url.contains("youtube") -> "YouTube"
+                        url.contains("apple") -> "Apple Music"
+                        url.contains("deezer") -> "Deezer"
+                        else -> "Abrir"
+                    }
+                    Button(
+                        onClick = { onLinkClick(url) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2A2A3A),
+                            contentColor = ColorCyanNexus
+                        ),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Text(label, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun ProcessingStepsList(steps: List<ProcessingStep>) {
@@ -256,8 +486,72 @@ private fun StepDot(
         }
     }
 }
+@Composable
+fun TranscripcionAnimada(
+    texto: String,
+    color: Color,
+    escuchando: Boolean,
+    fontSize: androidx.compose.ui.unit.TextUnit = 17.sp,
+    modifier: Modifier = Modifier
+) {
+    var textoMostrado by remember { mutableStateOf("") }
+    var resetKey by remember { mutableStateOf(0) }
 
-// ─── COMPOSABLE RAÍZ ─────────────────────────────────────────────────────
+    // Controla cómo va apareciendo el texto
+    LaunchedEffect(texto) {
+        when {
+            texto.isEmpty() -> {
+                textoMostrado = ""
+            }
+            texto.startsWith(textoMostrado) -> {
+                var i = textoMostrado.length
+                while (i < texto.length && isActive) {
+                    i++
+                    textoMostrado = texto.substring(0, i)
+                    delay(40)
+                }
+            }
+            else -> {
+                resetKey++
+                textoMostrado = texto
+            }
+        }
+    }
+
+    // Cursor parpadeante mientras escucha
+    var cursorVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(escuchando) {
+        if (escuchando) {
+            while (isActive) {
+                cursorVisible = !cursorVisible
+                delay(500)
+            }
+        } else {
+            cursorVisible = false
+        }
+    }
+
+    // ✅ Agrupamos la clave de reinicio y el texto actual
+    val estadoAnimacion = remember(resetKey, textoMostrado) { Pair(resetKey, textoMostrado) }
+
+    Crossfade(
+        targetState = estadoAnimacion, // Pasamos el par completo
+        animationSpec = tween(220),
+        modifier = modifier,
+        label = "transcripcionResetFade"
+    ) { (_, textoParaAnimar) -> // ✅ Desestructuramos el parámetro. Al usar 'textoParaAnimar', el error desaparece.
+        val cursor = if (escuchando && cursorVisible) "▎" else ""
+        Text(
+            text = textoParaAnimar + cursor, // Usamos la variable de la transición
+            color = color,
+            fontSize = fontSize,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
 @Composable
 fun JarvisOverlayContent(
     uiState: JarvisOverlayUiState,
@@ -319,7 +613,7 @@ fun JarvisOverlayContent(
         AnimatedVisibility(
             visible = !uiState.showConversation && uiState.showPanel &&
                     uiState.jarvisState != JarvisState.LISTENING &&
-                    (uiState.jarvisState != JarvisState.IDLE ||
+                    (uiState.processingSteps.isNotEmpty() ||
                             uiState.showMusicResult ||
                             uiState.showWhatsappPreview ||
                             uiState.fullHtmlText.isNotBlank()),
@@ -331,9 +625,9 @@ fun JarvisOverlayContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .wrapContentHeight() // <-- Hace que se adapte al contenido
+                .wrapContentHeight()
                 .padding(bottom = 9.dp)
-                .align(Alignment.BottomCenter) // <-- Lo mantiene pegado al fondo (detrás de la barra)
+                .align(Alignment.BottomCenter)
         ) {
             ResultsPanel(uiState = uiState)
         }
@@ -530,24 +824,19 @@ fun UnifiedNexusBottomBar(
                     label = "textoOpaco"
                 )
 
-                Text(
-                    text = when {
+                TranscripcionAnimada(
+                    texto = when {
                         uiState.jarvisState == JarvisState.IDLE -> "¿En qué puedo ayudarte?"
-                        uiState.jarvisState == JarvisState.LISTENING && uiState.userTranscription.isNotBlank() ->
-                            uiState.userTranscription
                         uiState.jarvisState == JarvisState.LISTENING ->
-                            if (uiState.userTranscription.isBlank()) "Escuchando..." else uiState.userTranscription
+                            uiState.userTranscription.ifBlank { "Escuchando..." }
                         uiState.jarvisState == JarvisState.THINKING ->
-                            if (uiState.userTranscription.isNotBlank()) uiState.userTranscription else "Pensando..."
+                            uiState.userTranscription.ifBlank { "Pensando..." }
                         uiState.jarvisState == JarvisState.SPEAKING ->
-                            if (uiState.userTranscription.isNotBlank()) uiState.userTranscription else "Hablando..."
+                            uiState.userTranscription.ifBlank { "Hablando..." }
                         else -> "NEXUS"
                     },
                     color = colorTextoPrincipal,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    escuchando = uiState.jarvisState == JarvisState.LISTENING,
                     modifier = Modifier
                         .weight(1f)
                         .clickable {
@@ -556,6 +845,7 @@ fun UnifiedNexusBottomBar(
                             }
                         }
                 )
+
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1039,12 +1329,24 @@ private fun IconButton(onClick: () -> Unit, modifier: Modifier = Modifier, conte
 }
 
 // ─── PANEL DE RESULTADOS ──────────────────────────────────────────────────
+
+
 @Composable
 fun ResultsPanel(uiState: JarvisOverlayUiState) {
+    val context = LocalContext.current
+
+    // Feedback de like/dislike: se resetea automáticamente con cada respuesta nueva
+    var feedback by remember(uiState.fullHtmlText) { mutableStateOf<Boolean?>(null) }
+
+    // ¿Ya llegó la respuesta final del servidor?
+    val hayRespuestaFinal = uiState.fullHtmlText.isNotBlank()
+    // ¿Está mostrando pasos de "pensando" (todavía sin respuesta final)?
+    val mostrandoPasos = uiState.processingSteps.isNotEmpty() && !hayRespuestaFinal
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .wrapContentHeight(), // <-- Se adapta al tamaño de la Columna interna
+            .wrapContentHeight(),
         color = Color(0xFF131315),
         shape = RoundedCornerShape(
             topStart = 28.dp,
@@ -1054,9 +1356,15 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
         )
     ) {
         Column(
-            modifier = Modifier.wrapContentHeight()
+            modifier = Modifier
+                .wrapContentHeight()
+                .animateContentSize( // ← ESTO hace que el panel crezca/achique con animación suave
+                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+                )
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // 1. Manija de arrastre superior
+            // Manija de arrastre superior
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1071,99 +1379,117 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
                 )
             }
 
-            // 2. Contenedor deslizable
-            Column(
-                modifier = Modifier
-                    // Ponemos un límite de altura máxima (ej. 650.dp o 700.dp)
-                    // Si el contenido es corto, medirá poco. Si es larguísimo, topará aquí y activará el scroll.
-                    .heightIn(max = 650.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-
-//                // Carrusel de Imágenes
-//                if (uiState.imageUrls.isNotEmpty()) {
-//                    LazyRow(
-//                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-//                        modifier = Modifier
-//                            .fillMaxWidth()
-//                            .padding(bottom = 16.dp)
-//                    ) {
-//                        items(uiState.imageUrls) { url ->
-//                            AsyncImage(
-//                                model = url,
-//                                contentDescription = null,
-//                                contentScale = ContentScale.Crop,
-//                                modifier = Modifier
-//                                    .size(width = 150.dp, height = 150.dp)
-//                                    .clip(RoundedCornerShape(16.dp))
-//                            )
-//                        }
-//                    }
-//                }
-
-                // Texto
-                if (uiState.fullHtmlText.isNotBlank()) {
-                    AndroidView(
-                        factory = { context ->
-                            TextView(context).apply {
-                                setTextColor(android.graphics.Color.parseColor("#E8E8F0"))
-                                textSize = 15f
-                                setLineSpacing(0f, 1.3f)
-                                movementMethod = LinkMovementMethod.getInstance()
-                            }
-                        },
-                        update = { textView ->
-                            textView.text = Html.fromHtml(uiState.fullHtmlText, Html.FROM_HTML_MODE_COMPACT)
-                        },
-                        modifier = Modifier.padding(bottom = 24.dp)
-                    )
-                } else if (uiState.typewriterText.isNotBlank()) {
-                    Text(
-                        text = uiState.typewriterText,
-                        color = ColorTextMain,
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                        modifier = Modifier.padding(bottom = 24.dp)
-                    )
-                }
-
-                // Barra Inferior de Acciones
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        color = Color(0xFF2C2C3A),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.clickable { /* Lógica de fuentes */ }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                                    }
-                    }
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.ChatBubbleOutline, contentDescription = "Comentar", tint = Color.Gray, modifier = Modifier.size(22.dp))
-                        Icon(Icons.Default.ThumbUp, contentDescription = "Me gusta", tint = Color.Gray, modifier = Modifier.size(22.dp))
-                        Icon(Icons.Default.ThumbDown, contentDescription = "No me gusta", tint = Color.Gray, modifier = Modifier.size(22.dp))
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copiar", tint = Color.Gray, modifier = Modifier.size(20.dp))
-                        Icon(Icons.Default.MoreVert, contentDescription = "Más", tint = Color.Gray, modifier = Modifier.size(24.dp))
-                    }
-                }
-
-                // 🛑 EL ESPACIO INVISIBLE OBLIGATORIO
-                // Como el panel se adapta a su contenido interno, esto añade 130dp "falsos" al final.
-                // Esos 130dp son exactamente los que quedan ocultos detrás de la barra luminosa.
-                Spacer(modifier = Modifier.height(100.dp))
+// ─── RECONOCIMIENTO DE MÚSICA ──────────────────────────────────
+            if (uiState.isRecognizingMusic || uiState.showMusicResult) {
+                MusicRecognitionPanel(uiState)
             }
+            // ─── PASOS DE PROCESO (mientras "piensa", antes de la respuesta) ───
+            if (mostrandoPasos) {
+                ProcessingStepsList(steps = uiState.processingSteps)
+            }
+
+            // ─── TEXTO HTML (respuesta final del servidor) ──────────────────────
+            if (hayRespuestaFinal) {
+                HtmlText(
+                    html = uiState.fullHtmlText,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                        .padding(bottom = 16.dp)
+                )
+            }
+
+            // ─── BARRA DE ACCIONES (solo si ya hay respuesta real) ──────────────
+            if (hayRespuestaFinal) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    // Copiar
+                    IconButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            val text = android.text.Html.fromHtml(
+                                uiState.fullHtmlText,
+                                android.text.Html.FROM_HTML_MODE_LEGACY
+                            ).toString()
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Nexus", text))
+                            android.widget.Toast.makeText(context, "Copiado", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "Copiar",
+                            tint = Color.Gray,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Buscar en Google
+                    IconButton(
+                        onClick = {
+                            try {
+                                val text = android.text.Html.fromHtml(
+                                    uiState.fullHtmlText,
+                                    android.text.Html.FROM_HTML_MODE_LEGACY
+                                ).toString()
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://www.google.com/search?q=${Uri.encode(text.take(100))}")
+                                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } catch (_: Exception) {}
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Language,
+                            contentDescription = "Buscar",
+                            tint = Color.Gray,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Like
+                    IconButton(
+                        onClick = {
+                            feedback = true
+                            android.widget.Toast.makeText(context, "¡Gracias por tu feedback!", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ThumbUp,
+                            contentDescription = "Me gusta",
+                            tint = if (feedback == true) ColorCyanNexus else Color.Gray,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Dislike
+                    IconButton(
+                        onClick = {
+                            feedback = false
+                            android.widget.Toast.makeText(context, "Gracias, lo vamos a mejorar", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ThumbDown,
+                            contentDescription = "No me gusta",
+                            tint = if (feedback == false) Color(0xFFFF4D4D) else Color.Gray,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            // ─── ESPACIO PARA QUE LA BARRA NO TAPE EL CONTENIDO ──────────────
+            Spacer(modifier = Modifier.height(90.dp))
         }
     }
 }
@@ -1296,16 +1622,16 @@ fun JarvisOverlayUiState.applyJarvisState(state: JarvisState) {
         }
 
         JarvisState.IDLE      -> {
-                labelText = "NEXUS"
-                labelColor = android.graphics.Color.WHITE
-                showWave = false
-                showPause = false
-                barColors = BarColorMode.IDLE
-                serverProcessing = false
-                processingSteps = emptyList()
-                showWhatsappPreview = false
-                pendingWhatsappContact = ""
-                pendingWhatsappMessage = ""
+            labelText = "NEXUS"
+            labelColor = android.graphics.Color.WHITE
+            showWave = false
+            showPause = false
+            barColors = BarColorMode.IDLE
+            serverProcessing = false
+            processingSteps = emptyList()
+            showWhatsappPreview = false
+            pendingWhatsappContact = ""
+            pendingWhatsappMessage = ""
         }
     }
 }
@@ -1366,7 +1692,7 @@ fun HtmlText(html: String, modifier: Modifier = Modifier) {
                 settings.javaScriptEnabled = false
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
-//                settings.textZoom = 150
+                settings.layoutAlgorithm = android.webkit.WebSettings.LayoutAlgorithm.NARROW_COLUMNS
                 webViewClient = object : android.webkit.WebViewClient() {
                     override fun shouldOverrideUrlLoading(
                         view: android.webkit.WebView?,
@@ -1380,13 +1706,16 @@ fun HtmlText(html: String, modifier: Modifier = Modifier) {
                             true
                         } catch (_: Exception) { false }
                     }
+                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        view?.requestLayout()
+                    }
                 }
             }
         },
         modifier = modifier
             .fillMaxWidth()
-            .wrapContentHeight()        // ✅ WebView dinámico
-            .heightIn(max = 500.dp),
+            .wrapContentHeight(),
         update = { webView ->
             val wrapped = """
                 <html><head>
@@ -1398,12 +1727,14 @@ fun HtmlText(html: String, modifier: Modifier = Modifier) {
                     background: transparent; 
                     color: #E8E8F0; 
                     font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                    font-size: 20px;      //  20px (antes 18)
-                    line-height: 1.7;     //  1.7 (antes 1.6)
+                    font-size: 20px;
+                    line-height: 1.7;
                 }
                 a { color: #4DEEE9; }
                 p { margin: 8px 0; }
                 li { margin: 4px 0; }
+                img { max-width: 100%; height: auto; border-radius: 8px; }
+                div { max-width: 100%; }
                 </style>
                 </head><body>$html</body></html>
             """.trimIndent()

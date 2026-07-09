@@ -62,16 +62,16 @@ class MusicRecognizerRest(
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    fun start(durationSeconds: Int = 30) {
-        if (isRecognizing) {
-            Log.w(TAG, "Ya está reconociendo")
-            return
-        }
-
+    fun start(
+        durationSeconds: Int = 30,
+        onProgress: (Float) -> Unit = {}  // <-- NUEVO
+    ) {
+        if (isRecognizing) return
         isRecognizing = true
-        Log.d(TAG, " Iniciando grabación para reconocimiento...")
-        startRecording(durationSeconds)
+        Log.d(TAG, " Iniciando grabación...")
+        startRecording(durationSeconds, onProgress)  // <-- Pasar callback
     }
+
 
     private fun startRecording(durationSeconds: Int) {
         if (ContextCompat.checkSelfPermission(
@@ -133,6 +133,7 @@ class MusicRecognizerRest(
                         }
 
                         samplesRead += read
+
                     }
                     delay(10)
                 }

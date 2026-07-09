@@ -601,35 +601,47 @@ class JarvisVoiceController(
         if (isRecognizingMusic) return
         isRecognizingMusic = true
 
-        ui.showText(" Reconociendo música... acercando el dispositivo")
-        ui.renderState(JarvisState.LISTENING)
-        ui.setOrbVisibility(true)
+        // Actualizar UI: mostrar panel de grabación
+        uiState?.apply {
+            showMusicResult = false
+            isRecognizingMusic = true
+            musicRecognitionProgress = 0f
+            showPanel = true
+            // Ocultar otros paneles
+            fullHtmlText = ""
+            typewriterText = ""
+        }
 
         voiceEngine.iniciarReconocimientoMusica(
-            durationSegundos = 10,  //  Solo 10 segundos
+            durationSegundos = 10,
+            onProgress = { progress -> // nuevo callback
+                uiState?.musicRecognitionProgress = progress
+            },
             onResult = { musicResult ->
                 isRecognizingMusic = false
+                uiState?.isRecognizingMusic = false
                 if (musicResult != null) {
                     showMusicResult(musicResult)
-
                 } else {
-                    ui.showText("No pude identificar la canción")
-                    ui.renderState(JarvisState.IDLE)
+                    uiState?.fullHtmlText = " No se pudo identificar la canción. Intenta de nuevo."
+                    uiState?.showPanel = true
                 }
-
             }
         )
 
         scope.launch {
-            delay(12_000) // 12 segundos de timeout
+            delay(12_000) // timeout
             if (isRecognizingMusic) {
                 isRecognizingMusic = false
                 voiceEngine.detenerReconocimientoMusica()
-                ui.showText(" Tiempo agotado")
-                ui.renderState(JarvisState.IDLE)
+                uiState?.isRecognizingMusic = false
+                uiState?.fullHtmlText = "⏱ Tiempo agotado. ¿La música se escucha bien?"
+                uiState?.showPanel = true
             }
         }
     }
+
+
     private fun onMusicIdentified(music: MusicRecognizerRest.MusicResult) {
         // Usamos el 'uiState' que ya tienes en el constructor de la clase
         uiState?.let { state ->
@@ -1158,6 +1170,11 @@ class JarvisVoiceController(
                                             val answer = params.optString("answer", responseText)
                                             if (answer.isNotBlank()) responseText = answer
                                             htmlCompleto = params.optString("html", "")
+                                            if (htmlCompleto.isBlank()) {
+                                                // Si no hay HTML, usar el texto plano formateado
+                                                htmlCompleto = answer.replace("\n", "<br/>")
+                                            }
+
                                             // Extraer IMÁGENES
                                             params.optJSONArray("images")?.let { array ->
                                                 for (j in 0 until array.length()) {
@@ -1290,15 +1307,14 @@ class JarvisVoiceController(
                                 }
                             }
                             type == "busqueda" -> {
-                                if (message.isNotBlank()) {
-                                    ui.showText(" $message")
-                                }
+                                Log.d(TAG, "Progreso de búsqueda: $message")
+
                             }
                             message.contains("listo") || percent >= 1.0 -> {
                                 Log.d(TAG, "Procesamiento completado")
                             }
                             message.isNotBlank() && status != "active" -> {
-                                ui.showText(message)
+                                Log.d(TAG, "Progreso: $message")
                             }
                         }
                     }
@@ -1503,7 +1519,7 @@ class JarvisVoiceController(
                         latitude = location.latitude
                         longitude = location.longitude
                         Log.d(TAG, "Ubicación obtenida: $latitude, $longitude")
-                        ui.showText(" Ubicación obtenida")
+
                     } else {
                         locationError = "No se pudo obtener ubicación"
                     }

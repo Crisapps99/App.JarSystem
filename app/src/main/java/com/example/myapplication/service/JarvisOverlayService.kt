@@ -179,7 +179,7 @@ class JarvisOverlayService : Service(), JarvisUi, PorcupineController {
                         barState     = barState,
                         chatRepository = chatRepository,
                         onMicClick = {
-                            // Acción al hacer clic en el micrófono (puedes implementar)
+                            onWakeWordDetected()
                         },
                         onPauseClick = {
                             if (::controller.isInitialized) {
