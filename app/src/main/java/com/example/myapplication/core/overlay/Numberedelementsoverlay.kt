@@ -149,7 +149,7 @@ class NumberedElementsOverlay(private val context: Context) {
     }
 }
 
-// ✅ NumberBubblesView - sin cambios
+//  NumberBubblesView - sin cambios
 class NumberBubblesView(
     context: Context,
     private val elementos: List<ScreenElement>

@@ -64,7 +64,7 @@ class MusicRecognizerRest(
 
     fun start(
         durationSeconds: Int = 30,
-        onProgress: (Float) -> Unit = {}  // <-- NUEVO
+        onProgress: (Float) -> Unit = {}  //
     ) {
         if (isRecognizing) return
         isRecognizing = true
@@ -73,7 +73,7 @@ class MusicRecognizerRest(
     }
 
 
-    private fun startRecording(durationSeconds: Int) {
+    private fun startRecording(durationSeconds: Int, onProgress: (Float) -> Unit = {}) {
         if (ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.RECORD_AUDIO
@@ -133,6 +133,9 @@ class MusicRecognizerRest(
                         }
 
                         samplesRead += read
+                        // Reportar progreso
+                        val progress = samplesRead.toFloat() / maxSamples
+                        onProgress(progress.coerceIn(0f, 1f))
 
                     }
                     delay(10)

@@ -139,6 +139,12 @@ data class ProcessingStep(
     val text: String,
     val status: StepStatus
 )
+
+// ─── PANEL DE RECONOCIMIENTO DE MÚSICA (VERSIÓN ÚNICA Y MEJORADA) ──────
+/**
+ * Panel que se muestra durante el reconocimiento de música o cuando se ha identificado una canción.
+ * Muestra una animación de escucha o la tarjeta con los resultados mejorados (botones de colores).
+ */
 @Composable
 fun MusicRecognitionPanel(uiState: JarvisOverlayUiState) {
     val context = LocalContext.current
@@ -151,7 +157,6 @@ fun MusicRecognitionPanel(uiState: JarvisOverlayUiState) {
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Orbe grande animado
             Box(
                 modifier = Modifier
                     .size(160.dp)
@@ -165,19 +170,14 @@ fun MusicRecognitionPanel(uiState: JarvisOverlayUiState) {
                     showParticles = true
                 )
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
             Text(
-                text = " Escuchando...",
+                text = "🎵 Escuchando...",
                 color = ColorCyanNexus,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
-
             Spacer(modifier = Modifier.height(8.dp))
-
-            // Barra de progreso (tiempo restante)
             LinearProgressIndicator(
                 progress = uiState.musicRecognitionProgress,
                 color = ColorCyanNexus,
@@ -186,17 +186,13 @@ fun MusicRecognitionPanel(uiState: JarvisOverlayUiState) {
                     .height(6.dp)
                     .clip(RoundedCornerShape(4.dp))
             )
-
             Spacer(modifier = Modifier.height(4.dp))
-
             Text(
                 text = "${(uiState.musicRecognitionProgress * 10).toInt()}s / 10s",
                 color = Color(0xFF94A3B8),
                 fontSize = 13.sp
             )
-
             Spacer(modifier = Modifier.height(12.dp))
-
             Text(
                 text = "Acerca el dispositivo a la fuente de sonido",
                 color = Color(0xFF94A3B8),
@@ -205,7 +201,7 @@ fun MusicRecognitionPanel(uiState: JarvisOverlayUiState) {
             )
         }
     } else if (uiState.showMusicResult && uiState.musicTitle.isNotBlank()) {
-        // --- RESULTADO: TARJETA DE ÁLBUM ---
+        // --- RESULTADO: TARJETA CON BOTONES DE COLOR ---
         MusicResultCard(
             title = uiState.musicTitle,
             artist = uiState.musicArtist,
@@ -226,6 +222,12 @@ fun MusicRecognitionPanel(uiState: JarvisOverlayUiState) {
     }
 }
 
+// ─── TARJETA DE RESULTADO CON BOTONES DE COLOR (VERSIÓN ÚNICA) ──────────
+/**
+ * Tarjeta que muestra la información completa de una canción identificada,
+ * incluyendo portada, título, artista, álbum, género, duración y botones
+ * para abrir en Spotify, YouTube, Apple Music o Deezer con colores distintivos.
+ */
 @Composable
 fun MusicResultCard(
     title: String,
@@ -240,118 +242,154 @@ fun MusicResultCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 8.dp)
+            .animateContentSize(),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(16.dp)
         ) {
-            // Portada circular
-            if (coverUrl.isNotBlank()) {
-                AsyncImage(
-                    model = coverUrl,
-                    contentDescription = "Portada",
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF2A2A3A)),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF2A2A3A)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.MusicNote,
-                        contentDescription = "Música",
-                        tint = ColorCyanNexus,
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
-            }
+            // Título de la sección
+            Text(
+                text = "🎵 Canción identificada",
+                color = ColorCyanNexus,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
 
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // Información
-            Column(
-                modifier = Modifier.weight(1f)
+            // Fila superior: portada + información
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = title,
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = artist,
-                    color = Color(0xFF94A3B8),
-                    fontSize = 16.sp,
-                    maxLines = 1
-                )
-                if (album.isNotBlank()) {
+                // Portada circular
+                if (coverUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = coverUrl,
+                        contentDescription = "Portada",
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2A2A3A)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2A2A3A)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.MusicNote,
+                            contentDescription = "Música",
+                            tint = ColorCyanNexus,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Información
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
-                        text = "Álbum: $album",
-                        color = Color(0xFF6B7280),
-                        fontSize = 14.sp,
+                        text = title,
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = artist,
+                        color = Color(0xFF94A3B8),
+                        fontSize = 16.sp,
                         maxLines = 1
                     )
-                }
-                if (genre.isNotBlank()) {
-                    Text(
-                        text = "Género: $genre",
-                        color = Color(0xFF6B7280),
-                        fontSize = 14.sp
-                    )
-                }
-                if (durationMs > 0) {
-                    val minutes = durationMs / 60000
-                    val seconds = (durationMs % 60000) / 1000
-                    Text(
-                        text = "⏱️ $minutes:${String.format("%02d", seconds)}",
-                        color = Color(0xFF6B7280),
-                        fontSize = 14.sp
-                    )
+                    if (album.isNotBlank()) {
+                        Text(
+                            text = "📀 $album",
+                            color = Color(0xFF6B7280),
+                            fontSize = 14.sp,
+                            maxLines = 1
+                        )
+                    }
+                    if (genre.isNotBlank()) {
+                        Text(
+                            text = "🎵 $genre",
+                            color = Color(0xFF6B7280),
+                            fontSize = 14.sp
+                        )
+                    }
+                    if (durationMs > 0) {
+                        val minutes = durationMs / 60000
+                        val seconds = (durationMs % 60000) / 1000
+                        Text(
+                            text = "⏱️ $minutes:${String.format("%02d", seconds)}",
+                            color = Color(0xFF6B7280),
+                            fontSize = 14.sp
+                        )
+                    }
                 }
             }
-        }
 
-        // Botones de enlaces
-        if (externalUrls.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                externalUrls.forEach { url ->
-                    val label = when {
-                        url.contains("spotify") -> "Spotify"
-                        url.contains("youtube") -> "YouTube"
-                        url.contains("apple") -> "Apple Music"
-                        url.contains("deezer") -> "Deezer"
-                        else -> "Abrir"
-                    }
-                    Button(
-                        onClick = { onLinkClick(url) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF2A2A3A),
-                            contentColor = ColorCyanNexus
-                        ),
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Text(label, fontSize = 14.sp)
+            // Botones de enlaces (con colores y emojis)
+            if (externalUrls.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Divider(
+                    color = Color(0xFF2A2A3A),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+                Text(
+                    text = "▶️ Escuchar en:",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
+                )
+
+                // Fila de botones
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    externalUrls.forEach { url ->
+                        val (label, icon, color) = when {
+                            url.contains("spotify") -> Triple("Spotify", "🟢", Color(0xFF1DB954))
+                            url.contains("youtube") -> Triple("YouTube", "🔴", Color(0xFFFF0000))
+                            url.contains("apple") -> Triple("Apple Music", "🔵", Color(0xFFFA243C))
+                            url.contains("deezer") -> Triple("Deezer", "🟣", Color(0xFFA238FF))
+                            else -> Triple("Abrir", "🔗", Color(0xFF4DEEE9))
+                        }
+                        Button(
+                            onClick = { onLinkClick(url) },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = color.copy(alpha = 0.15f),
+                                contentColor = color
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = ButtonDefaults.buttonElevation(
+                                defaultElevation = 2.dp
+                            )
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = icon, fontSize = 16.sp)
+                                Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
                     }
                 }
             }
@@ -359,6 +397,7 @@ fun MusicResultCard(
     }
 }
 
+// ─── PROCESAMIENTO DE PASOS ───────────────────────────────────────────────
 @Composable
 fun ProcessingStepsList(steps: List<ProcessingStep>) {
     val colorDone    = Color(0xFF1DE0A0)
@@ -486,6 +525,8 @@ private fun StepDot(
         }
     }
 }
+
+// ─── TRANSCRIPCIÓN ANIMADA ───────────────────────────────────────────────
 @Composable
 fun TranscripcionAnimada(
     texto: String,
@@ -497,7 +538,6 @@ fun TranscripcionAnimada(
     var textoMostrado by remember { mutableStateOf("") }
     var resetKey by remember { mutableStateOf(0) }
 
-    // Controla cómo va apareciendo el texto
     LaunchedEffect(texto) {
         when {
             texto.isEmpty() -> {
@@ -518,7 +558,6 @@ fun TranscripcionAnimada(
         }
     }
 
-    // Cursor parpadeante mientras escucha
     var cursorVisible by remember { mutableStateOf(true) }
     LaunchedEffect(escuchando) {
         if (escuchando) {
@@ -531,18 +570,17 @@ fun TranscripcionAnimada(
         }
     }
 
-    // ✅ Agrupamos la clave de reinicio y el texto actual
     val estadoAnimacion = remember(resetKey, textoMostrado) { Pair(resetKey, textoMostrado) }
 
     Crossfade(
-        targetState = estadoAnimacion, // Pasamos el par completo
+        targetState = estadoAnimacion,
         animationSpec = tween(220),
         modifier = modifier,
         label = "transcripcionResetFade"
-    ) { (_, textoParaAnimar) -> // ✅ Desestructuramos el parámetro. Al usar 'textoParaAnimar', el error desaparece.
+    ) { (_, textoParaAnimar) ->
         val cursor = if (escuchando && cursorVisible) "▎" else ""
         Text(
-            text = textoParaAnimar + cursor, // Usamos la variable de la transición
+            text = textoParaAnimar + cursor,
             color = color,
             fontSize = fontSize,
             fontWeight = FontWeight.Medium,
@@ -552,6 +590,8 @@ fun TranscripcionAnimada(
         )
     }
 }
+
+// ─── CONTENIDO PRINCIPAL DEL OVERLAY ──────────────────────────────────────
 @Composable
 fun JarvisOverlayContent(
     uiState: JarvisOverlayUiState,
@@ -583,7 +623,7 @@ fun JarvisOverlayContent(
         contentAlignment = Alignment.BottomCenter
     ) {
 
-        // ─── PANTALLA DE CONVERSACIÓN (con todos los parámetros) ───
+        // ─── PANTALLA DE CONVERSACIÓN ───
         AnimatedVisibility(
             visible = uiState.showConversation,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -608,7 +648,6 @@ fun JarvisOverlayContent(
             }
         }
 
-
         // ─── PANEL DE RESULTADOS ───
         AnimatedVisibility(
             visible = !uiState.showConversation && uiState.showPanel &&
@@ -631,6 +670,7 @@ fun JarvisOverlayContent(
         ) {
             ResultsPanel(uiState = uiState)
         }
+
         // ─── BARRA PRINCIPAL UNIFICADA ───
         UnifiedNexusBottomBar(
             uiState = uiState,
@@ -733,7 +773,7 @@ fun UnifiedNexusBottomBar(
             }
 
             if (isConversationMode) {
-                // Input para modo conversación (ya incluido dentro de la barra)
+                // Input para modo conversación
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -846,7 +886,6 @@ fun UnifiedNexusBottomBar(
                         }
                 )
 
-
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -925,7 +964,7 @@ fun UnifiedNexusBottomBar(
     }
 }
 
-// ─── VISTA DE CONVERSACIÓN (COMPLETA) ──────────────────────────────────
+// ─── VISTA DE CONVERSACIÓN ──────────────────────────────────────────────
 @Composable
 fun ConversationViewInsideOverlay(
     uiState: JarvisOverlayUiState,
@@ -1329,18 +1368,13 @@ private fun IconButton(onClick: () -> Unit, modifier: Modifier = Modifier, conte
 }
 
 // ─── PANEL DE RESULTADOS ──────────────────────────────────────────────────
-
-
 @Composable
 fun ResultsPanel(uiState: JarvisOverlayUiState) {
     val context = LocalContext.current
 
-    // Feedback de like/dislike: se resetea automáticamente con cada respuesta nueva
     var feedback by remember(uiState.fullHtmlText) { mutableStateOf<Boolean?>(null) }
 
-    // ¿Ya llegó la respuesta final del servidor?
     val hayRespuestaFinal = uiState.fullHtmlText.isNotBlank()
-    // ¿Está mostrando pasos de "pensando" (todavía sin respuesta final)?
     val mostrandoPasos = uiState.processingSteps.isNotEmpty() && !hayRespuestaFinal
 
     Surface(
@@ -1358,7 +1392,7 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
         Column(
             modifier = Modifier
                 .wrapContentHeight()
-                .animateContentSize( // ← ESTO hace que el panel crezca/achique con animación suave
+                .animateContentSize(
                     animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
                 )
                 .verticalScroll(rememberScrollState())
@@ -1379,16 +1413,17 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
                 )
             }
 
-// ─── RECONOCIMIENTO DE MÚSICA ──────────────────────────────────
+            // ─── RECONOCIMIENTO DE MÚSICA ──────────────────────────────────
             if (uiState.isRecognizingMusic || uiState.showMusicResult) {
                 MusicRecognitionPanel(uiState)
             }
-            // ─── PASOS DE PROCESO (mientras "piensa", antes de la respuesta) ───
+
+            // ─── PASOS DE PROCESO ───
             if (mostrandoPasos) {
                 ProcessingStepsList(steps = uiState.processingSteps)
             }
 
-            // ─── TEXTO HTML (respuesta final del servidor) ──────────────────────
+            // ─── TEXTO HTML ──────────────────────────────────────────────
             if (hayRespuestaFinal) {
                 HtmlText(
                     html = uiState.fullHtmlText,
@@ -1399,7 +1434,7 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
                 )
             }
 
-            // ─── BARRA DE ACCIONES (solo si ya hay respuesta real) ──────────────
+            // ─── BARRA DE ACCIONES ────────────────────────────────────────
             if (hayRespuestaFinal) {
                 Row(
                     modifier = Modifier
@@ -1488,11 +1523,11 @@ fun ResultsPanel(uiState: JarvisOverlayUiState) {
                 }
             }
 
-            // ─── ESPACIO PARA QUE LA BARRA NO TAPE EL CONTENIDO ──────────────
             Spacer(modifier = Modifier.height(90.dp))
         }
     }
 }
+
 // ─── IMAGEN DE RED ────────────────────────────────────────────────────────
 @Composable
 private fun NetworkImage(url: String, modifier: Modifier = Modifier) {
@@ -1682,6 +1717,7 @@ fun JarvisOverlayUiState.hidePanel() {
     clearPanel()
 }
 
+// ─── HTML TEXT ──────────────────────────────────────────────────────────
 @Composable
 fun HtmlText(html: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -1758,6 +1794,10 @@ fun previewUiState(): JarvisOverlayUiState {
             musicTitle = "Bohemian Rhapsody"
             musicArtist = "Queen"
             musicCoverUrl = "https://i.scdn.co/image/ab67616d0000b273e8b066f70c206551210d4f3b"
+            musicExternalUrls = listOf(
+                "https://open.spotify.com/track/123",
+                "https://music.youtube.com/watch?v=456"
+            )
         }
     }
 }

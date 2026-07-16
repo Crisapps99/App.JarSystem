@@ -368,6 +368,7 @@ class ContinuousVoiceEngine(
 
     fun iniciarReconocimientoMusica(
         durationSegundos: Int = 30,
+        onProgress: (Float) -> Unit = {},
         onResult: (MusicRecognizerRest.MusicResult?) -> Unit
     ) {
         if (musicRecognitionActive) {
@@ -424,7 +425,10 @@ class ContinuousVoiceEngine(
 
         )
 
-        musicRecognizer?.start(durationSegundos)
+        musicRecognizer?.start(
+            durationSeconds = durationSegundos,
+            onProgress = onProgress
+        )
         mainHandler.post { onSpeechStarted() }
         Log.d(TAG, " Reconocimiento de música iniciado por $durationSegundos segundos")
     }
